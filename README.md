@@ -12,7 +12,7 @@ des données, la réversion, les métadonnées, la sérialisation et la représe
 dictionnaire.
 
 Pour utiliser ces fonctionnalités, il est nécessaire de faire hériter chaque modèle de ``common.models.Entity`` qui
-hérite lui même de ``django.db.models.Model``.
+hérite lui-même de ``django.db.models.Model``.
 
 ```python
 from common.models import Entity
@@ -53,7 +53,7 @@ de ``common.models.Entity``. Il n'existe pas d'alternative simplifiée hors hist
 
 Lorsqu'une entité périssable existante en base de données est sauvegardée, le mécanisme suivant s'exécute :
 * si une date de fin est fournie, l'entité courante est modifiée et clôturée à cette date
-* sans date de fin fournie, l'entité courante est clôturée à cette date et une autre entité avec les modification est 
+* sans date de fin fournie, l'entité courante est clôturée à cette date et une autre entité avec les modifications est 
 créée avec une date de début actualisée et sans date de fin programmée
 
 Les entités périssables implémentent une fonction de récupération des données par rapport à une date donnée, si la date
@@ -84,7 +84,7 @@ l'ensemble des fonctionnalités en dehors de l'historisation.
 
 ### Historisation
 
-Toute altération au niveau des données d'un modèle entité sont détectées et enregistrées dans un historique,
+Toute altération au niveau des données d'un modèle entité est détectée et enregistrée dans un historique,
 cela permet un suivi des modifications par utilisation ainsi que la possibilité de revenir à un état antérieur pour
 l'entité ou un champ spécifique de l'entité.
 
@@ -102,7 +102,7 @@ personne.save(_current_user=utilisateur, _reason="Message d'information")
 ```
 
 Il est possible sur un historique d'entité ou un historique de champ de demander une restauration des données de
-l'historique ciblé sur l'entité concernée grace à la méthode ```restore()```, il est possible de lui passer
+l'historique ciblé sur l'entité concernée grâce à la méthode ```restore()```, il est possible de lui passer
 également un utilisateur et un message d'information.
 
 La restauration provoque elle-même un historique spécifique qui permet de revenir en arrière si nécessaire.
@@ -116,7 +116,7 @@ history.restore(current_user=utilisateur, reason="Message d'information", rollba
 
 Les métadonnées permettent d'ajouter des données tierces sur une entité, ces données peuvent être structurées comme
 l'utilisateur le souhaitera et seront stockées sous forme de JSON dans la base de données. Chaque entité possède des
-méthodes permettant d'accèder aux métadonnées de l'entité.
+méthodes permettant d'accéder aux métadonnées de l'entité.
 
 Les données stockées dans les métadonnées peuvent être de n'importe quel type Python à condition que ce dernier ainsi
 que les données qu'il contient éventuellement soient sérialisables (list, dict, int, float, etc...).
@@ -130,7 +130,7 @@ personne.get_metadata('cle')
 >>> None
 ```
 
-Les métadonnées d'une entité peuvent être directement utilisés dans des requêtes même si ce n'est pas recommandé pour
+Les métadonnées d'une entité peuvent être directement utilisées dans des requêtes même si ce n'est pas recommandé pour
 des raisons de performances (en fonction du volume de données).
 Elles sont représentées sous forme d'un modèle Django ``common.models.MetaData``.
 
@@ -199,7 +199,7 @@ personne.model_type
 ### WebHooks
 
 Un webhook est un callback HTTP qui transmet des données à un serveur externe en fonction d'une action 
-réalisée sur l'application. Le recepteur doit être en mesure de comprendre le message qui est transmis.
+réalisée sur l'application. Le récepteur doit être en mesure de comprendre le message qui est transmis.
 Il est possible de configurer un webhook qui réagit à un ou plusieurs actions sur une ou plusieurs entités.
 
 Les actions couvertes sont les suivantes :
@@ -218,7 +218,7 @@ Les notifications des changements par webhook est désactivée par défaut et pe
 
 ### Usage de service
 
-L'usage des service permet de compter le nombre de fois où une URL est appelée dans l'application par un même
+L'usage des services permet de compter le nombre de fois où une URL est appelée dans l'application par un même
 utilisateur et même de limiter le nombre d'usages.
 
 La fonctionnalité est désactivée par défaut et peut être activée via ``IP_DETECTION``. 
@@ -257,7 +257,7 @@ relatif à Django et dans ``common.api.utils`` pour tout ce qui est relatif à D
 * ``get_related`` : permet de récupérer toutes les relations ascendantes d'un modèle
 * ``prefetch_generics`` : permet de récupérer les relations génériques d'un modèle
 * ``str_to_bool`` : permet de convertir une chaîne de caractères quelconque en booléen
-* ``decimal`` : permet de convertir un élement quelconque en nombre décimal
+* ``decimal`` : permet de convertir un élément quelconque en nombre décimal
 * ``decimal_to_str`` : permet de convertir un nombre décimal en chaîne de caractères
 * ``recursive_get_urls`` : permet de récupérer toutes les URLs d'un module
 * ``idict`` : dictionnaire donc les clés sont toujours converties dans un format uniforme
@@ -302,7 +302,7 @@ formulaires possèdent une interface de base, préfixée généralement ``Base``
 
 * ``to_model_serializer`` : décorateur permettant de convertir un sérialiseur classique en sérialiseur de modèle
 * ``to_model_viewset`` : décorateur permettant d'associer un modèle et à un sérialiseur à une vue
-* ``create_model_serializer_and_viewset`` : permet de créer en une fois le serialiseur et la vue pour un modèle
+* ``create_model_serializer_and_viewset`` : permet de créer en une fois le sérialiseur et la vue pour un modèle
 * ``perishable_view`` : permet de gérer les données périssables d'une vue à travers l'URL
 * ``api_view_with_serializer`` : décorateur permettant de créer une vue assujettie à un sérialiseur
 * ``create_model_serializer`` : permet de créer un sérialiseur de modèle
