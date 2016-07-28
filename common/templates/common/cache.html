@@ -1,0 +1,25 @@
+{% load i18n %}
+
+<!DOCTYPE html>
+<html>
+<head lang="en">
+    <meta charset="UTF-8">
+    <title>Cache</title>
+</head>
+<body>
+    <form method="post" action="{{ request.path }}">
+        {% for key in keys %}
+            <input id="{{ key|slugify }}" type="checkbox" name="{{ key }}" />
+            <a href="{{ request.path }}?key={{ key }}#{{ key|slugify }}">({% trans "Voir" %})</a>
+            <label for="{{ key }}">{{ key }}</label>
+            {% if request.GET.key == key %}
+            <pre>{{ value }}</pre>
+            {% else %}
+            <br />
+            {% endif %}
+        {% endfor %}
+        <input type="submit" value="{% trans "Supprimer" %}" />
+        {% csrf_token %}
+    </form>
+</body>
+</html>

@@ -1,0 +1,380 @@
+# coding: utf-8
+import base64
+import decimal
+import pickle
+
+from django.core.exceptions import ValidationError
+from django.db import models
+from django.db.models import Lookup, Transform
+from django.utils.translation import ugettext_lazy as _
+
+from common.utils import json_decode, json_encode
+
+
+# Vérifie que l'on utilise le moteur de bases de données PostgreSQL
+is_postgresql = lambda connection: \
+    connection.settings_dict['ENGINE'] in ['django.db.backends.postgresql_psycopg2', 'django.db.backends.postgresql']
+is_mysql = lambda connection: connection.settings_dict['ENGINE'] == 'django.db.backends.mysql'
+is_sqlite = lambda connection: connection.settings_dict['ENGINE'] == 'django.db.backends.sqlite3'
+
+
+class CustomDecimalField(models.DecimalField):
+    """
+    Champ décimal spécifique pour éviter la représentation scientifique
+    """
+
+    def value_from_object(self, obj):
+        value = super().value_from_object(obj)
+        if isinstance(value, decimal.Decimal):
+            return self._transform_decimal(value)
+        return value
+
+    def _transform_decimal(self, value):
+        context = decimal.Context(prec=self.max_digits)
+        return value.quantize(decimal.Decimal(1), context=context) \
+            if value == value.to_integral() else value.normalize(context)
+
+
+# Mommy monkey-patch for CustomDecimalField
+try:
+    from model_mommy import mommy
+    mommy.default_mapping[CustomDecimalField] = mommy.default_mapping.get(models.DecimalField)
+except ImportError:
+    pass
+
+
+class PickleField(models.BinaryField):
+    """
+    Champ binaire utilisant pickle pour sérialiser des données diverses
+    """
+
+    def __init__(self, *args, **kwargs):
+        default = kwargs.get('default', None)
+        if default is not None:
+            kwargs['default'] = pickle.dumps(default)
+        super().__init__(*args, **kwargs)
+
+    def from_db_value(self, value, *args, **kwargs):
+        return self.to_python(value)
+
+    def to_python(self, value):
+        if not value:
+            return None
+        _value = value
+        if isinstance(_value, str):
+            _value = bytes(_value, encoding='utf-8')
+            try:
+                _value = base64.b64decode(_value)
+            except:
+                pass
+        try:
+            return pickle.loads(_value)
+        except:
+            return super().to_python(value)
+
+    def get_prep_value(self, value):
+        if not value:
+            return None if self.null else ''
+        return pickle.dumps(value)
+
+    def value_from_object(self, obj):
+        value = super().value_from_object(obj)
+        return self.to_python(value)
+
+    def value_to_string(self, obj):
+        value = self.value_from_object(obj)
+        return base64.b64encode(self.get_prep_value(value))
+
+
+class JsonDict(dict):
+    """
+    Hack so repr() called by dumpdata will output JSON instead of Python formatted data. This way fixtures will work!
+    """
+
+    def __repr__(self):
+        return json_encode(self, sort_keys=True)
+
+
+class JsonString(str):
+    """
+    Hack so repr() called by dumpdata will output JSON instead of Python formatted data. This way fixtures will work!
+    """
+
+    def __repr__(self):
+        return json_encode(self, sort_keys=True)
+
+
+class JsonList(list):
+    """
+    Hack so repr() called by dumpdata will output JSON instead of Python formatted data. This way fixtures will work!
+    """
+
+    def __repr__(self):
+        return json_encode(self, sort_keys=True)
+
+
+class JsonField(models.Field):
+    """
+    JsonField is a generic TextField that neatly serializes/unserializes JSON objects seamlessly.
+    """
+
+    def __init__(self, *args, **kwargs):
+        null = kwargs.get('null', False)
+        default = kwargs.get('default', None)
+        if not null and default is None:
+            kwargs['default'] = '{}'
+        if isinstance(default, (list, dict)):
+            kwargs['default'] = json_encode(default, sort_keys=True)
+        models.Field.__init__(self, *args, **kwargs)
+
+    def db_type(self, connection):
+        if is_postgresql(connection):
+            return 'jsonb'
+        return super().db_type(connection)
+
+    def get_internal_type(self):
+        return 'TextField'
+
+    def get_transform(self, name):
+        transform = super().get_transform(name)
+        if transform:
+            return transform
+        return JsonKeyTransformFactory(name)
+
+    def from_db_value(self, value, *args, **kwargs):
+        return self.to_python(value)
+
+    def to_python(self, value):
+        """
+        Convert our string value to JSON after we load it from the DB
+        """
+        if value is None or value == '':
+            return {} if not self.null else None
+        elif isinstance(value, str):
+            try:
+                res = json_decode(value)
+            except ValueError:
+                res = value
+            if isinstance(res, dict):
+                return JsonDict(**res)
+            elif isinstance(res, str):
+                return JsonString(res)
+            elif isinstance(res, list):
+                return JsonList(res)
+            return res
+        else:
+            return value
+
+    def get_db_prep_value(self, value, connection, prepared=False):
+        """
+        Convert our JSON object to a string before we save
+        """
+        if value is None and self.null:
+            return None
+        # default values come in as strings; only non-strings should be run through `dumps`
+        if isinstance(value, str):
+            try:
+                value = json_decode(value)
+            except ValueError:
+                pass
+        value = json_encode(value, sort_keys=True)
+        return value
+
+    def deconstruct(self):
+        name, path, args, kwargs = super().deconstruct()
+        if self.default == '{}':
+            del kwargs['default']
+        return name, path, args, kwargs
+
+    def validate(self, value, model_instance):
+        super().validate(value, model_instance)
+        try:
+            json_encode(value)
+        except TypeError:
+            raise ValidationError(
+                self.error_messages['invalid'],
+                code='invalid',
+                params={'value': value},
+            )
+
+    def value_from_object(self, obj):
+        value = super().value_from_object(obj)
+        return self.to_python(value)
+
+    def value_to_string(self, obj):
+        value = self.value_from_object(obj)
+        return value or ''
+
+    def formfield(self, **kwargs):
+        from common.forms import JsonField
+        defaults = {'form_class': JsonField}
+        defaults.update(kwargs)
+        return super().formfield(**defaults)
+
+
+class JsonKeyTransform(Transform):
+
+    def __init__(self, key_name, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.key_name = key_name
+
+    def as_sql(self, compiler, connection, **kwargs):
+        key_transforms = [self.key_name]
+        previous = self.lhs
+        while isinstance(previous, JsonKeyTransform):
+            key_transforms.insert(0, previous.key_name)
+            previous = previous.lhs
+        lhs, params = compiler.compile(previous)
+        if len(key_transforms) > 1:
+            return "{} #> %s".format(lhs), [key_transforms] + params
+        try:
+            int(self.key_name)
+        except ValueError:
+            lookup = "'%s'" % self.key_name
+        else:
+            lookup = "%s" % self.key_name
+        return "%s -> %s" % (lhs, lookup), params
+
+
+class JsonKeyTransformFactory(object):
+
+    def __init__(self, key_name):
+        self.key_name = key_name
+
+    def __call__(self, *args, **kwargs):
+        return JsonKeyTransform(self.key_name, *args, **kwargs)
+
+
+@JsonField.register_lookup
+class JsonHas(Lookup):
+    """
+    Recherche un élément dans un champ JSON contenant un tableau de chaînes de caractères ou un dictionnaire
+    Uniquement pour PostgreSQL
+    """
+    lookup_name = 'has'
+
+    def as_sql(self, compiler, connection):
+        if is_postgresql(connection):
+            lhs, lhs_params = self.process_lhs(compiler, connection)
+            rhs, rhs_params = self.process_rhs(compiler, connection)
+            assert len(rhs_params) == 1, _("A string must be provided as argument")
+            assert all(isinstance(e, str) for e in rhs_params), _("Argument must be of type string")
+            params = lhs_params + rhs_params
+            return '%s ? %s' % (lhs, rhs), params
+        raise NotImplementedError(
+            _("The lookup '{lookup}' is only supported in PostgreSQL").format(
+                lookup=self.lookup_name))
+
+
+class JsonArrayLookup(Lookup):
+    """
+    Lookup standard pour la recherche multiple dans des tableaux de chaînes de caractères
+    Uniquement pour PostgreSQL
+    """
+
+    def as_sql(self, compiler, connection):
+        if is_postgresql(connection):
+            lhs, lhs_params = self.process_lhs(compiler, connection)
+            rhs, rhs_params = self.process_rhs(compiler, connection)
+            assert len(rhs_params) == 1, _("A list of strings must be provided as argument")
+            value, *junk = rhs_params
+            rhs = ','.join(['%s'] * len(value))
+            assert isinstance(value, list), _("Lookup argument must be a list of strings")
+            return '%s %s array[%s]' % (lhs, self.lookup_operator, rhs), value
+        raise NotImplementedError(
+            _("The lookup '{lookup}' is only supported in PostgreSQL").format(
+                lookup=self.lookup_name))
+
+
+@JsonField.register_lookup
+class JsonInAny(JsonArrayLookup):
+    """
+    Recherche les éléments dans au moins une valeur est présente dans la liste fournie en paramètre
+    Uniquement pour PostgreSQL
+    """
+    lookup_name = 'any'
+    lookup_operator = '?|'
+
+
+@JsonField.register_lookup
+class JsonInAll(JsonArrayLookup):
+    """
+    Recherche les éléments dans toutes les valeurs sont présentes dans la liste fournie en paramètre
+    Uniquement pour PostgreSQL
+    """
+    lookup_name = 'all'
+    lookup_operator = '?&'
+
+
+class JsonDictLookup(Lookup):
+    """
+    Lookup standard pour la recherche multiple dans des dictionnaires
+    Uniquement pour PostgreSQL
+    """
+
+    def as_sql(self, compiler, connection):
+        if is_postgresql(connection):
+            lhs, lhs_params = self.process_lhs(compiler, connection)
+            rhs, rhs_params = self.process_rhs(compiler, connection)
+            assert len(rhs_params) == 1, _("A dictionary must be provided as argument")
+            value, *junk = rhs_params
+            assert isinstance(value, dict), _("Lookup argument must be a dictionary")
+            return '%s %s %s::jsonb' % (lhs, self.lookup_operator, rhs), [json_encode(value)]
+        raise NotImplementedError(
+            _("The lookup '{lookup}' is only supported in PostgreSQL").format(
+                lookup=self.lookup_name))
+
+
+@JsonField.register_lookup
+class JsonContains(JsonDictLookup):
+    """
+    Recherche les éléments qui contiennent le dictionnaire fourni en paramètre
+    Uniquement pour PostgreSQL
+    """
+    lookup_name = 'contains'
+    lookup_operator = '@>'
+
+
+@JsonField.register_lookup
+class JsonContained(JsonDictLookup):
+    """
+    Recherche les éléments qui sont contenus dans le dictionnaire fourni en paramètre
+    Uniquement pour PostgreSQL
+    """
+    lookup_name = 'contained'
+    lookup_operator = '<@'
+
+
+@JsonField.register_lookup
+class JsonEmpty(Lookup):
+    """
+    Recherche les éléments dont la valeur est considérée comme vide ou nulle
+    Uniquement pour PostgreSQL
+    """
+    lookup_name = 'empty'
+    empty_values = ['{}', '[]', '', 'null', None]
+
+    def as_sql(self, compiler, connection):
+        if is_postgresql(connection):
+            lhs, lhs_params = self.process_lhs(compiler, connection)
+            rhs, rhs_params = self.process_rhs(compiler, connection)
+            assert len(rhs_params) == 1, _("A boolean must be provided as argument")
+            value, *junk = rhs_params
+            assert isinstance(value, bool), _("Lookup argument must be a boolean")
+            rhs = ','.join(['%s'] * len(self.empty_values))
+            if value:
+                return '%s IS NULL OR %s::text IN (%s)' % (lhs, lhs, rhs), self.empty_values
+            return '%s IS NOT NULL AND %s::text NOT IN (%s)' % (lhs, lhs, rhs), self.empty_values
+        raise NotImplementedError(
+            _("The lookup '{lookup}' is only supported in PostgreSQL").format(
+                lookup=self.lookup_name))
+
+
+# # Substitue le JsonField générique par le JSONField de Django si l'application s'exécute sur PostgreSQL (Django 1.9)
+# try:
+#     from django.conf import settings
+#     from django.db import connection
+#     if is_postgresql(connection):
+#         from django.contrib.postgres.fields import JSONField as JsonField
+# except:
+#     pass
