@@ -2,7 +2,7 @@ import datetime
 
 from django.test import TestCase
 
-from nouvelleoffre import settings
+from common.settings import settings
 from common.utils import parsedate
 
 

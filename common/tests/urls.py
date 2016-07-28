@@ -14,9 +14,6 @@ urlpatterns = [
     # Django REST Framework Auth Token
     url(_(r'^api/auth/'), drf_views.obtain_auth_token, name='token'),
 
-    # Django REST Framework Docs
-    url(_(r'^api/docs/'), include('rest_framework_docs.urls')),
-
     # Common Framework
     url(_(r'^common/'), include(view_urlpatterns, namespace='common')),
     url(_(r'^api/common/'), include(api_urlpatterns, namespace='common-api')),
