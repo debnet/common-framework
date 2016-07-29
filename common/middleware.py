@@ -2,7 +2,7 @@
 import socket
 
 from django.core.exceptions import PermissionDenied
-from django.core.urlresolvers import resolve
+from django.core.urlresolvers import resolve, Resolver404
 from django.utils.text import ugettext_lazy as _
 
 from common.models import ServiceUsage
@@ -114,7 +114,10 @@ class ServiceUsageMiddleware:
     """
     def process_response(self, request, response):
         if settings.IP_DETECTION:
-            request.resolver_match = getattr(request, 'resolver_match', None) or resolve(request.path)
+            try:
+                request.resolver_match = getattr(request, 'resolver_match', None) or resolve(request.path)
+            except Resolver404:
+                return response
             if request.resolver_match and request.user and request.user.is_authenticated() and response.status_code in range(200, 300):
                 usage = ServiceUsage.objects.filter(name=request.resolver_match.view_name, user=request.user).first()
                 if not usage:
