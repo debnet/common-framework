@@ -114,7 +114,7 @@ class Logger(object):
         return self._log(logging.CRITICAL, message, *args, _context=context, **kwargs)
 
 
-class Erreur(Exception):
+class InternalError(Exception):
     """
     Classe d'exception interne
     """
