@@ -24,8 +24,7 @@ from django.core.files.uploadedfile import TemporaryUploadedFile
 from django.core.files.uploadhandler import TemporaryFileUploadHandler
 from django.db.models import ForeignKey, OneToOneField
 from django.http import HttpResponse
-from django.shortcuts import render_to_response
-from django.template import RequestContext
+from django.shortcuts import render
 from django.utils.translation import ugettext_lazy as _
 from django.views.decorators.csrf import csrf_exempt, csrf_protect
 from rest_framework.utils.encoders import JSONEncoder
@@ -281,12 +280,12 @@ def render_to(template=None, content_type=None):
             output = function(request, *args, **kwargs)
             if not isinstance(output, dict):
                 return output
-            tmpl = output.pop('_template', template)
+            tmpl = output.pop('TEMPLATE', template)
             if tmpl is None:
                 template_dir = os.path.join(*function.__module__.split('.')[:-1])
                 tmpl = os.path.join(template_dir, function.func_name + ".html")
             # Explicit version check to avoid swallowing other exceptions
-            return render_to_response(tmpl, output, context_instance=RequestContext(request), content_type=content_type)
+            return render(request, tmpl, output, content_type=content_type)
         return wrapper
     return renderer
 

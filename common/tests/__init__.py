@@ -1,10 +1,11 @@
 # coding: utf-8
-from datetime import datetime, timedelta
+from datetime import timedelta
 from functools import wraps
 
 from django.contrib.auth import get_user_model
 from django.test import TransactionTestCase as Test
 from django.utils.text import slugify
+from django.utils.timezone import now
 from rest_framework import status
 from rest_framework.reverse import reverse
 from rest_framework.test import APITestCase
@@ -180,7 +181,7 @@ def create_api_test_class(
             perissable = issubclass(model, PerishableEntity)
             # Permet d'eviter l'enregistrement d'une perissable exactement à la même date
             if perissable:
-                start_date = datetime.today() - timedelta(days=1)
+                start_date = now() - timedelta(days=1)
                 item = self.recipes[0].make(make_m2m=True, start_date=start_date)
             else:
                 item = self.recipes[0].make(make_m2m=True)
@@ -208,8 +209,7 @@ def create_api_test_class(
             """
             mommy_make_args = dict(make_m2m=True)
             if issubclass(model, PerishableEntity):
-                today = datetime.today()
-                mommy_make_args['start_date'] = datetime(today.year, today.month, today.day)
+                mommy_make_args['start_date'] = now()
             item = self.recipes[0].make(**mommy_make_args)
             url = reverse(self.url_detail_api, args=[item.id])
             data_to_put = self.serializer(item).data
