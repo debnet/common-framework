@@ -169,7 +169,7 @@ def create_model_serializer_and_viewset(
                     field.remote_field.model, foreign_keys=foreign_keys, many_to_many=False, one_to_one=False,
                     one_to_many=False, fks_in_related=False, serializer_base=serializer_base, viewset_base=viewset_base,
                     serializer_data=serializer_data, viewset_data=viewset_data, exclude_related=exclude_related,
-                    depth=0, _level=_level-1,  _origin=model, metas=metas)
+                    depth=0, _level=_level - 1, _origin=model, metas=metas)
                 serializer._declared_fields[field.name] = fk_serializer(read_only=True)
                 relateds.append(field.name)
                 field_relateds = get_related(field.related_model, excludes=[model._meta.model_name])
