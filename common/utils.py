@@ -768,7 +768,7 @@ def decimal_to_str(value):
     Reformate un nombre décimal en chaîne de caractères
     :param value: Valeur
     """
-    return '' if not value else value if isinstance(value, str) else format(value, 'f').rstrip('0').rstrip('.')
+    return '' if value is None else value if isinstance(value, str) else format(value, 'f').rstrip('0').rstrip('.')
 
 
 # Regex permettant d'extraire les paramètres d'une URL
