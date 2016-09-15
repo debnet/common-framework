@@ -92,7 +92,7 @@ def to_model_viewset(model, serializer, permissions=None, queryset=None, bases=N
 def create_model_serializer_and_viewset(
         model, foreign_keys=True, many_to_many=False, one_to_one=True, one_to_many=False, fks_in_related=False,
         serializer_base=None, viewset_base=None, serializer_data=None, viewset_data=None, permissions=None,
-        queryset=None, metas=None, exclude_related=None, depth=0, _level=0, _origin=None, **options):
+        queryset=None, metas=None, exclude_related=None, depth=0, height=1, _level=0, _origin=None, **options):
     """
     Permet de créer les classes de serializer et de viewset associés à un modèle
     :param model: Modèle
@@ -111,6 +111,7 @@ def create_model_serializer_and_viewset(
     :param metas: Metadonnées des serializers dépendants (dictionnaire organisé par modèle)
     :param exclude_related: Nom des relations inversées à exclure
     :param depth: Profondeur de récupération des modèles dépendants
+    :param height: Hauteur maximale de récupération des clés étrangères
     :param _level: Profondeur actuelle (utilisé par la récursivité)
     :param _origin: Modèle d'origine dans la récursivité pour éviter la redondance
     :param options: Metadonnées du serializer de base
@@ -164,12 +165,12 @@ def create_model_serializer_and_viewset(
             continue
         # Ajout du serializer pour la relation de clé étrangère
         if field.remote_field and not field.primary_key and field.remote_field.model != _origin:
-            if (foreign_keys and _level <= 0) or (fks_in_related and _level > 0):
+            if (foreign_keys and 0 >= _level > -height) or (fks_in_related and _level > 0):
                 fk_serializer, fk_viewset = create_model_serializer_and_viewset(
                     field.remote_field.model, foreign_keys=foreign_keys, many_to_many=False, one_to_one=False,
                     one_to_many=False, fks_in_related=False, serializer_base=serializer_base, viewset_base=viewset_base,
                     serializer_data=serializer_data, viewset_data=viewset_data, exclude_related=exclude_related,
-                    depth=0, _level=_level - 1, _origin=model, metas=metas)
+                    depth=0, height=height, _level=_level - 1, _origin=model, metas=metas)
                 serializer._declared_fields[field.name] = fk_serializer(read_only=True)
                 relateds.append(field.name)
                 field_relateds = get_related(field.related_model, excludes=[model._meta.model_name])
