@@ -64,7 +64,9 @@ class CommonModelViewSet(viewsets.ModelViewSet):
         silent = self.request.query_params.get('silent', None)
 
         # Requête simplifiée
-        queryset = super().get_queryset()
+        metadatas = str_to_bool(self.request.query_params.get('metadatas', False))
+        queryset = self.queryset_metadatas if metadatas and hasattr(self, 'queryset_metadatas') \
+            else super().get_queryset()
         if self.request.query_params.get('simple', None):
             queryset = queryset.model.objects.all()
             try:
