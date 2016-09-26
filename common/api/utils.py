@@ -1,6 +1,5 @@
 # coding: utf-8
 from functools import wraps
-
 from django.db.models import QuerySet
 from rest_framework import serializers
 from rest_framework.decorators import api_view
