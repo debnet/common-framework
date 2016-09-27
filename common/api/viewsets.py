@@ -75,8 +75,13 @@ class CommonModelViewSet(viewsets.ModelViewSet):
                     if related:
                         relateds.add('__'.join(related))
                 queryset = queryset.select_related(*relateds)
-            except:
-                pass
+            except Exception as error:
+                if not silent:
+                    raise ValidationError(str(error))
+        else:
+            # Récupération des métadonnées
+            metadatas = str_to_bool(self.request.query_params.get('meta', False))
+            queryset = queryset.prefetch_related(*getattr(self, 'metadatas', []) if metadatas else [])
 
         # Filtres
         try:

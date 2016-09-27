@@ -580,7 +580,25 @@ def get_choices_fields(*included_apps):
     return tuple(choices_by_application())
 
 
-def get_prefetchs(parent, depth=1, foreign_keys=False, one_to_one=True, one_to_many=False,
+def prefetch_metadatas(model, lookup=None, name=None):
+    """
+    Permet de récupérer les métadonnées valides d'un modèle
+    (principalement utilisé dans la récursivité de `get_prefetch()`)
+    :param model: Modèle
+    :param lookup: Lookup préfixe (facultatif)
+    :param name: Nom de l'attribut (force l'évaluation, facultatif)
+    :return: Liste de Prefetch
+    """
+    from common.models import MetaData
+    from django.db.models import Prefetch
+    for field in model._meta.private_fields:
+        if field.related_model is MetaData:
+            lookup = field.name if lookup is None else '{}__{}'.format(lookup, field.name)
+            return [Prefetch(lookup, queryset=MetaData.objects.select_valid(), to_attr=name)]
+    return []
+
+
+def get_prefetchs(parent, depth=1, foreign_keys=False, one_to_one=True, one_to_many=False, metadatas=False,
                   excludes=None, _model=None, _prefetch='', _level=1):
     """
     Permet de récupérer récursivement tous les prefetch related d'un modèle
@@ -589,6 +607,7 @@ def get_prefetchs(parent, depth=1, foreign_keys=False, one_to_one=True, one_to_m
     :param foreign_keys: Récupère les relations de type foreign-key ?
     :param one_to_one: Récupère les relations de type one-to-one ?
     :param one_to_many: Récupère les relations de type one-to-many ? (peut-être très coûteux selon les données)
+    :param metadatas: Récupère uniquement les prefetchs des métadonnées ?
     :param excludes: Champs ou types à exclure
     :param _model: Modèle courant (pour la récursivité, nul par défaut)
     :param _prefetch: Nom du prefetch courant (pour la récursivité, vide par défaut)
@@ -596,7 +615,7 @@ def get_prefetchs(parent, depth=1, foreign_keys=False, one_to_one=True, one_to_m
     :return: Liste des prefetch related associés
     """
     excludes = excludes or []
-    results = []
+    results = prefetch_metadatas(parent) if metadatas and not _model else []
     if _level > depth:
         return results
     model = _model or parent
@@ -613,6 +632,7 @@ def get_prefetchs(parent, depth=1, foreign_keys=False, one_to_one=True, one_to_m
                     depth=depth,
                     one_to_one=one_to_one,
                     one_to_many=one_to_many,
+                    metadatas=metadatas,
                     excludes=excludes,
                     _model=field.related_model,
                     _prefetch=recursive_prefetch,
@@ -621,7 +641,9 @@ def get_prefetchs(parent, depth=1, foreign_keys=False, one_to_one=True, one_to_m
             if foreign_keys:
                 for related in get_related(field.related_model, excludes=excludes, one_to_one=one_to_one, depth=1):
                     results.append('__'.join((recursive_prefetch, related)))
-            if not prefetchs:
+            if metadatas:
+                results.extend(prefetch_metadatas(parent, lookup=recursive_prefetch))
+            elif not prefetchs:
                 results.append(recursive_prefetch)
     return results
 
@@ -719,8 +741,8 @@ def prefetch_generics(weak_queryset):
 
 
 # Valeurs considérées comme vraies ou fausses
-TRUE_VALUES = ['true', 'yes', 'y', '1', _('vrai'), _('oui'), _('o')]
-FALSE_VALUES = ['false', 'no', 'n', '0', _('faux'), _('non'), _('n')]
+TRUE_VALUES = {'true', 'yes', 'y', '1', _('vrai'), _('oui'), _('o'), _('v')}
+FALSE_VALUES = {'false', 'no', 'n', '0', _('faux'), _('non'), _('n'), _('f')}
 
 
 def str_to_bool(value):
@@ -731,7 +753,7 @@ def str_to_bool(value):
     """
     if value is True or value is False:
         return value
-    if value is None or str(value).lower() not in TRUE_VALUES + FALSE_VALUES:
+    if value is None or str(value).lower() not in TRUE_VALUES | FALSE_VALUES:
         return None
     return str(value).lower() in TRUE_VALUES
 

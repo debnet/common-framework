@@ -1,6 +1,8 @@
 # coding: utf-8
 from operator import itemgetter
 
+from common.models import MetaData
+from common.utils import str_to_bool
 from django.contrib.auth import get_user_model
 from django.contrib.auth.models import Group, Permission
 from django.core.exceptions import ValidationError as ModelValidationError
@@ -18,6 +20,13 @@ class CommonModelSerializer(serializers.ModelSerializer):
     Définition commune de ModelSerializer pour l'API REST
     """
     serializer_url_field = CustomHyperlinkedIdentityField
+    metadatas = serializers.SerializerMethodField(read_only=True)
+
+    def get_metadatas(self, instance):
+        request = self.context.get('request', None)
+        if request and str_to_bool(request.query_params.get('meta', False)) and hasattr(instance, 'metadatas'):
+            return create_model_serializer(MetaData, fields=('key', 'value'))(instance.metadatas, many=True).data
+        return None
 
     def create(self, validated_data):
         """
@@ -137,7 +146,7 @@ User = get_user_model()
 
 
 @to_model_serializer(User)
-class UserSerializer(CommonModelSerializer):
+class UserSerializer(serializers.ModelSerializer):
     """
     Serializer spécifique pour la création et la mise à jour d'un utilisateur
     """
@@ -179,7 +188,6 @@ class UserInfosSerializer(CommonModelSerializer):
 
     groups = create_model_serializer(Group, exclude=['permissions'])(many=True)
     permissions = serializers.SerializerMethodField()
-    metadatas = serializers.SerializerMethodField()
 
     def get_permissions(self, user):
         permissions = {}
