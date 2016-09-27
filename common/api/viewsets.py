@@ -64,9 +64,7 @@ class CommonModelViewSet(viewsets.ModelViewSet):
         silent = self.request.query_params.get('silent', None)
 
         # Requête simplifiée
-        metadatas = str_to_bool(self.request.query_params.get('metadatas', False))
-        queryset = self.queryset_metadatas if metadatas and hasattr(self, 'queryset_metadatas') \
-            else super().get_queryset()
+        queryset = super().get_queryset()
         if self.request.query_params.get('simple', None):
             queryset = queryset.model.objects.all()
             try:
@@ -77,8 +75,13 @@ class CommonModelViewSet(viewsets.ModelViewSet):
                     if related:
                         relateds.add('__'.join(related))
                 queryset = queryset.select_related(*relateds)
-            except:
-                pass
+            except Exception as error:
+                if not silent:
+                    raise ValidationError(str(error))
+        else:
+            # Récupération des métadonnées
+            metadatas = str_to_bool(self.request.query_params.get('meta', False))
+            queryset = queryset.prefetch_related(*getattr(self, 'metadatas', []) if metadatas else [])
 
         # Filtres
         try:

@@ -24,10 +24,8 @@ class CommonModelSerializer(serializers.ModelSerializer):
 
     def get_metadatas(self, instance):
         request = self.context.get('request', None)
-        if request and str_to_bool(request.query_params.get('metadatas', False)) and hasattr(instance, 'metadatas'):
-            return to_model_serializer(MetaData, fields=('key', 'value',))(
-                type('MetaDataSerializer', (serializers.ModelSerializer,), {}))(
-                instance.metadatas, many=True, read_only=True).data
+        if request and str_to_bool(request.query_params.get('meta', False)) and hasattr(instance, 'metadatas'):
+            return create_model_serializer(MetaData, fields=('key', 'value'))(instance.metadatas, many=True).data
         return None
 
     def create(self, validated_data):
@@ -148,7 +146,7 @@ User = get_user_model()
 
 
 @to_model_serializer(User)
-class UserSerializer(CommonModelSerializer):
+class UserSerializer(serializers.ModelSerializer):
     """
     Serializer spécifique pour la création et la mise à jour d'un utilisateur
     """
@@ -190,7 +188,6 @@ class UserInfosSerializer(CommonModelSerializer):
 
     groups = create_model_serializer(Group, exclude=['permissions'])(many=True)
     permissions = serializers.SerializerMethodField()
-    metadatas = serializers.SerializerMethodField()
 
     def get_permissions(self, user):
         permissions = {}

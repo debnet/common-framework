@@ -108,22 +108,23 @@ class Serialized(object):
             format=self.format, count=self.count, object=self.meta.object_name)
 
 
-class MetaDataManager(models.Manager):
+class MetaDataQuerySet(models.QuerySet):
     """
-    Manager des métadonnées
+    QuerySet des métadonnées
     """
 
-    def search(self, *, id=None, type=None, key=None, value=None, valid=True):
+    def search(self, *, id=None, type=None, key=None, value=None, date=None, valid=True):
         """
         Effectue une recherche multi-critères dans les métadonnées
         :param id: instance de l'entité
         :param type: Type de l'entité concernée
         :param key: Clé de recherche
         :param value: Valeur après déserialisation
+        :param date: Date de vérification (facultatif)
         :param valid: Uniquement les métadonnées valides ?
         :return: QuerySet
         """
-        queryset = self.get_queryset()
+        queryset = self
         if id:
             queryset = queryset.filter(object_id=id)
         if type:
@@ -137,10 +138,21 @@ class MetaDataManager(models.Manager):
         if value:
             from common.utils import json_encode
             queryset = queryset.filter(value=json_encode(value, sort_keys=True))
-        if valid is not None:
-            date_query = Q(deletion_date=None) | Q(deletion_date__gte=now())
-            queryset = queryset.filter(date_query) if valid else queryset.exclude(date_query)
-        return queryset
+        return queryset.select_valid(date=date, valid=valid)
+
+    def select_valid(self, date=None, valid=True):
+        """
+        Sélectionne les éléments valides du QuerySet
+        :param date: Date de vérification (facultatif)
+        :param valid: Retourne les éléments valides ou invalides (valides par défaut)
+        :return: QuerySet
+        """
+        if valid is None:
+            return self
+        function = self.filter if valid else self.exclude
+        return function(Q(deletion_date__isnull=True) | Q(deletion_date__lte=date or now()))
+
+    valid = property(select_valid)
 
 
 class MetaData(models.Model):
@@ -156,7 +168,7 @@ class MetaData(models.Model):
     creation_date = models.DateTimeField(auto_now_add=True, verbose_name=_("date de création"))
     modification_date = models.DateTimeField(auto_now=True, verbose_name=_("date de modification"))
     deletion_date = models.DateTimeField(blank=True, null=True, db_index=True, verbose_name=_("date de suppression"))
-    objects = MetaDataManager()
+    objects = MetaDataQuerySet.as_manager()
 
     def __str__(self):  # pragma: no cover
         return _("{key}: {value}").format(key=self.key, value=self.value)
@@ -1085,8 +1097,7 @@ class PerishableEntityQuerySet(EntityQuerySet):
     def select_valid(self, date=None, valid=True):
         """
         Sélectionne les éléments valides du QuerySet
-        :param start_date: Date de début (facultatif)
-        :param end_date: Date de fin (facultatif)
+        :param date: Date de référence (facultatif)
         :param valid: Retourne les éléments valides ou invalides (valides par défaut)
         :return: QuerySet
         """
