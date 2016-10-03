@@ -5,6 +5,7 @@ coverage==4.2
 djangorestframework==3.4.6
 flake8<3.0.0
 model_mommy==1.2.6
+openpyxl==2.3.5
 python-dateutil==2.5.3
 pip==8.1.2
 pytz==2016.6.1
