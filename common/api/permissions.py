@@ -29,12 +29,10 @@ class CurrentUserPermissions(CommonModelPermissions):
         if request.user.is_superuser:
             return True
         has_permission = super().has_permission(request, view)
-        if not has_permission:
-            return False
+        if has_permission:
+            return True
         model = view.queryset.model
         if not request.user or view.action not in ['list', 'retrieve'] or model not in self.filters:
             return False
-        filters = view.kwargs or {}
-        filters.update(self.filters.get(model)(request))
-        view.queryset = view.get_queryset().filter(**filters)
+        view.queryset = view.get_queryset().filter(**self.filters.get(model)(request))
         return view.queryset.exists() if view.action == 'retrieve' else True
