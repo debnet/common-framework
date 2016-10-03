@@ -270,14 +270,17 @@ class ImportExport(object):
             cell.style = self.title_style
             column_letter = get_column_letter(column + 1)
             widths[column_letter] = len(str(cell.value)) + CELL_OFFSET
-
+        # On construit la feuille des métadonnées ligne par ligne en bouclant sur notre dictionnaire de métadonnées
         row = 2
         for id, liste_tuple_meta in self.metadatas.items():
             for key, value in liste_tuple_meta:
+                # La colonne 1 correspond au code
                 cell = worksheet.cell(row=row, column=1)
                 cell.value = id
+                # La colonne 2 correspond à la clé
                 cell = worksheet.cell(row=row, column=2)
                 cell.value = key
+                # La colonne 3 correspond à la valeur
                 cell = worksheet.cell(row=row, column=3)
                 try:
                     cell.value = value
@@ -325,7 +328,6 @@ class ImportExport(object):
             if not getattr(instance, 'code', None):
                 instance.validate_unique()
             instance.clean()
-
             instance.save(_ignore_log=True, _force_default=True)
         except ValidationError as errors:
             for field, errors in errors.message_dict.items():
@@ -336,7 +338,7 @@ class ImportExport(object):
                         self.log.warning('[{}] {}'.format(field, error))
             if not self.force:
                 raise
-        # Enregistrement des métadatas (possible qu'après l'enregistrement en base)
+        # Enregistrement des métadonnées (possible qu'après l'enregistrement en base)
         try:
             for key, value in metadatas.items():
                 instance.set_metadata(key, value)
