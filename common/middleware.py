@@ -132,7 +132,8 @@ class ServiceUsageMiddleware:
                 request.resolver_match = getattr(request, 'resolver_match', None) or resolve(request.path)
             except Resolver404:
                 return response
-            if request.resolver_match and request.user and request.user.is_authenticated() and response.status_code in range(200, 300):
+            if request.resolver_match and hasattr(request, 'user') and request.user.is_authenticated() and \
+                    response.status_code in range(200, 300):
                 usage = ServiceUsage.objects.filter(name=request.resolver_match.view_name, user=request.user).first()
                 if not usage:
                     usage = ServiceUsage(name=request.resolver_match.view_name, user=request.user)
@@ -140,5 +141,6 @@ class ServiceUsageMiddleware:
                 usage.address = get_ip(request)
                 usage.save()
                 if usage.limit and usage.limit < usage.count:
-                    raise PermissionDenied(_("Le nombre maximal d'utilisations de ce service pour cet utilisateur a été atteint."))
+                    raise PermissionDenied(_(
+                        "Le nombre maximal d'utilisations de ce service pour cet utilisateur a été atteint."))
         return response
