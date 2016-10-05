@@ -84,10 +84,11 @@ class CommonModelViewSet(viewsets.ModelViewSet):
         else:
             # Récupération des métadonnées
             metadatas = str_to_bool(self.request.query_params.get('meta', False))
-            if metadatas:
-                viewset_lookups = [p if isinstance(p, str) else p.prefetch_through for p in
-                                   queryset._prefetch_related_lookups]
-                # TODO: à revoir, permet d'éviter les conflits entre lookups identiques
+            if metadatas and hasattr(self, 'metadatas'):
+                # Permet d'éviter les conflits entre prefetch lookups identiques
+                viewset_lookups = [
+                    prefetch if isinstance(prefetch, str) else prefetch.prefetch_through
+                    for prefetch in queryset._prefetch_related_lookups]
                 lookups_metadatas = []
                 for lookup in getattr(self, 'metadatas', []):
                     name = lookup if isinstance(lookup, str) else lookup.prefetch_through

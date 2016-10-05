@@ -12,7 +12,7 @@ from rest_framework.test import APITestCase
 
 from model_mommy.recipe import Recipe
 from common.api.utils import create_model_serializer
-from common.models import Entity, PerishableEntity
+from common.models import CommonModel, Entity, PerishableEntity
 from common.utils import json_decode, json_encode
 
 
@@ -94,8 +94,8 @@ def create_api_test_class(
     :param test_order_by: Test du tri
     :param test_filter: Test des filter
     :param test_metadatas: Test des metadatas
-    :param test_simple: Test du 'simple'
-    :param test_silent: Test du 'silent'
+    :param test_simple: Test des réquêtes simplifiées
+    :param test_silent: Test de la remontée d'erreur silencieuse
     :return: Classe de test
     """
     app_label = model._meta.app_label
@@ -339,7 +339,7 @@ def create_api_test_class(
             self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
         test_class.test_api_filter_get = _test_api_filter_get
 
-    if test_metadatas:
+    if test_metadatas and issubclass(model, CommonModel):
         def _test_api_metadatas(self):
             """
             Méthode de test des metadatas
@@ -358,11 +358,11 @@ def create_api_test_class(
             url = reverse(self.url_detail_api, args=[item.id]) + '?meta=1'
             response = self.client.get(url)
             self.assertEqual(response.status_code, status.HTTP_200_OK, response.data)
-            # metadatas = response.data.get('metadatas', [])
-            # self.assertEqual(len(metadatas), 1)
-            # metadata, *junk = metadatas
-            # self.assertEqual(metadata.get('key', None), 'test_key')
-            # self.assertEqual(metadata.get('value', None), 'test_value')
+            metadatas = response.data.get('metadatas', [])
+            self.assertEqual(len(metadatas), 1)
+            metadata, *junk = metadatas
+            self.assertEqual(metadata.get('key', None), 'test_key')
+            self.assertEqual(metadata.get('value', None), 'test_value')
         test_class.test_api_metadatas = _test_api_metadatas
 
     if test_simple:
@@ -410,11 +410,11 @@ def create_api_test_class(
                 item.make()
             # Test sans le silent
             self.client.force_authenticate(self.user_admin)
-            url = reverse(self.url_list_api) + '?champs_inexistant=test'
+            url = reverse(self.url_list_api) + '?champ_inexistant=test'
             response = self.client.get(url)
             self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
             # Test avec le silent
-            url = reverse(self.url_list_api) + '?champs_inexistant=test&silent=1'
+            url = reverse(self.url_list_api) + '?champ_inexistant=test&silent=1'
             response = self.client.get(url)
             self.assertEqual(response.status_code, status.HTTP_200_OK, response.data)
             self.assertEqual(response.data['count'], items_count + nb_recipes)
