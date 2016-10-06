@@ -12,7 +12,7 @@ from rest_framework.test import APITestCase
 
 from model_mommy.recipe import Recipe
 from common.api.utils import create_model_serializer
-from common.models import Entity, PerishableEntity
+from common.models import CommonModel, Entity, PerishableEntity
 from common.utils import json_decode, json_encode
 
 
@@ -78,7 +78,8 @@ def raise_exception(error_type, code):
 def create_api_test_class(
         model, serializer=None, data=None,
         test_list=True, test_get=True, test_post=True, test_put=True,
-        test_delete=True, test_options=True, test_order_by=True):
+        test_delete=True, test_options=True, test_order_by=True, test_filter=True,
+        test_metadatas=True, test_simple=True, test_silent=True):
     """
     Permet d'obtenir la classe de test du modèle avec les méthodes de tests standard de l'api
     :param model: Modèle
@@ -91,6 +92,10 @@ def create_api_test_class(
     :param test_delete: Test du DELETE
     :param test_options: Test du OPTIONS
     :param test_order_by: Test du tri
+    :param test_filter: Test des filter
+    :param test_metadatas: Test des metadatas
+    :param test_simple: Test des réquêtes simplifiées
+    :param test_silent: Test de la remontée d'erreur silencieuse
     :return: Classe de test
     """
     app_label = model._meta.app_label
@@ -287,6 +292,135 @@ def create_api_test_class(
             item2 = response.data['results'][1]
             self.assertLess(item1['id'], item2['id'])
         test_class.test_api_order_by = _test_api_order_by
+
+    if test_filter:
+        def _test_api_filter_list(self):
+            """
+            Méthode de test du filtre lors d'un get list
+            """
+            recipes = self.recipes
+            items_id = []
+            for item in recipes:
+                instance = item.make()
+                items_id.append(str(instance.id))
+            # Test avec résultat
+            url = reverse(self.url_list_api) + '?id__in={}'.format(','.join(items_id[:2]))
+            response = self.client.get(url)
+            self.assertIn(response.status_code, [status.HTTP_401_UNAUTHORIZED, status.HTTP_403_FORBIDDEN])
+            self.client.force_authenticate(self.user_admin)
+            response = self.client.get(url)
+            self.assertEqual(response.status_code, status.HTTP_200_OK, response.data)
+            self.assertEqual(response.data['count'], min(len(items_id), 2))
+            self.assertTrue(all(i.get('id', None) in items_id for i in response.get('results', [])))
+            options = response.data.get('options', {})
+            self.assertTrue(options.get('filters', False))
+            # Test sans résultat
+            url = reverse(self.url_list_api) + '?id=-1'
+            response = self.client.get(url)
+            self.assertEqual(response.status_code, status.HTTP_200_OK, response.data)
+            self.assertEqual(response.data['count'], min(len(items_id), 0))
+        test_class.test_api_filter_list = _test_api_filter_list
+
+        def _test_api_filter_get(self):
+            """
+            Méthode de test du filtre lors d'un get unitaire
+            """
+            item = self.recipes[0].make()
+            url = reverse(self.url_detail_api, args=[item.id]) + '?id={}'.format(item.id)
+            response = self.client.get(url)
+            self.assertIn(response.status_code, [status.HTTP_401_UNAUTHORIZED, status.HTTP_403_FORBIDDEN])
+            self.client.force_authenticate(self.user_admin)
+            response = self.client.get(url)
+            self.assertEqual(response.status_code, status.HTTP_200_OK, response.data)
+            self.assertEqual(response.data.get('id', None), item.id)
+            # Test sans résultat
+            url = reverse(self.url_detail_api, args=[item.id]) + '?id=-1'
+            response = self.client.get(url)
+            self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+        test_class.test_api_filter_get = _test_api_filter_get
+
+    if test_metadatas and issubclass(model, CommonModel):
+        def _test_api_metadatas(self):
+            """
+            Méthode de test des metadatas
+            """
+            item = self.recipes[0].make()
+            item.set_metadata('test_key', 'test_value')
+            # Test sans metadatas
+            url = reverse(self.url_detail_api, args=[item.id])
+            response = self.client.get(url)
+            self.assertIn(response.status_code, [status.HTTP_401_UNAUTHORIZED, status.HTTP_403_FORBIDDEN])
+            self.client.force_authenticate(self.user_admin)
+            response = self.client.get(url)
+            self.assertEqual(response.status_code, status.HTTP_200_OK, response.data)
+            self.assertIsNone(response.data.get('metadatas'))
+            # Test avec metadatas
+            url = reverse(self.url_detail_api, args=[item.id]) + '?meta=1'
+            response = self.client.get(url)
+            self.assertEqual(response.status_code, status.HTTP_200_OK, response.data)
+            metadatas = response.data.get('metadatas', [])
+            self.assertEqual(len(metadatas), 1)
+            metadata, *junk = metadatas
+            self.assertEqual(metadata.get('key', None), 'test_key')
+            self.assertEqual(metadata.get('value', None), 'test_value')
+        test_class.test_api_metadatas = _test_api_metadatas
+
+    if test_simple:
+        from django.db.models import ManyToOneRel
+        from django.db.models.fields.related import ForeignKey
+
+        def _test_api_simple(self):
+            """
+            Méthode de test du simple
+            """
+            recipe, *junk = self.recipes
+            item = recipe.make()
+            # Récupération submodels sans le simple
+            self.client.force_authenticate(self.user_admin)
+            url = reverse(self.url_detail_api, args=[item.id])
+            response = self.client.get(url)
+            list_submodels = []
+            unique_submodels = []
+            for field in model._meta.get_fields():
+                field_name = field.get_accessor_name() if isinstance(field, ManyToOneRel) else field.name
+                if field_name in response.data:
+                    field_data = response.data[field_name]
+                    if (field.one_to_many or field.many_to_many) and isinstance(field_data, list):
+                        list_submodels.append(field_name)
+                    elif (field.one_to_one or isinstance(field, ForeignKey)) and isinstance(field_name, dict):
+                        unique_submodels.append(field_name)
+            # On vérifie qu'ils ne soient plus remontés avec le simple
+            url = reverse(self.url_detail_api, args=[item.id]) + "?simple=1"
+            response = self.client.get(url)
+            self.assertEqual(response.status_code, status.HTTP_200_OK)
+            self.assertTrue(all(field not in response.data for field in list_submodels))
+            self.assertTrue(all(field not in response.data or not isinstance(response.data.get(field, {}), dict)
+                                for field in list_submodels))
+        test_class.test_api_simple = _test_api_simple
+
+    if test_silent:
+        def _test_api_silent(self):
+            """
+            Méthode de test du silent
+            """
+            items_count = model.objects.count()
+            recipes = self.recipes
+            nb_recipes = len(recipes)
+            for item in recipes:
+                item.make()
+            # Test sans le silent
+            self.client.force_authenticate(self.user_admin)
+            url = reverse(self.url_list_api) + '?champ_inexistant=test'
+            response = self.client.get(url)
+            self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+            # Test avec le silent
+            url = reverse(self.url_list_api) + '?champ_inexistant=test&silent=1'
+            response = self.client.get(url)
+            self.assertEqual(response.status_code, status.HTTP_200_OK, response.data)
+            self.assertEqual(response.data['count'], items_count + nb_recipes)
+            options = response.data.get('options', {})
+            self.assertFalse(options.get('filters', True))
+        test_class.test_api_silent = _test_api_silent
 
     return test_class
 

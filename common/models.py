@@ -69,7 +69,7 @@ def get_content_type(model):
     """
     # Récupération du content type en cache si possible
     content_type = getattr(model, '_content_type', None)
-    if not content_type:
+    if not content_type or content_type.model_class is not model:
         content_type = ContentType.objects.get_for_model(model)
         model._content_type = content_type
     return content_type

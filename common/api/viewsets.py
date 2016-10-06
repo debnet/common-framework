@@ -14,6 +14,9 @@ class CommonModelViewSet(viewsets.ModelViewSet):
     Définition commune de ModelViewSet pour l'API REST
     """
 
+    def list(self, request, format=None, *args, **kwargs):
+        return super().list(request, *args, format=format, **kwargs)
+
     def get_serializer_class(self):
         # Le serializer par défaut est utilisé en cas de modification/suppression
         default_serializer = getattr(self, 'default_serializer', None)
@@ -81,7 +84,17 @@ class CommonModelViewSet(viewsets.ModelViewSet):
         else:
             # Récupération des métadonnées
             metadatas = str_to_bool(self.request.query_params.get('meta', False))
-            queryset = queryset.prefetch_related(*getattr(self, 'metadatas', []) if metadatas else [])
+            if metadatas and hasattr(self, 'metadatas'):
+                # Permet d'éviter les conflits entre prefetch lookups identiques
+                viewset_lookups = [
+                    prefetch if isinstance(prefetch, str) else prefetch.prefetch_through
+                    for prefetch in queryset._prefetch_related_lookups]
+                lookups_metadatas = []
+                for lookup in getattr(self, 'metadatas', []):
+                    name = lookup if isinstance(lookup, str) else lookup.prefetch_through
+                    if name not in viewset_lookups:
+                        lookups_metadatas.append(lookup)
+                queryset = queryset.prefetch_related(*lookups_metadatas)
 
         # Filtres
         try:
