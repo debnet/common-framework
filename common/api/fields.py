@@ -1,5 +1,5 @@
 # coding: utf-8
-from rest_framework.fields import Field
+from rest_framework.fields import ChoiceField, Field
 from rest_framework.relations import HyperlinkedIdentityField
 
 from common.utils import json_encode, recursive_get_urls
@@ -21,6 +21,29 @@ class JsonField(Field):
 
     def to_representation(self, value):
         return value
+
+
+class QuerySetChoiceField(ChoiceField):
+    """
+    Surcharge d'un champ de choix se comportant comme une clé étrangère avec l'option de choisir la clé et le libellé
+    """
+    def __init__(self, model, value=None, label=None, filters=None, order_by=None, **kwargs):
+        self.model = model
+        self.value = value
+        self.label = label
+        self.filters = filters
+        self.order_by = order_by
+        super().__init__(choices=self.values, **kwargs)
+
+    @property
+    def values(self):
+        from django.apps import apps
+        if self.value and self.label and apps.ready:
+            queryset = self.model.objects.filter(**self.filters or {})
+            if self.order_by:
+                queryset = queryset.order_by(self.order_by)
+            return queryset.values_list(self.value, self.label)
+        return []
 
 
 class CustomHyperlinkedIdentityField(HyperlinkedIdentityField):
