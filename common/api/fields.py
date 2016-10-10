@@ -37,13 +37,13 @@ class QuerySetChoiceField(ChoiceField):
 
     @property
     def values(self):
-        from django.apps import apps
-        if self.value and self.label and apps.ready:
+        try:
             queryset = self.model.objects.filter(**self.filters or {})
             if self.order_by:
                 queryset = queryset.order_by(self.order_by)
             return queryset.values_list(self.value, self.label)
-        return []
+        except:
+            return []
 
 
 class CustomHyperlinkedIdentityField(HyperlinkedIdentityField):
