@@ -41,7 +41,7 @@ class QuerySetChoiceField(ChoiceField):
             queryset = self.model.objects.filter(**self.filters or {})
             if self.order_by:
                 queryset = queryset.order_by(self.order_by)
-            return queryset.values_list(self.value, self.label)
+            return list(queryset.values_list(self.value, self.label))
         except:
             return []
 
