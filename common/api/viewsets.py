@@ -3,7 +3,7 @@ from rest_framework import serializers
 from rest_framework import viewsets
 from rest_framework.exceptions import ValidationError
 
-from common.api.utils import RESERVED_QUERY_PARAMS, url_value
+from common.api.utils import AGGREGATES, RESERVED_QUERY_PARAMS, url_value
 from common.models import Entity
 from common.settings import settings
 from common.utils import str_to_bool
@@ -26,11 +26,25 @@ class CommonModelViewSet(viewsets.ModelViewSet):
         # Le serializer peut être substitué en fonction des paramètres d'appel de l'API
         params = self.request.query_params
         if default_serializer:
-            if 'fields' in params:
-                # Un serializer avec restriction des champs est créé à la volée
-                return type(default_serializer.__name__, (serializers.Serializer, ), {
+            if 'group_by' in params:
+                fields = {
+                    field: serializers.ReadOnlyField()
+                    for field in params.get('group_by').split(',')}
+                # Ajoute les champs d'aggregation au serializer
+                for aggregate in AGGREGATES.keys():
+                    for field in params.get(aggregate, '').split(','):
+                        if not field:
+                            continue
+                        field_name = aggregate + '_' + field
+                        fields[field_name] = serializers.ReadOnlyField()
+                # Un serializer avec les données groupées est créé à la volée
+                return type(default_serializer.__name__, (serializers.Serializer, ), fields)
+            elif 'fields' in params:
+                fields = {
                     field: serializers.ReadOnlyField(source=field.replace('__', '.') if '__' in field else None)
-                    for field in params.get('fields').split(',')})
+                    for field in params.get('fields').split(',')}
+                # Un serializer avec restriction des champs est créé à la volée
+                return type(default_serializer.__name__, (serializers.Serializer, ), fields)
             elif 'simple' in params:
                 return default_serializer
         return super().get_serializer_class()
@@ -102,6 +116,7 @@ class CommonModelViewSet(viewsets.ModelViewSet):
             excludes = {}
             for key, value in self.request.query_params.items():
                 if key not in reserved_query_params:
+                    key = key.replace('$', '')  # Dans le cas où un champ du modèle serait un mot-clé réservé
                     if key.startswith('-'):
                         excludes[key[1:]] = url_value(key[1:], value)
                     else:
@@ -123,9 +138,9 @@ class CommonModelViewSet(viewsets.ModelViewSet):
         try:
             order_by = self.request.query_params.get('order_by', None)
             if order_by:
-                temp_queryset = queryset.order_by(*order_by.split(','))
-                str(temp_queryset.query)  # Force SQL evaluation to retrieve exception
-                queryset = temp_queryset
+                _queryset = queryset.order_by(*order_by.split(','))
+                str(_queryset.query)  # Force SQL evaluation to retrieve exception
+                queryset = _queryset
                 options['order_by'] = True
         except Exception as error:
             if not silent:
@@ -133,6 +148,30 @@ class CommonModelViewSet(viewsets.ModelViewSet):
             options['order_by'] = False
             if settings.DEBUG:
                 options['order_by_error'] = str(error)
+
+        # Aggregations
+        try:
+            group_by = self.request.query_params.get('group_by', None)
+            if group_by:
+                _queryset = queryset.values(*group_by.split(','))
+                annotates = {}
+                for aggegate, function in AGGREGATES.items():
+                    for field in self.request.query_params.get(aggegate, '').split(','):
+                        if not field:
+                            continue
+                        annotates[aggegate + '_' + field] = function(field)
+                if annotates:
+                    _queryset = _queryset.annotate(**annotates)
+                else:
+                    _queryset = _queryset.distinct()
+                queryset = _queryset
+                options['aggregate'] = True
+        except Exception as error:
+            if not silent:
+                raise ValidationError(str(error))
+            options['aggregate'] = False
+            if settings.DEBUG:
+                options['aggregate_error'] = str(error)
 
         # Distinct
         try:

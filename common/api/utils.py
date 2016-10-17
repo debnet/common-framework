@@ -1,6 +1,6 @@
 # coding: utf-8
 from functools import wraps
-from django.db.models import QuerySet
+from django.db.models import QuerySet, Count, Sum, Avg, Min, Max
 from rest_framework import serializers, viewsets
 from rest_framework.decorators import api_view
 from rest_framework.exceptions import ValidationError
@@ -10,7 +10,17 @@ from common.settings import settings
 from common.utils import get_prefetchs, get_related, parsedate, prefetch_metadatas, str_to_bool
 
 
-RESERVED_QUERY_PARAMS = ['format', 'fields', 'order_by', 'all', 'distinct', 'silent', 'simple', 'meta', ]
+# Mots clés réservés dans les URLs des APIs
+AGGREGATES = {
+    'count': Count,
+    'sum': Sum,
+    'avg': Avg,
+    'min': Min,
+    'max': Max,
+}
+RESERVED_QUERY_PARAMS = [
+    'format', 'fields', 'order_by', 'group_by', 'all',
+    'distinct', 'silent', 'simple', 'meta'] + list(AGGREGATES.keys())
 
 
 def url_value(filter, value):

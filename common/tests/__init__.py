@@ -77,8 +77,8 @@ def raise_exception(error_type, code):
 
 def create_api_test_class(
         model, serializer=None, data=None,
-        test_list=True, test_get=True, test_post=True, test_put=True,
-        test_delete=True, test_options=True, test_order_by=True, test_filter=True,
+        test_list=True, test_get=True, test_post=True, test_put=True, test_delete=True,
+        test_options=True, test_order_by=True, test_filter=True,
         test_metadatas=True, test_simple=True, test_silent=True):
     """
     Permet d'obtenir la classe de test du modèle avec les méthodes de tests standard de l'api
@@ -91,8 +91,8 @@ def create_api_test_class(
     :param test_put: Test du PUT
     :param test_delete: Test du DELETE
     :param test_options: Test du OPTIONS
-    :param test_order_by: Test du tri
-    :param test_filter: Test des filter
+    :param test_order_by: Test des tris
+    :param test_filter: Test des filtres
     :param test_metadatas: Test des metadatas
     :param test_simple: Test des réquêtes simplifiées
     :param test_silent: Test de la remontée d'erreur silencieuse

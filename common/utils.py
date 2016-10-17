@@ -773,7 +773,7 @@ def decimal(value=None, precision=None, rounding=ROUND_HALF_EVEN, context=None):
     if isinstance(value, str):
         _value = Decimal(value, context=context)
     elif isinstance(value, (int, float)):
-        _value = Decimal(str(value), context=context)
+        _value = Decimal(repr(value), context=context)
     if precision is None:
         return _value
 
