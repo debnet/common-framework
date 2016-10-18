@@ -50,11 +50,13 @@ class CommonModelSerializer(serializers.ModelSerializer):
         :param validated_data: Données validées
         :return: Instance mise à jour
         """
+        for attr, value in validated_data.items():
+            setattr(instance, attr, value)
         try:
             instance.full_clean()
+            instance.save()
         except ModelValidationError as error:
             raise ApiValidationError(error.messages)
-        super().update(instance, validated_data)
         return instance
 
     def to_internal_value(self, data):
