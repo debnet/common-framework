@@ -62,7 +62,7 @@ def user_infos(request, user_id=None):
             'groups__permissions'
         ),
         pk=user_id)
-    return Response(UserInfosSerializer(user).data)
+    return Response(UserInfosSerializer(user, context=dict(request=request)).data)
 
 
 @api_view_with_serializer(['POST'], ResetPasswordSerializer)

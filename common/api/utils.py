@@ -4,6 +4,7 @@ from django.db.models import QuerySet, Count, Sum, Avg, Min, Max
 from rest_framework import serializers, viewsets
 from rest_framework.decorators import api_view
 from rest_framework.exceptions import ValidationError
+from rest_framework.relations import PrimaryKeyRelatedField
 from rest_framework.response import Response
 
 from common.settings import settings
@@ -92,7 +93,7 @@ def to_model_viewset(model, serializer, permissions=None, queryset=None, bases=N
         viewset.queryset = queryset or model.objects.all()
         viewset.model = model
         viewset.serializer_class = serializer
-        viewset.default_serializer = create_model_serializer(model, bases=bases, **metadatas)
+        viewset.default_serializer = create_model_serializer(model, bases=bases, hyperlinked=False, **metadatas)
         viewset.permission_classes = permissions or [CommonModelPermissions]
         return viewset
     return wrapper
@@ -328,7 +329,7 @@ def api_view_with_serializer(http_method_names=None, input_serializer=None, seri
             if not serializer:
                 return Response(result)
             many = isinstance(result, (list, QuerySet))
-            return Response(serializer(result, many=many).data)
+            return Response(serializer(result, many=many, context=dict(request=request)).data)
 
         view = api_view(http_method_names)(inner_func)
         if input_serializer:
@@ -365,7 +366,7 @@ def api_view_with_serializer(http_method_names=None, input_serializer=None, seri
     return decorator
 
 
-def create_model_serializer(model, bases=None, attributes=None, **metas):
+def create_model_serializer(model, bases=None, attributes=None, hyperlinked=True, **metas):
     """
     Permet de créer le ModelSerializer pour le modèle fourni en paramètre
     :param model: modèle à sérialiser
@@ -377,6 +378,8 @@ def create_model_serializer(model, bases=None, attributes=None, **metas):
     from common.api.serializers import CommonModelSerializer
     serializer = type('{}AutoSerializer'.format(model._meta.object_name),
                       (bases or (CommonModelSerializer, )), (attributes or {}))
+    if not hyperlinked:
+        serializer.serializer_related_field = PrimaryKeyRelatedField
     return to_model_serializer(model, **metas)(serializer)
 
 

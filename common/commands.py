@@ -15,7 +15,7 @@ class ImportExcelCommand(BaseCommand):
     workbook = None
     models = {}
 
-    def importer(self, sheet, model=None, fields=None, keys=None, actions=None, ordre=None):
+    def importer(self, sheet, model=None, fields=None, keys=None, actions=None, ordre=None, force=False):
         """
         Permet d'importer les données d'une feuille Excel
         :param sheet: Libellé de la feuille dans le classeur
@@ -24,6 +24,7 @@ class ImportExcelCommand(BaseCommand):
         :param keys: Clé de l'instance du modèle
         :param actions: Action spécifiques à exécuter pour un ou plusieurs champs donnés
         :param ordre: Nom de la propriété d'ordre dans le modèle
+        :param force: Force l'import de données identiques
         :return: Dictionnaire des instances créées organisées par clé
         """
         if not model or not fields or not keys:
@@ -79,8 +80,8 @@ class ImportExcelCommand(BaseCommand):
                 break
             # Récupère l'entité depuis la base si elle existe
             filters = {key: data.get(key, None) for key in keys}
-            # if model.objects.filter(**filter).exists():
-            #     raise Exception("Un objet {} avec les clés {} existe déjà".format(model_name, filter))
+            if not force and model.objects.filter(**filters).exists():
+                raise Exception("Un objet {} avec les clés {} existe déjà".format(model_name, filter))
             obj = model.objects.filter(**filters).first() or obj
             # Ajoute l'ordre dans le modèle
             if ordre and ordre not in data and hasattr(obj, ordre):
@@ -98,7 +99,7 @@ class ImportExcelCommand(BaseCommand):
             for field, values in m2ms.items():
                 obj._ignore_log = True
                 m2m = getattr(obj, field)
-                # m2m.clear()
+                m2m.clear()
                 m2m.add(*values)
             # Conserve l'instance selon son code
             code = '|'.join(str(value.pk if hasattr(value, 'pk') else value)

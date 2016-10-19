@@ -2,16 +2,16 @@
 from operator import itemgetter
 
 from common.models import MetaData
-from common.utils import str_to_bool
 from django.contrib.auth import get_user_model
 from django.contrib.auth.models import Group, Permission
 from django.core.exceptions import ValidationError as ModelValidationError
 from rest_framework import serializers
 from rest_framework.exceptions import ValidationError as ApiValidationError
 from rest_framework.fields import empty
+from rest_framework.relations import PrimaryKeyRelatedField
 from rest_framework.settings import api_settings
 
-from common.api.fields import CustomHyperlinkedIdentityField
+from common.api.fields import CustomHyperlinkedIdentityField, CustomHyperlinkedRelatedField
 from common.api.utils import create_model_serializer, to_model_serializer
 
 
@@ -20,11 +20,13 @@ class CommonModelSerializer(serializers.ModelSerializer):
     Définition commune de ModelSerializer pour l'API REST
     """
     serializer_url_field = CustomHyperlinkedIdentityField
+    serializer_related_field = CustomHyperlinkedRelatedField
     metadatas = serializers.SerializerMethodField(read_only=True)
 
     def get_metadatas(self, instance):
         request = self.context.get('request', None)
-        if request and str_to_bool(request.query_params.get('meta', False)) and hasattr(instance, 'metadatas'):
+        meta = request and getattr(request, 'query_params', None) and request.query_params.get('meta', False)
+        if meta and hasattr(instance, 'metadatas'):
             return create_model_serializer(MetaData, fields=('key', 'value'))(instance.metadatas, many=True).data
         return None
 
@@ -75,7 +77,6 @@ class BaseCustomSerializer(serializers.Serializer):
     """
     Serializer de base
     """
-
     def _append_non_field_error(self, error):
         errors = self.errors.get(api_settings.NON_FIELD_ERRORS_KEY, [])
         errors.append(error)
@@ -92,6 +93,7 @@ class GenericFormSerializer(CommonModelSerializer):
     """
     Serializer générique gérant le create des related_objects imbriqués pour la génération de formulaire de modèle
     """
+    serializer_related_field = PrimaryKeyRelatedField
 
     def __init__(self, instance=None, data=empty, label_singulier=None, formats=None, **kwargs):
         """

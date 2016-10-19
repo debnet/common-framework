@@ -8,7 +8,7 @@ from django.utils.text import slugify
 from django.utils.timezone import now
 from rest_framework import status
 from rest_framework.reverse import reverse
-from rest_framework.test import APITestCase
+from rest_framework.test import APITestCase, APIRequestFactory
 
 from model_mommy.recipe import Recipe
 from common.api.utils import create_model_serializer
@@ -115,7 +115,7 @@ def create_api_test_class(
             cls.user_admin = User.objects.create_superuser('admin', 'admin@sa-cim.fr', 'admin')
         cls.url_list_api = '{}-api:{}-list'.format(app_label, model_name)
         cls.url_detail_api = '{}-api:{}-detail'.format(app_label, model_name)
-        cls.serializer = serializer or create_model_serializer(model)
+        cls.serializer = serializer or create_model_serializer(model, hyperlinked=False)
     test_class.setUpClass = classmethod(_setUpClass)
 
     def _tearDownClass(cls):
@@ -193,7 +193,8 @@ def create_api_test_class(
 
             kwargs = dict(force_default=True) if issubclass(model, Entity) else {}
             item.delete(**kwargs)
-            data_to_post = self.serializer(item).data
+            request = APIRequestFactory().request()
+            data_to_post = self.serializer(item, context=dict(request=request)).data
             if perissable:
                 data_to_post['start_date'] = None
             url = reverse(self.url_list_api)
@@ -217,7 +218,8 @@ def create_api_test_class(
                 mommy_make_args['start_date'] = now()
             item = self.recipes[0].make(**mommy_make_args)
             url = reverse(self.url_detail_api, args=[item.id])
-            data_to_put = self.serializer(item).data
+            request = APIRequestFactory().request()
+            data_to_put = self.serializer(item, context=dict(request=request)).data
             response = self.client.put(url, data_to_put)
             self.assertIn(response.status_code, [status.HTTP_401_UNAUTHORIZED, status.HTTP_403_FORBIDDEN])
             self.client.force_authenticate(self.user_admin)

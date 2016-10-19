@@ -1,6 +1,6 @@
 # coding: utf-8
 from rest_framework.fields import ChoiceField, Field
-from rest_framework.relations import HyperlinkedIdentityField
+from rest_framework.relations import HyperlinkedRelatedField, HyperlinkedIdentityField
 
 from common.utils import json_encode, recursive_get_urls
 
@@ -46,13 +46,15 @@ class QuerySetChoiceField(ChoiceField):
             return []
 
 
-class CustomHyperlinkedIdentityField(HyperlinkedIdentityField):
+class CustomHyperlinkedField:
     """
-    Surcharge du champ identifiant des hyperliens pour éviter l'évaluation du __str__ des modèles
+    Surcharge des méthodes pour les champs identifiants par URL
     """
     urls_for_model = {}
+    pk_field = None
 
     def get_name(self, obj):
+        # Retourne juste la clé primaire pour éviter de multiplier les requêtes
         return str(obj.pk)
 
     def get_url(self, obj, view_name, request, format):
@@ -60,8 +62,8 @@ class CustomHyperlinkedIdentityField(HyperlinkedIdentityField):
             return None
 
         # Tente de récupérer l'URL dans les APIs qui correspond exactement au modèle ciblé
-        model = type(obj)
-        urls = self.urls_for_model[model] = self.urls_for_model.get(model) or recursive_get_urls(model=model)
+        model = getattr(getattr(self, 'queryset', None), 'model', None) or type(obj)
+        urls = self.urls_for_model[model] = self.urls_for_model.get(model) or list(recursive_get_urls(model=model))
         for urlname, url in urls:
             if urlname.endswith(view_name):
                 view_name = urlname
@@ -69,3 +71,15 @@ class CustomHyperlinkedIdentityField(HyperlinkedIdentityField):
         lookup_value = getattr(obj, self.lookup_field)
         kwargs = {self.lookup_url_kwarg: lookup_value}
         return self.reverse(view_name, kwargs=kwargs, request=request, format=format)
+
+
+class CustomHyperlinkedIdentityField(CustomHyperlinkedField, HyperlinkedIdentityField):
+    """
+    Surcharge du champ identifiant par URL pour les clés primaires
+    """
+
+
+class CustomHyperlinkedRelatedField(CustomHyperlinkedField, HyperlinkedRelatedField):
+    """
+    Surcharge du champ identifiant par URL pour les clés étrangères
+    """
