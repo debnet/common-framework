@@ -45,23 +45,18 @@ def url_value(filter, value):
 def parse_filters(filters):
     """
     Parse une chaîne de caractères contenant des conditions au format suivant :
-    [and|or|not](champ__lookup:valeur[,champ__lookup:valeur])
+        [and|or|not](champ__lookup:valeur[,champ__lookup:valeur])
     Il est possible de chainer les opérateurs dans un même filtres, exemple :
-    or(and(champ_1:valeur_1,champ_2:valeur_2),and(not(champ_3:valeur_3),champ_4:valeur_4))
+        or(and(champ_1:valeur_1,champ_2:valeur_2),and(not(champ_3:valeur_3),champ_4:valeur_4))
     :param filters: Filtres sous forme de chaîne de caract_re
     :return: Chaîne de conditions Django
     """
     if isinstance(filters, str):
+        import ast
         import re
         filters = re.sub(r'(\w+):([\w\s-]*)', r'{"\1":"\2"}', filters)
-        print(filters)
         filters = re.sub(r'(and|or|not)\(', r'("\1",', filters)
-        print(filters)
-        try:
-            import ast
-            filters = ast.literal_eval(filters)
-        except (SyntaxError, ValueError):
-            pass
+        filters = ast.literal_eval(filters)
     if isinstance(filters, dict):
         filters = filters,
     operator = None
@@ -332,8 +327,8 @@ def perishable_view(func):
     Décorateur permettant d'enrichir la request utilisée par la fonction des attributs 'date_de_reference' (date) et
     'valide' (bool) ainsi que du valid_filter à appliquer sur le select_valid récupérés dans les query_params
     (None si non présents)
-    :param func: fonction à décorer
-    :return: fonction avec la request enrichie
+    :param func: Fonction à décorer
+    :return: Fonction avec la request enrichie
     """
     @wraps(func)
     def wrapper(item, *args, **kwargs):
@@ -413,10 +408,11 @@ def api_view_with_serializer(http_method_names=None, input_serializer=None, seri
 def create_model_serializer(model, bases=None, attributes=None, hyperlinked=True, **metas):
     """
     Permet de créer le ModelSerializer pour le modèle fourni en paramètre
-    :param model: modèle à sérialiser
+    :param model: Modèle à sérialiser
     :param bases: Classes dont devra hériter le serializer
     :param attributes: Attributs spécifiques du serializer
-    :param metas: métadonnées du serializer
+    :param hyperlinked: Active ou non la gestion des URLs pour la clé primaire
+    :param metas: Métadonnées du serializer
     :return: serializer
     """
     from common.api.serializers import CommonModelSerializer
@@ -430,8 +426,8 @@ def create_model_serializer(model, bases=None, attributes=None, hyperlinked=True
 def serializer_factory(excludes):
     """
     Factory fournissant les 2 méthodes de récuperation de classe et d'instance du serializer
-    :param excludes: liste de champs à exclure du ModelSerializer
-    :return: méthode de récupération de la classe du serializer, méthode de récupération de l'instance du serializer
+    :param excludes: Liste de champs à exclure du ModelSerializer
+    :return: Méthode de récupération de la classe du serializer, méthode de récupération de l'instance du serializer
     """
     def get_serializer_class(model):
         return create_model_serializer(model, excludes=excludes.get(model, ()))
@@ -487,7 +483,6 @@ def paginate(request, queryset, serializer, pagination=None,
             queryset = queryset.filter(parse_filters(others))
         if filters or excludes or others:
             options['filters'] = True
-
         # Fonction spécifique
         if func:
             func_args = func_args or []
@@ -495,7 +490,7 @@ def paginate(request, queryset, serializer, pagination=None,
             queryset = func(queryset, *func_args, **func_kwargs)
     except Exception as error:
         if not silent:
-            raise ValidationError(str(error))
+            raise ValidationError("filters: {}".format(error))
         options['filters'] = False
         if settings.DEBUG:
             options['filters_error'] = str(error)
@@ -510,7 +505,7 @@ def paginate(request, queryset, serializer, pagination=None,
             options['order_by'] = True
     except Exception as error:
         if not silent:
-            raise ValidationError(str(error))
+            raise ValidationError("order_by: {}".format(error))
         options['order_by'] = False
         if settings.DEBUG:
             options['order_by_error'] = str(error)
@@ -526,7 +521,7 @@ def paginate(request, queryset, serializer, pagination=None,
             options['distinct'] = True
     except Exception as error:
         if not silent:
-            raise ValidationError(str(error))
+            raise ValidationError("distinct: {}".format(error))
         options['distinct'] = False
         if settings.DEBUG:
             options['distinct_error'] = str(error)

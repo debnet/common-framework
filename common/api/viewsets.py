@@ -93,7 +93,7 @@ class CommonModelViewSet(viewsets.ModelViewSet):
                 queryset = queryset.select_related(*relateds)
             except Exception as error:
                 if not silent:
-                    raise ValidationError(str(error))
+                    raise ValidationError("fields: {}".format(error))
         else:
             # Récupération des métadonnées
             metadatas = str_to_bool(self.request.query_params.get('meta', False))
@@ -132,7 +132,7 @@ class CommonModelViewSet(viewsets.ModelViewSet):
                 options['filters'] = True
         except Exception as error:
             if not silent:
-                raise ValidationError(str(error))
+                raise ValidationError("filters: {}".format(error))
             options['filters'] = False
             if settings.DEBUG:
                 options['filters_error'] = str(error)
@@ -147,7 +147,7 @@ class CommonModelViewSet(viewsets.ModelViewSet):
                 options['order_by'] = True
         except Exception as error:
             if not silent:
-                raise ValidationError(str(error))
+                raise ValidationError("order_by: {}".format(error))
             options['order_by'] = False
             if settings.DEBUG:
                 options['order_by_error'] = str(error)
@@ -171,7 +171,7 @@ class CommonModelViewSet(viewsets.ModelViewSet):
                 options['aggregates'] = True
         except Exception as error:
             if not silent:
-                raise ValidationError(str(error))
+                raise ValidationError("aggregates: {}".format(error))
             options['aggregates'] = False
             if settings.DEBUG:
                 options['aggregates_error'] = str(error)
@@ -187,7 +187,7 @@ class CommonModelViewSet(viewsets.ModelViewSet):
                 options['distinct'] = True
         except Exception as error:
             if not silent:
-                raise ValidationError(str(error))
+                raise ValidationError("distinct: {}".format(error))
             options['distinct'] = False
             if settings.DEBUG:
                 options['distinct_error'] = str(error)
