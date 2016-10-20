@@ -71,7 +71,7 @@ class CommonModelViewSet(viewsets.ModelViewSet):
         return super().paginate_queryset(queryset)
 
     def get_queryset(self):
-        options = dict(filters=None, order_by=None, distinct=None)
+        options = dict(filters=None, order_by=None, distinct=None, aggregates=None)
         reserved_query_params = RESERVED_QUERY_PARAMS + getattr(
             self.paginator, '_query_params',
             [self.paginator.page_query_param, self.paginator.page_size_query_param] if self.paginator else [])
@@ -168,13 +168,13 @@ class CommonModelViewSet(viewsets.ModelViewSet):
                 else:
                     _queryset = _queryset.distinct()
                 queryset = _queryset
-                options['aggregate'] = True
+                options['aggregates'] = True
         except Exception as error:
             if not silent:
                 raise ValidationError(str(error))
-            options['aggregate'] = False
+            options['aggregates'] = False
             if settings.DEBUG:
-                options['aggregate_error'] = str(error)
+                options['aggregates_error'] = str(error)
 
         # Distinct
         try:
