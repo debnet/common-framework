@@ -1,5 +1,6 @@
 # coding: utf-8
 from functools import wraps
+
 from django.db.models import QuerySet, Count, Sum, Avg, Min, Max
 from rest_framework import serializers, viewsets
 from rest_framework.decorators import api_view
@@ -138,8 +139,8 @@ def create_model_serializer_and_viewset(
     # Ajout du serializer des hyperlinks à la liste si ils sont activés
     _bases = _serializer_base  # Le serializer par défaut des viewsets ne doit pas hériter du serializer des hyperlinks
     if settings.REST_FRAMEWORK.get('HYPERLINKED', False):
-        from rest_framework.serializers import HyperlinkedModelSerializer
-        _serializer_base += (HyperlinkedModelSerializer, )
+        from common.api.serializers import CustomHyperlinkedModelSerializer
+        _serializer_base += (CustomHyperlinkedModelSerializer, )
 
     # Si aucune surcharge des serializer et/ou du viewset, utilisation des modèles par défaut
     _serializer_base = _serializer_base or (serializers.ModelSerializer, )

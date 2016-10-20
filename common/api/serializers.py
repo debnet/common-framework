@@ -1,7 +1,7 @@
 # coding: utf-8
 from operator import itemgetter
 
-from common.models import MetaData
+from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.contrib.auth.models import Group, Permission
 from django.core.exceptions import ValidationError as ModelValidationError
@@ -9,18 +9,22 @@ from rest_framework import serializers
 from rest_framework.exceptions import ValidationError as ApiValidationError
 from rest_framework.fields import empty
 from rest_framework.relations import PrimaryKeyRelatedField
+from rest_framework.serializers import HyperlinkedModelSerializer
 from rest_framework.settings import api_settings
 
 from common.api.fields import CustomHyperlinkedIdentityField, CustomHyperlinkedRelatedField
 from common.api.utils import create_model_serializer, to_model_serializer
+from common.models import MetaData
 
 
 class CommonModelSerializer(serializers.ModelSerializer):
     """
     Définition commune de ModelSerializer pour l'API REST
     """
-    serializer_url_field = CustomHyperlinkedIdentityField
-    serializer_related_field = CustomHyperlinkedRelatedField
+    if settings.REST_FRAMEWORK.get('HYPERLINKED', False):
+        serializer_url_field = CustomHyperlinkedIdentityField
+        serializer_related_field = CustomHyperlinkedRelatedField
+
     metadatas = serializers.SerializerMethodField(read_only=True)
 
     def get_metadatas(self, instance):
@@ -87,6 +91,14 @@ class BaseCustomSerializer(serializers.Serializer):
 
     def update(self, instance, validated_data):
         pass
+
+
+class CustomHyperlinkedModelSerializer(HyperlinkedModelSerializer):
+    """
+    Surcharge du serializer de modèle avec URLs
+    """
+    serializer_url_field = CustomHyperlinkedIdentityField
+    serializer_related_field = CustomHyperlinkedRelatedField
 
 
 class GenericFormSerializer(CommonModelSerializer):
