@@ -1,16 +1,19 @@
 # coding: utf-8
 from functools import wraps
 
-from django.db.models import QuerySet, Count, Sum, Avg, Min, Max
+from django.conf import settings
+from django.db.models import Q, QuerySet, Count, Sum, Avg, Min, Max
 from rest_framework import serializers, viewsets
 from rest_framework.decorators import api_view
 from rest_framework.exceptions import ValidationError
 from rest_framework.relations import PrimaryKeyRelatedField
 from rest_framework.response import Response
 
-from common.settings import settings
 from common.utils import get_prefetchs, get_related, parsedate, prefetch_metadatas, str_to_bool
 
+
+# URLs dans les serializers
+HYPERLINKED = settings.REST_FRAMEWORK.get('HYPERLINKED', False)
 
 # Mots clés réservés dans les URLs des APIs
 AGGREGATES = {
@@ -21,7 +24,7 @@ AGGREGATES = {
     'max': Max,
 }
 RESERVED_QUERY_PARAMS = [
-    'format', 'fields', 'order_by', 'group_by', 'all',
+    'format', 'filters', 'fields', 'order_by', 'group_by', 'all',
     'distinct', 'silent', 'simple', 'meta'] + list(AGGREGATES.keys())
 
 
@@ -37,6 +40,48 @@ def url_value(filter, value):
     if filter and filter.endswith('__isnull'):
         return str_to_bool(value)
     return value
+
+
+def parse_filters(filters):
+    """
+    Parse une chaîne de caractères contenant des conditions au format suivant :
+    [and|or|not](champ__lookup:valeur[,champ__lookup:valeur])
+    Il est possible de chainer les opérateurs dans un même filtres, exemple :
+    or(and(champ_1:valeur_1,champ_2:valeur_2),and(not(champ_3:valeur_3),champ_4:valeur_4))
+    :param filters: Filtres sous forme de chaîne de caract_re
+    :return: Chaîne de conditions Django
+    """
+    if isinstance(filters, str):
+        import re
+        filters = re.sub(r'(\w+):([\w\s-]*)', r'{"\1":"\2"}', filters)
+        print(filters)
+        filters = re.sub(r'(and|or|not)\(', r'("\1",', filters)
+        print(filters)
+        try:
+            import ast
+            filters = ast.literal_eval(filters)
+        except (SyntaxError, ValueError):
+            pass
+    if isinstance(filters, dict):
+        filters = filters,
+    operator = None
+    elements = []
+    for filter in filters:
+        if isinstance(filter, tuple):
+            elements.append(parse_filters(filter))
+        elif isinstance(filter, dict):
+            elements.append(Q(**filter))
+        else:
+            operator = filter.lower()
+    if operator == 'or':
+        q = elements.pop(0)
+        for element in elements:
+            q |= element
+    else:
+        q = ~elements.pop(0) if operator == 'not' else elements.pop(0)
+        for element in elements:
+            q &= element
+    return q
 
 
 def to_model_serializer(model, **metadatas):
@@ -55,6 +100,12 @@ def to_model_serializer(model, **metadatas):
                 continue
             if 'exclude' in metadatas and field.name in metadatas.get('exclude'):
                 continue
+
+            # Injection des identifiants de clés étrangères
+            if HYPERLINKED and field.related_model:
+                serializer._declared_fields[field.name + '_id'] = serializers.ReadOnlyField()
+                if 'fields' in metadatas and 'exclude' not in metadatas:
+                    metadatas['fields'] = list(metadatas.get('fields', [])) + [field.name + '_id']
 
             # Injection des valeurs humaines pour les champs ayant une liste de choix
             if field.choices:
@@ -138,9 +189,6 @@ def create_model_serializer_and_viewset(
 
     # Ajout du serializer des hyperlinks à la liste si ils sont activés
     _bases = _serializer_base  # Le serializer par défaut des viewsets ne doit pas hériter du serializer des hyperlinks
-    if settings.REST_FRAMEWORK.get('HYPERLINKED', False):
-        from common.api.serializers import CustomHyperlinkedModelSerializer
-        _serializer_base += (CustomHyperlinkedModelSerializer, )
 
     # Si aucune surcharge des serializer et/ou du viewset, utilisation des modèles par défaut
     _serializer_base = _serializer_base or (serializers.ModelSerializer, )
@@ -171,10 +219,6 @@ def create_model_serializer_and_viewset(
     if queryset is not None:
         viewset.queryset = queryset
 
-    # Ajoute l'identifiant s'il n'est pas présent par défaut dans le serializer
-    if 'id' not in serializer._declared_fields:
-        serializer._declared_fields['id'] = serializers.ReadOnlyField()
-
     # Gestion des clés étrangères
     relateds = []
     prefetchs = []
@@ -200,7 +244,6 @@ def create_model_serializer_and_viewset(
                 # Les clés étrangères des relations inversées qui pointent sur le modèle d'origine peuvent être nulles
                 if field.remote_field and not field.primary_key and field.remote_field.model == _origin:
                     serializer.Meta.extra_kwargs[field.name] = dict(required=False, allow_null=True)
-            serializer._declared_fields[field.name + '_id'] = serializers.ReadOnlyField()
             # Prefetch des métadonnées
             prefetchs_metadatas += prefetch_metadatas(field.related_model, field.name)
 
@@ -438,7 +481,11 @@ def paginate(request, queryset, serializer, pagination=None,
             queryset = queryset.filter(**filters)
         if excludes:
             queryset = queryset.exclude(**excludes)
-        if filters or excludes:
+        # Filtres génériques
+        others = request.query_params.get('filters', None)
+        if others:
+            queryset = queryset.filter(parse_filters(others))
+        if filters or excludes or others:
             options['filters'] = True
 
         # Fonction spécifique

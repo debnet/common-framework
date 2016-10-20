@@ -17,13 +17,17 @@ from common.api.utils import create_model_serializer, to_model_serializer
 from common.models import MetaData
 
 
-class CommonModelSerializer(serializers.ModelSerializer):
+# URLs dans les serializers
+HYPERLINKED = settings.REST_FRAMEWORK.get('HYPERLINKED', False)
+
+
+class CommonModelSerializer(serializers.HyperlinkedModelSerializer if HYPERLINKED else serializers.ModelSerializer):
     """
     Définition commune de ModelSerializer pour l'API REST
     """
-    if settings.REST_FRAMEWORK.get('HYPERLINKED', False):
-        serializer_url_field = CustomHyperlinkedIdentityField
-        serializer_related_field = CustomHyperlinkedRelatedField
+    id = serializers.PrimaryKeyRelatedField(read_only=True)
+    serializer_url_field = CustomHyperlinkedIdentityField
+    serializer_related_field = CustomHyperlinkedRelatedField if HYPERLINKED else PrimaryKeyRelatedField
 
     metadatas = serializers.SerializerMethodField(read_only=True)
 

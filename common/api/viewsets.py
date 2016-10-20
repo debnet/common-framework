@@ -3,7 +3,7 @@ from rest_framework import serializers
 from rest_framework import viewsets
 from rest_framework.exceptions import ValidationError
 
-from common.api.utils import AGGREGATES, RESERVED_QUERY_PARAMS, url_value
+from common.api.utils import AGGREGATES, RESERVED_QUERY_PARAMS, url_value, parse_filters
 from common.models import Entity
 from common.settings import settings
 from common.utils import str_to_bool
@@ -35,8 +35,7 @@ class CommonModelViewSet(viewsets.ModelViewSet):
                     for field in params.get(aggregate, '').split(','):
                         if not field:
                             continue
-                        field_name = aggregate + '_' + field
-                        fields[field_name] = serializers.ReadOnlyField()
+                        fields[field + '__' + aggregate] = serializers.ReadOnlyField()
                 # Un serializer avec les données groupées est créé à la volée
                 return type(default_serializer.__name__, (serializers.Serializer, ), fields)
             elif 'fields' in params:
@@ -125,7 +124,11 @@ class CommonModelViewSet(viewsets.ModelViewSet):
                 queryset = queryset.filter(**filters)
             if excludes:
                 queryset = queryset.exclude(**excludes)
-            if filters or excludes:
+            # Filtres génériques
+            others = self.request.query_params.get('filters', None)
+            if others:
+                queryset = queryset.filter(parse_filters(others))
+            if filters or excludes or others:
                 options['filters'] = True
         except Exception as error:
             if not silent:
@@ -159,7 +162,7 @@ class CommonModelViewSet(viewsets.ModelViewSet):
                     for field in self.request.query_params.get(aggegate, '').split(','):
                         if not field:
                             continue
-                        annotates[aggegate + '_' + field] = function(field)
+                        annotates[field + '__' + aggegate] = function(field)
                 if annotates:
                     _queryset = _queryset.annotate(**annotates)
                 else:
