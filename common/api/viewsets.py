@@ -14,9 +14,6 @@ class CommonModelViewSet(viewsets.ModelViewSet):
     Définition commune de ModelViewSet pour l'API REST
     """
 
-    def list(self, request, format=None, *args, **kwargs):
-        return super().list(request, *args, format=format, **kwargs)
-
     def get_serializer_class(self):
         # Le serializer par défaut est utilisé en cas de modification/suppression
         default_serializer = getattr(self, 'default_serializer', None)

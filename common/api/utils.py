@@ -116,7 +116,10 @@ def to_model_serializer(model, **metadatas):
                 serializer._declared_fields[field.name] = ApiJsonField(
                     label=field.verbose_name, help_text=field.help_text,
                     required=not field.blank, allow_null=field.null, read_only=not field.editable)
+
         # Mise à jour des métadonnées du serializer
+        if 'fields' not in metadatas and 'exclude' not in metadatas:
+            metadatas.update(fields='__all__')
         metadatas.update(model=model)
         serializer.Meta = type('Meta', (), metadatas)
         return serializer
@@ -279,9 +282,15 @@ def create_model_serializer_and_viewset(
             if foreign_keys and field.remote_field:
                 prefetchs += ['__'.join([field.name, subfield.name])
                               for subfield in field.remote_field.model._meta.many_to_many]
-    elif 'fields' not in metadatas:
-        serializer.Meta.exclude = getattr(serializer.Meta, 'exclude', []) + [
-            field.name for field in model._meta.many_to_many]
+    else:
+        # Exclusion du champ many-to-many du serializer
+        fields = getattr(serializer.Meta, 'fields', None)
+        if fields == '__all__':
+            fields = None
+            del serializer.Meta.fields
+        if fields is None:
+            serializer.Meta.exclude = getattr(serializer.Meta, 'exclude', []) + [
+                field.name for field in model._meta.many_to_many]
 
     # Gestion des one-to-one et one-to-many
     if depth > _level:
