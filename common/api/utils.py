@@ -65,7 +65,7 @@ def parse_filters(filters):
         if isinstance(filter, tuple):
             elements.append(parse_filters(filter))
         elif isinstance(filter, dict):
-            elements.append(Q(**filter))
+            elements.append(Q(**{key: url_value(key, value) for key, value in filter.items()}))
         else:
             operator = filter.lower()
     if operator == 'or':
@@ -466,17 +466,19 @@ def paginate(request, queryset, serializer, pagination=None,
 
     context = dict(request=request, **(context or {}))
     options = dict(filters=None, order_by=None, distinct=None)
-    reserved_query_params = RESERVED_QUERY_PARAMS + getattr(
-        pagination, '_query_params', [pagination.page_query_param, pagination.page_size_query_param])
+    url_params = request.query_params.dict()
+
+    # Mots-clés réservés dans les URLs
+    reserved_query_params = RESERVED_QUERY_PARAMS + [pagination.page_query_param, pagination.page_size_query_param]
 
     # Erreurs silencieuses
-    silent = request.query_params.get('silent', None)
+    silent = url_params.get('silent', None)
 
     # Filtres
     try:
         filters = {}
         excludes = {}
-        for key, value in request.query_params.items():
+        for key, value in url_params.items():
             if key not in reserved_query_params:
                 if key.startswith('-'):
                     excludes[key[1:]] = url_value(key[1:], value)
@@ -487,7 +489,7 @@ def paginate(request, queryset, serializer, pagination=None,
         if excludes:
             queryset = queryset.exclude(**excludes)
         # Filtres génériques
-        others = request.query_params.get('filters', None)
+        others = url_params.get('filters', None)
         if others:
             queryset = queryset.filter(parse_filters(others))
         if filters or excludes or others:
@@ -506,7 +508,7 @@ def paginate(request, queryset, serializer, pagination=None,
 
     # Tris
     try:
-        order_by = request.query_params.get('order_by', None)
+        order_by = url_params.get('order_by', None)
         if order_by:
             temp_queryset = queryset.order_by(*order_by.split(','))
             str(temp_queryset.query)  # Force SQL evaluation to retrieve exception
@@ -521,7 +523,7 @@ def paginate(request, queryset, serializer, pagination=None,
 
     # Distinct
     try:
-        distinct = request.query_params.get('distinct', None)
+        distinct = url_params.get('distinct', None)
         if distinct:
             distincts = distinct.split(',')
             if str_to_bool(distinct) is not None:
@@ -536,7 +538,7 @@ def paginate(request, queryset, serializer, pagination=None,
             options['distinct_error'] = str(error)
 
     # Uniquement si toutes les données sont demandées
-    all_data = str_to_bool(request.query_params.get('all', False))
+    all_data = str_to_bool(url_params.get('all', False))
     if all_data:
         return Response(serializer(queryset, context=context, many=True).data)
 

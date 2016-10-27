@@ -21,27 +21,27 @@ class CommonModelViewSet(viewsets.ModelViewSet):
             return default_serializer
 
         # Le serializer peut être substitué en fonction des paramètres d'appel de l'API
-        params = self.request.query_params
+        url_params = self.request.query_params.dict()
         if default_serializer:
-            if 'group_by' in params:
+            if 'group_by' in url_params:
                 fields = {
                     field: serializers.ReadOnlyField()
-                    for field in params.get('group_by').split(',')}
+                    for field in url_params.get('group_by').split(',')}
                 # Ajoute les champs d'aggregation au serializer
                 for aggregate in AGGREGATES.keys():
-                    for field in params.get(aggregate, '').split(','):
+                    for field in url_params.get(aggregate, '').split(','):
                         if not field:
                             continue
                         fields[field + '__' + aggregate] = serializers.ReadOnlyField()
                 # Un serializer avec les données groupées est créé à la volée
                 return type(default_serializer.__name__, (serializers.Serializer, ), fields)
-            elif 'fields' in params:
+            elif 'fields' in url_params:
                 fields = {
                     field: serializers.ReadOnlyField(source=field.replace('__', '.') if '__' in field else None)
-                    for field in params.get('fields').split(',')}
+                    for field in url_params.get('fields').split(',')}
                 # Un serializer avec restriction des champs est créé à la volée
                 return type(default_serializer.__name__, (serializers.Serializer, ), fields)
-            elif 'simple' in params:
+            elif 'simple' in url_params:
                 return default_serializer
         return super().get_serializer_class()
 
@@ -62,26 +62,27 @@ class CommonModelViewSet(viewsets.ModelViewSet):
 
     def paginate_queryset(self, queryset):
         # Uniquement si toutes les données sont demandées
-        all_data = self.request.query_params.get('all', None)
-        if all_data:
+        if self.request.query_params.get('all', None):
             return None
         return super().paginate_queryset(queryset)
 
     def get_queryset(self):
         options = dict(filters=None, order_by=None, distinct=None, aggregates=None)
-        reserved_query_params = RESERVED_QUERY_PARAMS + getattr(
-            self.paginator, '_query_params',
-            [self.paginator.page_query_param, self.paginator.page_size_query_param] if self.paginator else [])
+        url_params = self.request.query_params.dict()
+
+        # Mots-clés réservés dans les URLs
+        reserved_query_params = RESERVED_QUERY_PARAMS + [
+            self.paginator.page_query_param, self.paginator.page_size_query_param] if self.paginator else []
 
         # Erreurs silencieuses
-        silent = self.request.query_params.get('silent', None)
+        silent = url_params.get('silent', None)
 
         # Requête simplifiée
         queryset = super().get_queryset()
-        if self.request.query_params.get('simple', None):
+        if url_params.get('simple', None):
             queryset = queryset.model.objects.all()
             try:
-                fields = self.request.query_params.get('fields', None)
+                fields = url_params.get('fields', None)
                 relateds = set()
                 for field in (fields or '').split(','):
                     *related, field_name = field.split('__')
@@ -93,7 +94,7 @@ class CommonModelViewSet(viewsets.ModelViewSet):
                     raise ValidationError("fields: {}".format(error))
         else:
             # Récupération des métadonnées
-            metadatas = str_to_bool(self.request.query_params.get('meta', False))
+            metadatas = str_to_bool(url_params.get('meta', False))
             if metadatas and hasattr(self, 'metadatas'):
                 # Permet d'éviter les conflits entre prefetch lookups identiques
                 viewset_lookups = [
@@ -110,7 +111,7 @@ class CommonModelViewSet(viewsets.ModelViewSet):
         try:
             filters = {}
             excludes = {}
-            for key, value in self.request.query_params.items():
+            for key, value in url_params.items():
                 if key not in reserved_query_params:
                     key = key.replace('$', '')  # Dans le cas où un champ du modèle serait un mot-clé réservé
                     if key.startswith('-'):
@@ -122,7 +123,7 @@ class CommonModelViewSet(viewsets.ModelViewSet):
             if excludes:
                 queryset = queryset.exclude(**excludes)
             # Filtres génériques
-            others = self.request.query_params.get('filters', None)
+            others = url_params.get('filters', None)
             if others:
                 queryset = queryset.filter(parse_filters(others))
             if filters or excludes or others:
@@ -136,7 +137,7 @@ class CommonModelViewSet(viewsets.ModelViewSet):
 
         # Tris
         try:
-            order_by = self.request.query_params.get('order_by', None)
+            order_by = url_params.get('order_by', None)
             if order_by:
                 _queryset = queryset.order_by(*order_by.split(','))
                 str(_queryset.query)  # Force SQL evaluation to retrieve exception
@@ -151,12 +152,12 @@ class CommonModelViewSet(viewsets.ModelViewSet):
 
         # Aggregations
         try:
-            group_by = self.request.query_params.get('group_by', None)
+            group_by = url_params.get('group_by', None)
             if group_by:
                 _queryset = queryset.values(*group_by.split(','))
                 annotates = {}
                 for aggegate, function in AGGREGATES.items():
-                    for field in self.request.query_params.get(aggegate, '').split(','):
+                    for field in url_params.get(aggegate, '').split(','):
                         if not field:
                             continue
                         annotates[field + '__' + aggegate] = function(field)
@@ -175,7 +176,7 @@ class CommonModelViewSet(viewsets.ModelViewSet):
 
         # Distinct
         try:
-            distinct = self.request.query_params.get('distinct', None)
+            distinct = url_params.get('distinct', None)
             if distinct:
                 distincts = distinct.split(',')
                 if str_to_bool(distinct) is not None:
