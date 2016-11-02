@@ -135,21 +135,6 @@ class CommonModelViewSet(viewsets.ModelViewSet):
             if settings.DEBUG:
                 options['filters_error'] = str(error)
 
-        # Tris
-        try:
-            order_by = url_params.get('order_by', None)
-            if order_by:
-                _queryset = queryset.order_by(*order_by.split(','))
-                str(_queryset.query)  # Force SQL evaluation to retrieve exception
-                queryset = _queryset
-                options['order_by'] = True
-        except Exception as error:
-            if not silent:
-                raise ValidationError("order_by: {}".format(error))
-            options['order_by'] = False
-            if settings.DEBUG:
-                options['order_by_error'] = str(error)
-
         # Aggregations
         try:
             group_by = url_params.get('group_by', None)
@@ -173,6 +158,21 @@ class CommonModelViewSet(viewsets.ModelViewSet):
             options['aggregates'] = False
             if settings.DEBUG:
                 options['aggregates_error'] = str(error)
+
+        # Tris
+        try:
+            order_by = url_params.get('order_by', None)
+            if order_by:
+                _queryset = queryset.order_by(*order_by.split(','))
+                str(_queryset.query)  # Force SQL evaluation to retrieve exception
+                queryset = _queryset
+                options['order_by'] = True
+        except Exception as error:
+            if not silent:
+                raise ValidationError("order_by: {}".format(error))
+            options['order_by'] = False
+            if settings.DEBUG:
+                options['order_by_error'] = str(error)
 
         # Distinct
         try:
