@@ -1,4 +1,5 @@
 # coding: utf-8
+from django.db.models.query import EmptyResultSet
 from rest_framework import serializers
 from rest_framework import viewsets
 from rest_framework.exceptions import ValidationError
@@ -42,7 +43,7 @@ class CommonModelViewSet(viewsets.ModelViewSet):
                 # Un serializer avec restriction des champs est créé à la volée
                 return type(default_serializer.__name__, (serializers.Serializer, ), fields)
             elif 'simple' in url_params:
-                return default_serializer
+                return getattr(self, 'simple_serializer', default_serializer)
         return super().get_serializer_class()
 
     def perform_create(self, serializer):
@@ -62,7 +63,7 @@ class CommonModelViewSet(viewsets.ModelViewSet):
 
     def paginate_queryset(self, queryset):
         # Uniquement si toutes les données sont demandées
-        if self.request.query_params.get('all', None):
+        if str_to_bool(self.request.query_params.get('all', None)):
             return None
         return super().paginate_queryset(queryset)
 
@@ -75,11 +76,11 @@ class CommonModelViewSet(viewsets.ModelViewSet):
             self.paginator.page_query_param, self.paginator.page_size_query_param] if self.paginator else []
 
         # Erreurs silencieuses
-        silent = url_params.get('silent', None)
+        silent = str_to_bool(url_params.get('silent', None))
 
         # Requête simplifiée
         queryset = super().get_queryset()
-        if url_params.get('simple', None):
+        if str_to_bool(url_params.get('simple', None)):
             queryset = queryset.model.objects.all()
             try:
                 fields = url_params.get('fields', None)
@@ -88,7 +89,8 @@ class CommonModelViewSet(viewsets.ModelViewSet):
                     *related, field_name = field.split('__')
                     if related:
                         relateds.add('__'.join(related))
-                queryset = queryset.select_related(*relateds)
+                if relateds:
+                    queryset = queryset.select_related(*relateds)
             except Exception as error:
                 if not silent:
                     raise ValidationError("fields: {}".format(error))
@@ -105,7 +107,8 @@ class CommonModelViewSet(viewsets.ModelViewSet):
                     name = lookup if isinstance(lookup, str) else lookup.prefetch_through
                     if name not in viewset_lookups:
                         lookups_metadatas.append(lookup)
-                queryset = queryset.prefetch_related(*lookups_metadatas)
+                if lookups_metadatas:
+                    queryset = queryset.prefetch_related(*lookups_metadatas)
 
         # Filtres
         try:
@@ -167,6 +170,8 @@ class CommonModelViewSet(viewsets.ModelViewSet):
                 str(_queryset.query)  # Force SQL evaluation to retrieve exception
                 queryset = _queryset
                 options['order_by'] = True
+        except EmptyResultSet:
+            pass
         except Exception as error:
             if not silent:
                 raise ValidationError("order_by: {}".format(error))
@@ -183,6 +188,8 @@ class CommonModelViewSet(viewsets.ModelViewSet):
                     distincts = []
                 queryset = queryset.distinct(*distincts)
                 options['distinct'] = True
+        except EmptyResultSet:
+            pass
         except Exception as error:
             if not silent:
                 raise ValidationError("distinct: {}".format(error))

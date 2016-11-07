@@ -3,6 +3,7 @@ from functools import wraps
 
 from django.conf import settings
 from django.db.models import Q, QuerySet, Count, Sum, Avg, Min, Max
+from django.db.models.query import EmptyResultSet
 from rest_framework import serializers, viewsets
 from rest_framework.decorators import api_view
 from rest_framework.exceptions import ValidationError
@@ -143,6 +144,7 @@ def to_model_viewset(model, serializer, permissions=None, queryset=None, bases=N
         viewset.queryset = queryset or model.objects.all()
         viewset.model = model
         viewset.serializer_class = serializer
+        viewset.simple_serializer = create_model_serializer(model, bases=bases, **metadatas)
         viewset.default_serializer = create_model_serializer(model, bases=bases, hyperlinked=False, **metadatas)
         viewset.permission_classes = permissions or [CommonModelPermissions]
         return viewset
@@ -150,9 +152,11 @@ def to_model_viewset(model, serializer, permissions=None, queryset=None, bases=N
 
 
 def create_model_serializer_and_viewset(
-        model, foreign_keys=True, many_to_many=False, one_to_one=True, one_to_many=False, fks_in_related=False,
-        serializer_base=None, viewset_base=None, serializer_data=None, viewset_data=None, permissions=None,
-        queryset=None, metas=None, exclude_related=None, depth=0, height=1, _level=0, _origin=None, **options):
+        model, foreign_keys=True, many_to_many=False, one_to_one=True, one_to_many=False,
+        fks_in_related=False, null_fks=False,
+        serializer_base=None, viewset_base=None, serializer_data=None, viewset_data=None,
+        permissions=None, queryset=None, metas=None, exclude_related=None, depth=0, height=1,
+        _level=0, _origin=None, _field=None, **options):
     """
     Permet de créer les classes de serializer et de viewset associés à un modèle
     :param model: Modèle
@@ -161,6 +165,7 @@ def create_model_serializer_and_viewset(
     :param one_to_one: Récupérer les données des one-to-one (selon profondeur) ?
     :param one_to_many: Récupérer les données des one-to-many (selon profondeur) ?
     :param fks_in_related: Récupérer les données de clés étrangères dans les relations inversées ?
+    :param null_fks: Récupérer les données de clés étrangères pouvant être nulles ?
     :param serializer_base: Classes dont devra hériter le serializer (dictionnaire organisé par modèle)
     :param viewset_base: Classes dont devra hériter le viewset (dictionnaire organisé par modèle)
     :param serializer_data: Données complémentaires à ajouter dans le serializer (dictionnaire organisé par modèle)
@@ -173,7 +178,8 @@ def create_model_serializer_and_viewset(
     :param depth: Profondeur de récupération des modèles dépendants
     :param height: Hauteur maximale de récupération des clés étrangères
     :param _level: Profondeur actuelle (utilisé par la récursivité)
-    :param _origin: Modèle d'origine dans la récursivité pour éviter la redondance
+    :param _origin: Modèle d'origine dans la récursivité pour éviter la redondance (utilisé par la récursivité)
+    :param _field: Nom du champ dans le modèle d'origine (utilisé par la récursivité)
     :param options: Metadonnées du serializer de base
     :return: Tuple (serializer, viewset)
     """
@@ -205,7 +211,8 @@ def create_model_serializer_and_viewset(
     # Vérifie qu'un nom de champ donné est inclu ou exclu
     def field_allowed(field_name):
         return field_name in metadatas.get('fields', []) or (
-            field_name not in metadatas.get('exclude', []) and field_name not in exclude_related.get(model, []))
+            field_name not in metadatas.get('exclude', []) and
+            field_name not in exclude_related.get(model, []))
 
     # Création du serializer et du viewset
     serializer = to_model_serializer(model, **metadatas)(
@@ -224,64 +231,48 @@ def create_model_serializer_and_viewset(
 
     for field in model._meta.fields:
         # Vérification que le champ est bien inclu ou n'est pas exclu
-        if not field_allowed(field.name):
+        if field.primary_key or not field.remote_field or field.related_model is _origin or not field_allowed(field.name):
             continue
         # Ajout du serializer pour la relation de clé étrangère
-        if field.remote_field and not field.primary_key and field.remote_field.model != _origin:
-            if (foreign_keys and 0 >= _level > -height) or (fks_in_related and _level > 0):
-                fk_serializer, fk_viewset = create_model_serializer_and_viewset(
-                    field.remote_field.model, foreign_keys=foreign_keys, many_to_many=False, one_to_one=False,
-                    one_to_many=False, fks_in_related=False, serializer_base=serializer_base, viewset_base=viewset_base,
-                    serializer_data=serializer_data, viewset_data=viewset_data, exclude_related=exclude_related,
-                    depth=0, height=height, _level=_level - 1, _origin=model, metas=metas)
-                serializer._declared_fields[field.name] = fk_serializer(read_only=True)
-                relateds.append(field.name)
-                field_relateds = get_related(field.related_model, excludes=[model._meta.model_name])
-                relateds += ['__'.join([field.name, field_related]) for field_related in field_relateds]
-            elif _level > 0:
-                # Les clés étrangères des relations inversées qui pointent sur le modèle d'origine peuvent être nulles
-                if field.remote_field and not field.primary_key and field.remote_field.model == _origin:
-                    serializer.Meta.extra_kwargs[field.name] = dict(required=False, allow_null=True)
-            # Prefetch des métadonnées
-            prefetchs_metadatas += prefetch_metadatas(field.related_model, field.name)
-
-    if one_to_one:
-        for field in model._meta.related_objects:
-            # Vérification que le champ est bien inclu ou n'est pas exclu
-            if not field_allowed(field.name) or not field.auto_created or not field.one_to_one:
-                continue
-            field_name = field.get_accessor_name()
-            # Ajout du serializer pour la relation inversée
-            o2o_serializer, o2o_viewset = create_model_serializer_and_viewset(
-                field.related_model, foreign_keys=False, many_to_many=False, one_to_one=False, one_to_many=False,
-                fks_in_related=False, serializer_base=serializer_base, viewset_base=viewset_base,
-                serializer_data=serializer_data, viewset_data=viewset_data, exclude_related=exclude_related,
-                depth=depth, _level=_level + 1, _origin=model, metas=metas)
-            serializer._declared_fields[field_name] = o2o_serializer(read_only=True)
-            relateds.append(field_name)
-            field_relateds = get_related(field.related_model, one_to_one=True, excludes=[model._meta.model_name])
-            relateds += ['__'.join([field_name, field_related]) for field_related in field_relateds]
+        if (foreign_keys and 0 >= _level > -height) or (fks_in_related and _level > 0):
+            fk_serializer, fk_viewset = create_model_serializer_and_viewset(
+                field.related_model, foreign_keys=foreign_keys, many_to_many=False,
+                one_to_one=False, one_to_many=False, fks_in_related=False, null_fks=False,
+                serializer_base=serializer_base, viewset_base=viewset_base,
+                serializer_data=serializer_data, viewset_data=viewset_data,
+                exclude_related=exclude_related, metas=metas, depth=0, height=height,
+                _level=_level - 1, _origin=model, _field=field.name)
+            serializer._declared_fields[field.name] = fk_serializer(read_only=True)
+            relateds.append(field.name)
+            # Récupération des relations de plus haut niveau si nécessaire
+            field_relateds = get_related(field.related_model, null=null_fks, height=height - 1)
+            relateds += ['__'.join([field.name, field_related]) for field_related in field_relateds
+                         if field_related not in exclude_related.get(field.related_model, [])]
+        elif _level > 0:
+            # Les clés étrangères des relations inversées qui pointent sur le modèle d'origine peuvent être nulles
+            if field.remote_field and not field.primary_key and field.related_model is _origin:
+                serializer.Meta.extra_kwargs[field.name] = dict(required=False, allow_null=True)
+        # Prefetch des métadonnées
+        prefetchs_metadatas += prefetch_metadatas(field.related_model, field.name)
 
     # Gestion des many-to-many
     if many_to_many:
-        for field in model._meta.fields + model._meta.many_to_many:
+        for field in model._meta.many_to_many:
             # Vérification que le champ est bien inclu ou n'est pas exclu
-            if not field_allowed(field.name):
+            if not field.many_to_many or not field_allowed(field.name):
                 continue
             # Ajout du serializer pour la relation many-to-many
-            if field.many_to_many:
-                m2m_serializer, m2m_viewset = create_model_serializer_and_viewset(
-                    field.remote_field.model, foreign_keys=False, many_to_many=False, one_to_one=False,
-                    one_to_many=False, fks_in_related=False, serializer_base=serializer_base, viewset_base=viewset_base,
-                    serializer_data=serializer_data, viewset_data=viewset_data, exclude_related=exclude_related,
-                    depth=0, _origin=model, metas=metas)
-                serializer._declared_fields[field.name] = m2m_serializer(many=True, read_only=True)
-                prefetchs.append(field.name)
-                # Prefetch des métadonnées
-                prefetchs_metadatas += prefetch_metadatas(field.related_model, field.name)
-            if foreign_keys and field.remote_field:
-                prefetchs += ['__'.join([field.name, subfield.name])
-                              for subfield in field.remote_field.model._meta.many_to_many]
+            m2m_serializer, m2m_viewset = create_model_serializer_and_viewset(
+                field.related_model, foreign_keys=False, many_to_many=False,
+                one_to_one=False, one_to_many=False, fks_in_related=False, null_fks=False,
+                serializer_base=serializer_base, viewset_base=viewset_base,
+                serializer_data=serializer_data, viewset_data=viewset_data,
+                exclude_related=exclude_related, metas=metas, depth=0, height=0,
+                _level=0, _origin=model, _field=field.name)
+            serializer._declared_fields[field.name] = m2m_serializer(many=True, read_only=True)
+            prefetchs.append(field.name)
+            # Prefetch des métadonnées
+            prefetchs_metadatas += prefetch_metadatas(field.related_model, field.name)
     else:
         # Exclusion du champ many-to-many du serializer
         fields = getattr(serializer.Meta, 'fields', None)
@@ -292,30 +283,55 @@ def create_model_serializer_and_viewset(
             serializer.Meta.exclude = getattr(serializer.Meta, 'exclude', []) + [
                 field.name for field in model._meta.many_to_many]
 
-    # Gestion des one-to-one et one-to-many
-    if depth > _level:
+    # Gestion des one-to-one
+    if one_to_one:
+        for field in model._meta.related_objects:
+            # Vérification que le champ est bien inclu ou n'est pas exclu
+            if not field.auto_created or not field.one_to_one or not field_allowed(field.name):
+                continue
+            field_name = field.get_accessor_name()
+            # Ajout du serializer pour la relation inversée
+            child_serializer, child_viewset = create_model_serializer_and_viewset(
+                field.related_model, foreign_keys=foreign_keys, many_to_many=many_to_many,
+                one_to_one=one_to_one, one_to_many=one_to_many, fks_in_related=fks_in_related, null_fks=null_fks,
+                serializer_base=serializer_base, viewset_base=viewset_base,
+                serializer_data=serializer_data, viewset_data=viewset_data,
+                exclude_related=exclude_related, metas=metas, depth=depth, height=0,
+                _level=_level + 1, _origin=model, _field=field_name)
+            serializer._declared_fields[field_name] = child_serializer(read_only=True)
+            relateds.append(field_name)
+            # Récupération des relations de plus haut niveau si nécessaire
+            field_relateds = get_related(field.related_model, one_to_one=True, null=null_fks, height=height - 1)
+            relateds += ['__'.join([field_name, field_related]) for field_related in field_relateds
+                         if field_related not in exclude_related.get(field.related_model, [])]
+
+    # Gestion des one-to-many
+    if one_to_many and depth > _level:
         forbidden_fields = []
         for field in model._meta.related_objects:
+            if not field.auto_created or not field.one_to_many:
+                continue
             # Vérification que le champ est bien inclu ou n'est pas exclu, et qu'il s'agisse bien d'un champ
             if not field_allowed(field.name):
                 forbidden_fields.append(field.name)
                 continue
+            field_name = field.get_accessor_name()
             # Ajout du serializer pour la relation inversée
-            if field.auto_created and ((field.one_to_one and one_to_one) or (field.one_to_many and one_to_many)):
-                child_serializer, child_viewset = create_model_serializer_and_viewset(
-                    field.related_model, foreign_keys=foreign_keys, many_to_many=many_to_many, one_to_one=one_to_one,
-                    one_to_many=one_to_many, fks_in_related=fks_in_related, serializer_base=serializer_base,
-                    viewset_base=viewset_base, serializer_data=serializer_data, viewset_data=viewset_data,
-                    exclude_related=exclude_related, depth=depth, _level=_level + 1, _origin=model, metas=metas)
-                serializer._declared_fields[field.get_accessor_name()] = child_serializer(
-                    many=field.one_to_many, read_only=True)
+            child_serializer, child_viewset = create_model_serializer_and_viewset(
+                field.related_model, foreign_keys=foreign_keys, many_to_many=many_to_many,
+                one_to_one=one_to_one, one_to_many=one_to_many, fks_in_related=fks_in_related, null_fks=null_fks,
+                serializer_base=serializer_base, viewset_base=viewset_base,
+                serializer_data=serializer_data, viewset_data=viewset_data,
+                exclude_related=exclude_related, metas=metas, depth=depth, height=0,
+                _level=_level + 1, _origin=model, _field=field_name)
+            serializer._declared_fields[field_name] = child_serializer(many=True, read_only=True)
         # Récupération des relations inversées
         # (Uniquement réalisé au niveau 0 car le prefetch permet de récupérer les relations sur la profondeur désirée)
         if _level == 0:
             arguments = dict(
                 depth=depth,
                 excludes=forbidden_fields,
-                foreign_keys=fks_in_related or one_to_one,
+                foreign_keys=fks_in_related,
                 one_to_one=one_to_one,
                 one_to_many=one_to_many)
             prefetchs += get_prefetchs(model, **arguments)
@@ -472,7 +488,7 @@ def paginate(request, queryset, serializer, pagination=None,
     reserved_query_params = RESERVED_QUERY_PARAMS + [pagination.page_query_param, pagination.page_size_query_param]
 
     # Erreurs silencieuses
-    silent = url_params.get('silent', None)
+    silent = str_to_bool(url_params.get('silent', None))
 
     # Filtres
     try:
@@ -514,6 +530,8 @@ def paginate(request, queryset, serializer, pagination=None,
             str(temp_queryset.query)  # Force SQL evaluation to retrieve exception
             queryset = temp_queryset
             options['order_by'] = True
+    except EmptyResultSet:
+        pass
     except Exception as error:
         if not silent:
             raise ValidationError("order_by: {}".format(error))
@@ -530,6 +548,8 @@ def paginate(request, queryset, serializer, pagination=None,
                 distincts = []
             queryset = queryset.distinct(*distincts)
             options['distinct'] = True
+    except EmptyResultSet:
+        pass
     except Exception as error:
         if not silent:
             raise ValidationError("distinct: {}".format(error))
