@@ -37,7 +37,6 @@ class LdapAuthenticationBackend(ModelBackend):
                 if ldap_connection.search(
                         settings.LDAP_BASE,
                         filter,
-                        ldap.SEARCH_SCOPE_WHOLE_SUBTREE,
                         attributes=settings.LDAP_ATTRIBUTES):
                     attributes = ldap_connection.response[0].get('attributes', {})
                     User = get_user_model()
