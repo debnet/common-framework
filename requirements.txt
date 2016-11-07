@@ -1,4 +1,4 @@
-Django==1.10.3rmrmrmrmrmrmrmrmr
+Django==1.10.3
 Pillow==3.4.2
 celery==3.1.24
 coverage==4.2
