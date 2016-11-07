@@ -1,8 +1,8 @@
-Django==1.10.2
-Pillow==3.3.1
+Django==1.10.3rmrmrmrmrmrmrmrmr
+Pillow==3.4.2
 celery==3.1.24
 coverage==4.2
-djangorestframework==3.4.7
+djangorestframework==3.5.2
 flake8<3.0.0
 model_mommy==1.2.6
 openpyxl==2.3.5
