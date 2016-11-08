@@ -1,4 +1,5 @@
 # coding: utf-8
+from django.db.models.query import EmptyResultSet, QuerySet
 from rest_framework import serializers
 from rest_framework import viewsets
 from rest_framework.exceptions import ValidationError
@@ -23,16 +24,18 @@ class CommonModelViewSet(viewsets.ModelViewSet):
         # Le serializer peut être substitué en fonction des paramètres d'appel de l'API
         url_params = self.request.query_params.dict()
         if default_serializer:
-            if 'group_by' in url_params:
+            # Ajoute les champs d'aggregation au serializer
+            aggregations = {}
+            for aggregate in AGGREGATES.keys():
+                for field in url_params.get(aggregate, '').split(','):
+                    if not field:
+                        continue
+                    aggregations[field + '__' + aggregate] = serializers.ReadOnlyField()
+            if 'group_by' in url_params or aggregations:
                 fields = {
                     field: serializers.ReadOnlyField()
-                    for field in url_params.get('group_by').split(',')}
-                # Ajoute les champs d'aggregation au serializer
-                for aggregate in AGGREGATES.keys():
-                    for field in url_params.get(aggregate, '').split(','):
-                        if not field:
-                            continue
-                        fields[field + '__' + aggregate] = serializers.ReadOnlyField()
+                    for field in url_params.get('group_by', '').split(',')}
+                fields.update(aggregations)
                 # Un serializer avec les données groupées est créé à la volée
                 return type(default_serializer.__name__, (serializers.Serializer, ), fields)
             elif 'fields' in url_params:
@@ -42,7 +45,7 @@ class CommonModelViewSet(viewsets.ModelViewSet):
                 # Un serializer avec restriction des champs est créé à la volée
                 return type(default_serializer.__name__, (serializers.Serializer, ), fields)
             elif 'simple' in url_params:
-                return default_serializer
+                return getattr(self, 'simple_serializer', default_serializer)
         return super().get_serializer_class()
 
     def perform_create(self, serializer):
@@ -60,13 +63,25 @@ class CommonModelViewSet(viewsets.ModelViewSet):
             return instance.delete(_current_user=self.request.user)
         return super().perform_destroy(instance)
 
+    def list(self, request, *args, **kwargs):
+        # Détournement en cas d'aggregation sans annotation ou de non QuerySet
+        queryset = self.get_queryset()
+        if not isinstance(queryset, QuerySet):
+            from rest_framework.response import Response
+            return Response(queryset)
+        return super().list(request, *args, **kwargs)
+
     def paginate_queryset(self, queryset):
-        # Uniquement si toutes les données sont demandées
-        if self.request.query_params.get('all', None):
+        # Aucune pagination si toutes les données sont demandées ou qu'il ne s'agit pas d'un QuerySet
+        if not isinstance(queryset, QuerySet) or str_to_bool(self.request.query_params.get('all', None)):
             return None
         return super().paginate_queryset(queryset)
 
     def get_queryset(self):
+        queryset = super().get_queryset()
+        if not isinstance(queryset, QuerySet):
+            return queryset
+
         options = dict(filters=None, order_by=None, distinct=None, aggregates=None)
         url_params = self.request.query_params.dict()
 
@@ -75,11 +90,10 @@ class CommonModelViewSet(viewsets.ModelViewSet):
             self.paginator.page_query_param, self.paginator.page_size_query_param] if self.paginator else []
 
         # Erreurs silencieuses
-        silent = url_params.get('silent', None)
+        silent = str_to_bool(url_params.get('silent', None))
 
         # Requête simplifiée
-        queryset = super().get_queryset()
-        if url_params.get('simple', None):
+        if str_to_bool(url_params.get('simple', None)):
             queryset = queryset.model.objects.all()
             try:
                 fields = url_params.get('fields', None)
@@ -88,7 +102,8 @@ class CommonModelViewSet(viewsets.ModelViewSet):
                     *related, field_name = field.split('__')
                     if related:
                         relateds.add('__'.join(related))
-                queryset = queryset.select_related(*relateds)
+                if relateds:
+                    queryset = queryset.select_related(*relateds)
             except Exception as error:
                 if not silent:
                     raise ValidationError("fields: {}".format(error))
@@ -105,7 +120,8 @@ class CommonModelViewSet(viewsets.ModelViewSet):
                     name = lookup if isinstance(lookup, str) else lookup.prefetch_through
                     if name not in viewset_lookups:
                         lookups_metadatas.append(lookup)
-                queryset = queryset.prefetch_related(*lookups_metadatas)
+                if lookups_metadatas:
+                    queryset = queryset.prefetch_related(*lookups_metadatas)
 
         # Filtres
         try:
@@ -137,21 +153,23 @@ class CommonModelViewSet(viewsets.ModelViewSet):
 
         # Aggregations
         try:
+            aggregations = {}
+            for aggegate, function in AGGREGATES.items():
+                for field in url_params.get(aggegate, '').split(','):
+                    if not field:
+                        continue
+                    aggregations[field + '__' + aggegate] = function(field)
             group_by = url_params.get('group_by', None)
             if group_by:
                 _queryset = queryset.values(*group_by.split(','))
-                annotates = {}
-                for aggegate, function in AGGREGATES.items():
-                    for field in url_params.get(aggegate, '').split(','):
-                        if not field:
-                            continue
-                        annotates[field + '__' + aggegate] = function(field)
-                if annotates:
-                    _queryset = _queryset.annotate(**annotates)
+                if aggregations:
+                    _queryset = _queryset.annotate(**aggregations)
                 else:
                     _queryset = _queryset.distinct()
                 queryset = _queryset
                 options['aggregates'] = True
+            elif aggregations:
+                return queryset.aggregate(**aggregations)
         except Exception as error:
             if not silent:
                 raise ValidationError("aggregates: {}".format(error))
@@ -167,6 +185,8 @@ class CommonModelViewSet(viewsets.ModelViewSet):
                 str(_queryset.query)  # Force SQL evaluation to retrieve exception
                 queryset = _queryset
                 options['order_by'] = True
+        except EmptyResultSet:
+            pass
         except Exception as error:
             if not silent:
                 raise ValidationError("order_by: {}".format(error))
@@ -183,6 +203,8 @@ class CommonModelViewSet(viewsets.ModelViewSet):
                     distincts = []
                 queryset = queryset.distinct(*distincts)
                 options['distinct'] = True
+        except EmptyResultSet:
+            pass
         except Exception as error:
             if not silent:
                 raise ValidationError("distinct: {}".format(error))

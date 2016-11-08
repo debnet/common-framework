@@ -599,7 +599,7 @@ def prefetch_metadatas(model, lookup=None, name=None):
 
 
 def get_prefetchs(parent, depth=1, foreign_keys=False, one_to_one=True, one_to_many=False, metadatas=False,
-                  excludes=None, _model=None, _prefetch='', _level=1):
+                  excludes=None, null=False, _model=None, _prefetch='', _level=1):
     """
     Permet de récupérer récursivement tous les prefetch related d'un modèle
     :param parent: Modèle parent
@@ -609,6 +609,7 @@ def get_prefetchs(parent, depth=1, foreign_keys=False, one_to_one=True, one_to_m
     :param one_to_many: Récupère les relations de type one-to-many ? (peut-être très coûteux selon les données)
     :param metadatas: Récupère uniquement les prefetchs des métadonnées ?
     :param excludes: Champs ou types à exclure
+    :param null: Remonter par les clés étrangères nulles ?
     :param _model: Modèle courant (pour la récursivité, nul par défaut)
     :param _prefetch: Nom du prefetch courant (pour la récursivité, vide par défaut)
     :param _level: Profondeur actuelle (pour la récursivité, 1 par défaut)
@@ -638,9 +639,10 @@ def get_prefetchs(parent, depth=1, foreign_keys=False, one_to_one=True, one_to_m
                     _prefetch=recursive_prefetch,
                     _level=_level + 1)
                 results += prefetchs
-            if foreign_keys:
-                for related in get_related(field.related_model, excludes=excludes, one_to_one=one_to_one, depth=1):
-                    results.append('__'.join((recursive_prefetch, related)))
+            for related in get_related(
+                    field.related_model, excludes=excludes,
+                    foreign_keys=foreign_keys, one_to_one=one_to_one, null=null, height=1):
+                results.append('__'.join((recursive_prefetch, related)))
             if metadatas:
                 results.extend(prefetch_metadatas(parent, lookup=recursive_prefetch))
             elif not prefetchs:
@@ -648,16 +650,17 @@ def get_prefetchs(parent, depth=1, foreign_keys=False, one_to_one=True, one_to_m
     return results
 
 
-def get_related(model, dest=None, excludes=None, one_to_one=False, null=False, depth=1,
+def get_related(model, dest=None, excludes=None, foreign_keys=True, one_to_one=False, null=False, height=1,
                 _related='', _models=None, _level=0):
     """
     Permet de récupérer récursivement toutes les relations directes d'un modèle
     :param model: Modèle d'origine
     :param dest: Modèle de destination (facultatif)
     :param excludes: Champs ou types à exclure
+    :param foreign_keys: Récupère les relations de type foreign-key ?
     :param one_to_one: Récupère les relations de type one-to-one ?
     :param null: Remonter par les clés étrangères nulles ?
-    :param depth: Profondeur de récupération
+    :param height: Hauteur de récupération
     :param _related: Nom du chemin de relation courant (pour la récursivité, vide par défaut)
     :param _models: Liste des modèles traversés (pour la récursivité, vide par défaut)
     :param _level: Profondeur actuelle (pour la récursivité, 0 par défaut)
@@ -665,18 +668,22 @@ def get_related(model, dest=None, excludes=None, one_to_one=False, null=False, d
     """
     excludes = excludes or []
     results = []
-    if (not dest and _level > depth) or (_models and model in _models):
+    if (not dest and _level > height) or (_models and model in _models):
         return results
     models = (_models or []) + [model]
     if _related and dest == model or (dest is None and _related):
         results.append(_related)
-    for field in model._meta.fields:
-        if not isinstance(field, (ForeignKey, OneToOneField)) or field.name in excludes \
-                or (field.remote_field and field.remote_field.model in excludes) or (not null and field.null):
-            continue
-        related_path = '__'.join((_related, field.name)) if _related else field.name
-        results += get_related(field.remote_field.model, dest=dest, excludes=excludes, depth=depth, null=null,
-                               _related=related_path, _models=models, _level=_level + 1)
+    # Clés étrangères
+    if foreign_keys:
+        for field in model._meta.fields:
+            if not isinstance(field, (ForeignKey, OneToOneField)) or field.name in excludes \
+                    or (field.remote_field and field.remote_field.model in excludes) or (not null and field.null):
+                continue
+            related_path = '__'.join((_related, field.name)) if _related else field.name
+            results += get_related(
+                field.remote_field.model, dest=dest, excludes=excludes, height=height, null=null,
+                _related=related_path, _models=models, _level=_level + 1)
+    # Relations de type one-to-one
     if one_to_one:
         for field in model._meta.related_objects:
             if field.one_to_one:
@@ -684,8 +691,9 @@ def get_related(model, dest=None, excludes=None, one_to_one=False, null=False, d
                 if field_name in excludes:
                     continue
                 related_path = '__'.join((_related, field_name)) if _related else field_name
-                results += get_related(field.related_model, dest=dest, excludes=excludes, depth=depth, null=null,
-                                       _related=related_path, _models=models, _level=_level + 1)
+                results += get_related(
+                    field.related_model, dest=dest, excludes=excludes, height=height, null=null,
+                    _related=related_path, _models=models, _level=_level + 1)
     return results
 
 
