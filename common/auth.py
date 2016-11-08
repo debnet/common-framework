@@ -47,9 +47,9 @@ class LdapAuthenticationBackend(ModelBackend):
                         user = User(
                             username=username,
                             password=password,
-                            first_name=attributes['givenName'][0],
-                            last_name=attributes['sn'][0],
-                            email=attributes['mail'][0],
+                            first_name=attributes['givenName'],
+                            last_name=attributes['sn'],
+                            email=attributes['mail'],
                             is_active=True,
                             is_staff=True,
                         )
