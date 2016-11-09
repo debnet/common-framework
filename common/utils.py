@@ -598,8 +598,8 @@ def prefetch_metadatas(model, lookup=None, name=None):
     return []
 
 
-def get_prefetchs(parent, depth=1, foreign_keys=False, one_to_one=True, one_to_many=False, metadatas=False,
-                  excludes=None, null=False, _model=None, _prefetch='', _level=1):
+def get_prefetchs(parent, depth=1, foreign_keys=False, one_to_one=True, one_to_many=False, many_to_many=False,
+                  metadatas=False, excludes=None, null=False, _model=None, _prefetch='', _level=1):
     """
     Permet de récupérer récursivement tous les prefetch related d'un modèle
     :param parent: Modèle parent
@@ -607,6 +607,7 @@ def get_prefetchs(parent, depth=1, foreign_keys=False, one_to_one=True, one_to_m
     :param foreign_keys: Récupère les relations de type foreign-key ?
     :param one_to_one: Récupère les relations de type one-to-one ?
     :param one_to_many: Récupère les relations de type one-to-many ? (peut-être très coûteux selon les données)
+    :param many_to_many: Récupère les relations de type many-to-many ?
     :param metadatas: Récupère uniquement les prefetchs des métadonnées ?
     :param excludes: Champs ou types à exclure
     :param null: Remonter par les clés étrangères nulles ?
@@ -620,11 +621,11 @@ def get_prefetchs(parent, depth=1, foreign_keys=False, one_to_one=True, one_to_m
     if _level > depth:
         return results
     model = _model or parent
-    for field in model._meta.related_objects:
+    for field in model._meta.related_objects + model._meta.many_to_many:
         if field.name in excludes or (field.related_model in excludes):
             continue
-        if field.auto_created and ((field.one_to_one and one_to_one) or (field.one_to_many and one_to_many)):
-            accessor_name = field.get_accessor_name()
+        if (field.one_to_one and one_to_one) or (field.one_to_many and one_to_many) or (field.many_to_many and many_to_many):
+            accessor_name = field.get_accessor_name() if field.auto_created else field.name
             recursive_prefetch = accessor_name if model == parent else '__'.join((_prefetch, accessor_name))
             prefetchs = None
             if model == parent or _level < depth:
@@ -633,6 +634,7 @@ def get_prefetchs(parent, depth=1, foreign_keys=False, one_to_one=True, one_to_m
                     depth=depth,
                     one_to_one=one_to_one,
                     one_to_many=one_to_many,
+                    many_to_many=many_to_many,
                     metadatas=metadatas,
                     excludes=excludes,
                     _model=field.related_model,
