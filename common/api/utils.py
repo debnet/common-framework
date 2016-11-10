@@ -36,7 +36,7 @@ def url_value(filter, value):
     :param value: Valeur
     :return: Valeur
     """
-    if filter and filter.endswith('__in'):
+    if filter and (filter.endswith('__in') or filter.endswith('__range')):
         return value.split(',')
     if filter and filter.endswith('__isnull'):
         return str_to_bool(value)
