@@ -300,7 +300,7 @@ def create_model_serializer_and_viewset(
             prefetchs_metadatas += prefetch_metadatas(field.related_model, field.name)
     else:
         # Exclusion du champ many-to-many du serializer
-        excludes_many_to_many_from_serializer(viewset.simple_serializer)
+        excludes_many_to_many_from_serializer(viewset.serializer_class)
 
     # Gestion des one-to-one
     if one_to_one:
@@ -354,6 +354,7 @@ def create_model_serializer_and_viewset(
         foreign_keys=fks_in_related,
         one_to_one=one_to_one,
         one_to_many=one_to_many,
+        many_to_many=many_to_many,
         null=null_fks)
     prefetchs += get_prefetchs(model, **arguments)
     prefetchs_metadatas += get_prefetchs(model, metadatas=True, **arguments)
