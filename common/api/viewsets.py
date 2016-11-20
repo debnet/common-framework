@@ -30,7 +30,7 @@ class CommonModelViewSet(viewsets.ModelViewSet):
                 for field in url_params.get(aggregate, '').split(','):
                     if not field:
                         continue
-                    aggregations[field + '__' + aggregate] = serializers.ReadOnlyField()
+                    aggregations[field + '_' + aggregate] = serializers.ReadOnlyField()
             if 'group_by' in url_params or aggregations:
                 fields = {
                     field: serializers.ReadOnlyField()
@@ -123,6 +123,32 @@ class CommonModelViewSet(viewsets.ModelViewSet):
                 if lookups_metadatas:
                     queryset = queryset.prefetch_related(*lookups_metadatas)
 
+        # Aggregations
+        try:
+            aggregations = {}
+            for aggegate, function in AGGREGATES.items():
+                for field in url_params.get(aggegate, '').split(','):
+                    if not field:
+                        continue
+                    aggregations[field + '_' + aggegate] = function(field)
+            group_by = url_params.get('group_by', None)
+            if group_by:
+                _queryset = queryset.values(*group_by.split(','))
+                if aggregations:
+                    _queryset = _queryset.annotate(**aggregations)
+                else:
+                    _queryset = _queryset.distinct()
+                queryset = _queryset
+                options['aggregates'] = True
+            elif aggregations:
+                return queryset.aggregate(**aggregations)
+        except Exception as error:
+            if not silent:
+                raise ValidationError("aggregates: {}".format(error))
+            options['aggregates'] = False
+            if settings.DEBUG:
+                options['aggregates_error'] = str(error)
+
         # Filtres
         try:
             filters = {}
@@ -150,32 +176,6 @@ class CommonModelViewSet(viewsets.ModelViewSet):
             options['filters'] = False
             if settings.DEBUG:
                 options['filters_error'] = str(error)
-
-        # Aggregations
-        try:
-            aggregations = {}
-            for aggegate, function in AGGREGATES.items():
-                for field in url_params.get(aggegate, '').split(','):
-                    if not field:
-                        continue
-                    aggregations[field + '__' + aggegate] = function(field)
-            group_by = url_params.get('group_by', None)
-            if group_by:
-                _queryset = queryset.values(*group_by.split(','))
-                if aggregations:
-                    _queryset = _queryset.annotate(**aggregations)
-                else:
-                    _queryset = _queryset.distinct()
-                queryset = _queryset
-                options['aggregates'] = True
-            elif aggregations:
-                return queryset.aggregate(**aggregations)
-        except Exception as error:
-            if not silent:
-                raise ValidationError("aggregates: {}".format(error))
-            options['aggregates'] = False
-            if settings.DEBUG:
-                options['aggregates_error'] = str(error)
 
         # Tris
         try:
