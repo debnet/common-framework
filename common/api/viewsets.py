@@ -123,6 +123,36 @@ class CommonModelViewSet(viewsets.ModelViewSet):
                 if lookups_metadatas:
                     queryset = queryset.prefetch_related(*lookups_metadatas)
 
+        # Filtres (dans une fonction pour être appelé par les aggregations sans group_by)
+        def do_filter(queryset):
+            try:
+                filters = {}
+                excludes = {}
+                for key, value in url_params.items():
+                    if key not in reserved_query_params:
+                        key = key.replace('$', '')  # Dans le cas où un champ du modèle serait un mot-clé réservé
+                        if key.startswith('-'):
+                            excludes[key[1:]] = url_value(key[1:], value)
+                        else:
+                            filters[key] = url_value(key, value)
+                if filters:
+                    queryset = queryset.filter(**filters)
+                if excludes:
+                    queryset = queryset.exclude(**excludes)
+                # Filtres génériques
+                others = url_params.get('filters', None)
+                if others:
+                    queryset = queryset.filter(parse_filters(others))
+                if filters or excludes or others:
+                    options['filters'] = True
+            except Exception as error:
+                if not silent:
+                    raise ValidationError("filters: {}".format(error))
+                options['filters'] = False
+                if settings.DEBUG:
+                    options['filters_error'] = str(error)
+            return queryset
+
         # Aggregations
         try:
             aggregations = {}
@@ -141,6 +171,7 @@ class CommonModelViewSet(viewsets.ModelViewSet):
                 queryset = _queryset
                 options['aggregates'] = True
             elif aggregations:
+                queryset = do_filter(queryset)  # Filtres éventuels
                 return queryset.aggregate(**aggregations)
         except Exception as error:
             if not silent:
@@ -150,32 +181,7 @@ class CommonModelViewSet(viewsets.ModelViewSet):
                 options['aggregates_error'] = str(error)
 
         # Filtres
-        try:
-            filters = {}
-            excludes = {}
-            for key, value in url_params.items():
-                if key not in reserved_query_params:
-                    key = key.replace('$', '')  # Dans le cas où un champ du modèle serait un mot-clé réservé
-                    if key.startswith('-'):
-                        excludes[key[1:]] = url_value(key[1:], value)
-                    else:
-                        filters[key] = url_value(key, value)
-            if filters:
-                queryset = queryset.filter(**filters)
-            if excludes:
-                queryset = queryset.exclude(**excludes)
-            # Filtres génériques
-            others = url_params.get('filters', None)
-            if others:
-                queryset = queryset.filter(parse_filters(others))
-            if filters or excludes or others:
-                options['filters'] = True
-        except Exception as error:
-            if not silent:
-                raise ValidationError("filters: {}".format(error))
-            options['filters'] = False
-            if settings.DEBUG:
-                options['filters_error'] = str(error)
+        queryset = do_filter(queryset)
 
         # Tris
         try:
