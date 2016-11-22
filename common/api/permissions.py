@@ -16,6 +16,15 @@ class CommonModelPermissions(permissions.DjangoModelPermissions):
         'DELETE': ['%(app_label)s.delete_%(model_name)s'],
     }
 
+    def has_permission(self, request, view):
+        """
+        Surcharge de la gestion de permission par défaut pour autoriser la consultation en l'absence d'un QuerySet
+        """
+        try:
+            return super().has_permission(request, view)
+        except AttributeError:
+            return request.user and (request.user.is_authenticated or not self.authenticated_users_only)
+
 
 class CurrentUserPermissions(CommonModelPermissions):
     """
