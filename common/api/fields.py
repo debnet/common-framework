@@ -1,5 +1,5 @@
 # coding: utf-8
-from rest_framework.fields import ChoiceField, Field
+from rest_framework.fields import ChoiceField, Field, ReadOnlyField
 from rest_framework.relations import HyperlinkedRelatedField, HyperlinkedIdentityField
 
 from common.utils import json_encode, recursive_get_urls
@@ -44,6 +44,15 @@ class QuerySetChoiceField(ChoiceField):
             return list(queryset.values_list(self.value, self.label))
         except:
             return []
+
+
+class ReadOnlyObjectField(ReadOnlyField):
+    """
+    Surcharge du champ "lecture seule" de DRF pour prendre en compte les objets complets
+    """
+
+    def to_representation(self, value):
+        return value.to_dict() if hasattr(value, 'to_dict') else getattr(value, 'id', value)
 
 
 class CustomHyperlinkedField:

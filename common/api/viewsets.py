@@ -5,6 +5,7 @@ from rest_framework import viewsets
 from rest_framework.exceptions import ValidationError
 
 from common.api.utils import AGGREGATES, RESERVED_QUERY_PARAMS, url_value, parse_filters
+from common.api.fields import ReadOnlyObjectField
 from common.models import Entity
 from common.settings import settings
 from common.utils import str_to_bool
@@ -40,7 +41,7 @@ class CommonModelViewSet(viewsets.ModelViewSet):
                 return type(default_serializer.__name__, (serializers.Serializer, ), fields)
             elif 'fields' in url_params:
                 fields = {
-                    field: serializers.ReadOnlyField(source=field.replace('__', '.') if '__' in field else None)
+                    field: ReadOnlyObjectField(source=field.replace('__', '.') if '__' in field else None)
                     for field in url_params.get('fields').split(',')}
                 # Un serializer avec restriction des champs est créé à la volée
                 return type(default_serializer.__name__, (serializers.Serializer, ), fields)
@@ -116,7 +117,7 @@ class CommonModelViewSet(viewsets.ModelViewSet):
                     prefetch if isinstance(prefetch, str) else prefetch.prefetch_through
                     for prefetch in queryset._prefetch_related_lookups]
                 lookups_metadatas = []
-                for lookup in getattr(self, 'metadatas', []):
+                for lookup in self.metadatas or []:
                     name = lookup if isinstance(lookup, str) else lookup.prefetch_through
                     if name not in viewset_lookups:
                         lookups_metadatas.append(lookup)
