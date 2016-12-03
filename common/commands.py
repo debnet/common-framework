@@ -34,7 +34,7 @@ class ImportExcelCommand(BaseCommand):
         results = self.models.get(model_name, {})
         actions = actions or {}
         try:
-            worksheet = self.workbook.get_sheet_by_name(sheet)
+            worksheet = self.workbook[sheet]
         except KeyError:
             return
         title = True

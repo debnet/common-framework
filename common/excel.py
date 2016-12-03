@@ -9,8 +9,9 @@ from django.core.exceptions import ValidationError
 from django.db import transaction
 from django.utils.translation import ugettext_lazy as _
 from openpyxl import Workbook, load_workbook
-from openpyxl.styles import Font, Style
+from openpyxl.styles import Font
 from openpyxl.utils import get_column_letter
+
 
 # Logging
 logger = logging.getLogger(__name__)
@@ -68,7 +69,7 @@ class ImportExport(object):
         cache = {}
         metadatas = {}
 
-        workbook = load_workbook(filename=file, use_iterators=True, read_only=True, data_only=True)
+        workbook = load_workbook(filename=file, read_only=True, data_only=True)
         # Récupération de toutes les feuilles par nom
         worksheets = {}
         for worksheet in workbook.worksheets:
@@ -221,7 +222,7 @@ class ImportExport(object):
         """
         workbook = Workbook()
         # Style des titres
-        self.title_style = Style(font=Font(bold=True))
+        self.title_font = Font(bold=True)
         self.metadatas = {}
 
         # Feuille d'aide sur les données
@@ -232,7 +233,7 @@ class ImportExport(object):
         for column, title in enumerate(titles):
             cell = worksheet.cell(row=1, column=column + 1)
             cell.value = str(title)
-            cell.style = self.title_style
+            cell.font = self.title_font
             column_letter = get_column_letter(column + 1)
             widths[column_letter] = len(str(cell.value)) + CELL_OFFSET
         row = 2
@@ -267,7 +268,7 @@ class ImportExport(object):
         for column, (field_code, field_name) in enumerate(fields):
             cell = worksheet.cell(row=1, column=column + 1)
             cell.value = field_name
-            cell.style = self.title_style
+            cell.font = self.title_font
             column_letter = get_column_letter(column + 1)
             widths[column_letter] = len(str(cell.value)) + CELL_OFFSET
         # On construit la feuille des métadonnées ligne par ligne en bouclant sur notre dictionnaire de métadonnées
@@ -376,7 +377,7 @@ class ImportExport(object):
         for column, (field_code, field_name) in enumerate(fields):
             cell = worksheet.cell(row=1, column=column + 1)
             cell.value = field_name
-            cell.style = self.title_style
+            cell.font = self.title_font
             column_letter = get_column_letter(column + 1)
             widths[column_letter] = len(str(cell.value)) + CELL_OFFSET
         # Récupération des données
