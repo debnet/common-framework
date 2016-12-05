@@ -22,6 +22,8 @@ def delete_selected(modeladmin, request, queryset):
         element._force_default = True
         element._current_user = request.user
     return django_delete_selected(modeladmin, request, queryset)
+
+
 delete_selected.short_description = django_delete_selected.short_description
 
 
@@ -287,6 +289,8 @@ def restore(modeladmin, request, queryset, rollback=False):
             _("{} élément(s) n'ont pas pu être restaurés car leurs relations sont manquantes !").format(fail))
     for id, error in errors:
         messages.error(request, _("L'élément #{} n'a pu être restauré pour la raison suivante : {}").format(id, error))
+
+
 restore.short_description = _("Annuler les modifications")
 
 
@@ -295,6 +299,8 @@ def rollback(modeladmin, request, queryset):
     Action de reversion dans l'administration
     """
     return restore(modeladmin, request, queryset, rollback=True)
+
+
 rollback.short_description = _("Restaurer les données d'origine")
 
 
