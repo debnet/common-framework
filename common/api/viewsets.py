@@ -94,17 +94,24 @@ class CommonModelViewSet(viewsets.ModelViewSet):
         silent = str_to_bool(url_params.get('silent', None))
 
         # Requête simplifiée
-        if str_to_bool(url_params.get('simple', None)):
+        fields = url_params.get('fields', '').replace('.', '__')
+        if str_to_bool(url_params.get('simple', None)) or fields:
             queryset = queryset.model.objects.all()
+            # Champs spécifiques
             try:
-                fields = url_params.get('fields', None)
                 relateds = set()
-                for field in (fields or '').split(','):
+                field_names = set()
+                for field in fields.split(','):
+                    if not field:
+                        continue
+                    field_names.add(field)
                     *related, field_name = field.split('__')
                     if related:
                         relateds.add('__'.join(related))
                 if relateds:
                     queryset = queryset.select_related(*relateds)
+                if field_names:
+                    queryset = queryset.only(*field_names)
             except Exception as error:
                 if not silent:
                     raise ValidationError("fields: {}".format(error))
