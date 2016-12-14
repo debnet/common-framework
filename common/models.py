@@ -1715,7 +1715,7 @@ class ServiceUsage(CommonModel):
     """
     Utilisation et/ou restriction des APIs
     """
-    name = models.CharField(max_length=100, verbose_name=_("nom"))
+    name = models.CharField(max_length=200, verbose_name=_("nom"))
     user = models.ForeignKey(settings.AUTH_USER_MODEL, verbose_name=_("utilisateur"))
     count = models.PositiveIntegerField(default=0, verbose_name=_("nombre"))
     limit = models.PositiveIntegerField(blank=True, null=True, verbose_name=_("limite"))

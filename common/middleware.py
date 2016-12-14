@@ -134,9 +134,9 @@ class ServiceUsageMiddleware:
                 return response
             if request.resolver_match and hasattr(request, 'user') and request.user.is_authenticated() and \
                     response.status_code in range(200, 300):
-                usage = ServiceUsage.objects.filter(name=request.resolver_match.view_name, user=request.user).first()
-                if not usage:
-                    usage = ServiceUsage(name=request.resolver_match.view_name, user=request.user)
+                usage, created = ServiceUsage.objects.get_or_create(
+                    name=request.resolver_match,
+                    user=request.user)
                 usage.count += 1
                 usage.address = get_ip(request)
                 usage.save()
