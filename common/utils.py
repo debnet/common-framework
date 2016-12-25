@@ -60,8 +60,8 @@ class CeleryFake:
             def wrapped(*args, **kwargs):
                 return func(*args, **kwargs)
 
-            func.apply = lambda args=None, kwargs=None, **options: func(*(args or []), **(kwargs or {}))
-            func.apply_async = func.apply
+            wrapped.apply = lambda args=None, kwargs=None, **options: func(*(args or []), **(kwargs or {}))
+            wrapped.apply_async = wrapped.apply
             return wrapped
         return decorator
 
@@ -72,9 +72,10 @@ def get_current_app():
     :return: Application Celery ou mock
     """
     try:
+        assert getattr(settings, 'ENABLE_CELERY', True)
         from celery.app import current_app
         return current_app()
-    except ImportError:
+    except (AssertionError, ImportError):
         return CeleryFake()
 
 
