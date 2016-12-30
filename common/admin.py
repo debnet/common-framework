@@ -5,6 +5,7 @@ from django.contrib.admin.actions import delete_selected as django_delete_select
 from django.contrib.contenttypes.models import ContentType
 from django.core.urlresolvers import NoReverseMatch
 from django.db import models
+from django.utils.html import format_html
 from django.utils.translation import ugettext_lazy as _
 
 from common.fields import JsonField, PickleField
@@ -61,9 +62,8 @@ class CommonAdmin(admin.ModelAdmin):
         if count:
             type = ContentType.objects.get_for_model(obj)
             url = reverse('admin:common_metadata_changelist') + '?object_id={}&content_type={}'.format(obj.id, type.id)
-            return '<a href="{url}">{label}</a>'.format(url=url, label=count)
+            return format_html('<a href="{url}">{label}</a>', url=url, label=count)
         return count
-    metadata_url.allow_tags = True
     metadata_url.short_description = _("Méta")
 
     def get_list_display(self, request):
@@ -209,10 +209,9 @@ class GlobalAdmin(admin.ModelAdmin):
             app_label=obj.content_type.app_label, model=obj.content_type.model)
         try:
             url = reverse(pattern, args=(obj.object_id, ))
-            return '<a href="{url}">{label}</a>'.format(url=url, label=str(obj.entity))
+            return format_html('<a href="{url}">{label}</a>', url=url, label=str(obj.entity))
         except:
             return str(obj.entity)
-    entity_url.allow_tags = True
     entity_url.short_description = _("Entité")
     entity_url.admin_order_field = 'entity'
 
@@ -248,15 +247,9 @@ class MetaDataAdmin(admin.ModelAdmin):
         pattern = 'admin:{app_label}_{model}_change'.format(
             app_label=obj.content_type.app_label, model=obj.content_type.model)
         url = reverse(pattern, args=(obj.object_id, ))
-        return '<a href="{url}">{label}</a>'.format(url=url, label=str(obj.entity))
-    entity_url.allow_tags = True
+        return format_html('<a href="{url}">{label}</a>', url=url, label=str(obj.entity))
     entity_url.short_description = _("Entité")
     entity_url.admin_order_field = 'entity'
-
-    def value_url(self, obj):
-        return obj.valeur
-    value_url.allow_tags = True
-    value_url.short_description = _("Valeur")
 
     def get_queryset(self, request):
         return super().get_queryset(request).prefetch_related('entity')
@@ -339,11 +332,10 @@ class HistoryAdmin(admin.ModelAdmin):
                 app_label=obj.content_type.app_label, model=obj.content_type.model)
             try:
                 url = reverse(pattern, args=(obj.object_id, ))
-                return '<a href="{url}">{label}</a>'.format(url=url, label=object_str)
+                return format_html('<a href="{url}">{label}</a>', url=url, label=object_str)
             except NoReverseMatch:
                 pass
         return object_str
-    entity_url.allow_tags = True
     entity_url.short_description = _("Entité")
     entity_url.admin_order_field = 'entity_str'
 
@@ -353,9 +345,8 @@ class HistoryAdmin(admin.ModelAdmin):
             pattern = 'admin:{app_label}_{model}_changelist'.format(
                 app_label=HistoryField._meta.app_label, model=HistoryField._meta.model_name)
             url = reverse(pattern) + '?history={}'.format(obj.id)
-            return '<a href="{url}">{label}</a>'.format(url=url, label=_("Consulter"))
+            return format_html('<a href="{url}">{label}</a>', url=url, label=_("Consulter"))
         return ''
-    show_fields_url.allow_tags = True
     show_fields_url.short_description = _("Champs modifiés")
 
     def has_reason(self, obj):
@@ -396,8 +387,7 @@ class HistoryFieldAdmin(admin.ModelAdmin):
         pattern = 'admin:{app_label}_{model}_changelist'.format(
             app_label=History._meta.app_label, model=History._meta.model_name)
         url = reverse(pattern) + '?id={}'.format(obj.history.id)
-        return '<a href="{url}">{label}</a>'.format(url=url, label=str(obj.history))
-    history_url.allow_tags = True
+        return format_html('<a href="{url}">{label}</a>', url=url, label=str(obj.history))
     history_url.admin_order_field = 'history'
     history_url.short_description = _("Historique")
 
