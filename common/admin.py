@@ -3,7 +3,6 @@ from django.contrib import admin, messages
 from django.contrib.admin import options
 from django.contrib.admin.actions import delete_selected as django_delete_selected
 from django.contrib.contenttypes.models import ContentType
-from django.core.urlresolvers import NoReverseMatch
 from django.db import models
 from django.utils.html import format_html
 from django.utils.translation import ugettext_lazy as _
@@ -18,10 +17,8 @@ def delete_selected(modeladmin, request, queryset):
     """
     Action de suppression dans l'administration
     """
-    for element in queryset:
-        element._from_admin = True
-        element._force_default = True
-        element._current_user = request.user
+    queryset._from_admin = True
+    queryset._current_user = request.user
     return django_delete_selected(modeladmin, request, queryset)
 
 
@@ -64,7 +61,7 @@ class CommonAdmin(admin.ModelAdmin):
             url = reverse('admin:common_metadata_changelist') + '?object_id={}&content_type={}'.format(obj.id, type.id)
             return format_html('<a href="{url}">{label}</a>', url=url, label=count)
         return count
-    metadata_url.short_description = _("Méta")
+    metadata_url.short_description = _("méta")
 
     def get_list_display(self, request):
         return ('id', ) + tuple(super().get_list_display(request)) + ('metadata_url', )
@@ -204,14 +201,14 @@ class GlobalAdmin(admin.ModelAdmin):
     search_fields = ('object_uid', )
 
     def entity_url(self, obj):
-        from django.core.urlresolvers import reverse
-        pattern = 'admin:{app_label}_{model}_change'.format(
-            app_label=obj.content_type.app_label, model=obj.content_type.model)
         try:
+            from django.core.urlresolvers import reverse
+            pattern = 'admin:{app_label}_{model}_change'.format(
+                app_label=obj.content_type.app_label, model=obj.content_type.model)
             url = reverse(pattern, args=(obj.object_id, ))
             return format_html('<a href="{url}">{label}</a>', url=url, label=str(obj.entity))
         except:
-            return str(obj.entity)
+            return str(obj.entity or '')
     entity_url.short_description = _("Entité")
     entity_url.admin_order_field = 'entity'
 
@@ -327,13 +324,13 @@ class HistoryAdmin(admin.ModelAdmin):
         import html
         object_str = html.escape(obj.object_str)
         if obj.status != History.DELETE:
-            from django.core.urlresolvers import reverse
-            pattern = 'admin:{app_label}_{model}_change'.format(
-                app_label=obj.content_type.app_label, model=obj.content_type.model)
             try:
+                from django.core.urlresolvers import reverse
+                pattern = 'admin:{app_label}_{model}_change'.format(
+                    app_label=obj.content_type.app_label, model=obj.content_type.model)
                 url = reverse(pattern, args=(obj.object_id, ))
                 return format_html('<a href="{url}">{label}</a>', url=url, label=object_str)
-            except NoReverseMatch:
+            except:
                 pass
         return object_str
     entity_url.short_description = _("Entité")

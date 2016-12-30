@@ -658,6 +658,22 @@ class HistoryCommon(CommonModel):
         abstract = True
 
 
+class CustomGenericForeignKey(GenericForeignKey):
+    """
+    Surcharge de la GenericForeignKey qui ne vide pas les propriétés de la clé si l'instance n'existe pas
+    """
+
+    def __set__(self, instance, value):
+        ct = getattr(instance, self.ct_field, None)
+        fk = getattr(instance, self.fk_field, None)
+        if value is not None:
+            ct = self.get_content_type(obj=value)
+            fk = value._get_pk_val()
+        setattr(instance, self.ct_field, ct)
+        setattr(instance, self.fk_field, fk)
+        setattr(instance, self.cache_attr, value)
+
+
 class History(HistoryCommon):
     """
     Entité d'historique
@@ -694,7 +710,7 @@ class History(HistoryCommon):
     object_str = models.TextField(editable=False, verbose_name=_("entité"))
     reason = models.TextField(blank=True, null=True, editable=False, verbose_name=_("motif"))
     admin = models.BooleanField(default=False, editable=False, verbose_name=_("admin"))
-    entity = GenericForeignKey()
+    entity = CustomGenericForeignKey()
 
     def __str__(self):  # pragma: no cover
         return _("[{status}] {content_type} #{object_id}").format(
@@ -863,6 +879,13 @@ class EntityQuerySet(CommonQuerySet):
     QuerySet des entités
     """
 
+    # Propriétés liées à l'historisation
+    _ignore_log = False
+    _current_user = None
+    _reason = None
+    _from_admin = False
+    _force_default = False
+
     def delete(self, _ignore_log=None, _current_user=None, _reason=None, _force_default=None):
         """
         Surcharge de la suppression des entités du QuerySet
@@ -871,7 +894,7 @@ class EntityQuerySet(CommonQuerySet):
         :param _reason: Raison de la suppression
         :param _force_default: Force la suppression directe ?
         """
-        if _force_default:
+        if _force_default or self._force_default:
             return super().delete()
 
         assert self.query.can_filter(), _("Cannot use 'limit' or 'offset' with delete.")
@@ -880,9 +903,10 @@ class EntityQuerySet(CommonQuerySet):
 
         del_query = self._clone()
         for element in del_query:
-            element._ignore_log = _ignore_log
-            element._current_user = _current_user
-            element._reason = _reason
+            element._ignore_log = _ignore_log or self._ignore_log
+            element._current_user = _current_user or self._current_user
+            element._reason = _reason or self._reason
+            element._from_admin = self._from_admin
 
         del_query._for_write = True
         del_query.query.select_for_update = False
@@ -943,7 +967,6 @@ class Entity(CommonModel):
     creation_date = models.DateTimeField(auto_now_add=True, verbose_name=_("date de création"))
     modification_date = models.DateTimeField(auto_now=True, verbose_name=_("date de modification"))
     globals = GenericRelation(Global)
-    history = GenericRelation(History)
     objects = EntityQuerySet.as_manager()
 
     # Propriétés liées à l'historisation
@@ -1415,7 +1438,7 @@ def log_save(instance, created):
     if not diff:
         return
     # Sauvegarde l'historique de création ou de modification
-    history = History(
+    history = History.objects.create(
         user=user,
         status=History.RESTORE if instance._restore else [History.UPDATE, History.CREATE][created],
         content_type=instance.model_type,
@@ -1425,23 +1448,21 @@ def log_save(instance, created):
         reason=instance._reason,
         data=old_data,
         admin=instance._from_admin)
-    history.save()
     instance._history = history
     # Sauvegarde les champs modifiés
-    if history.status not in (History.UPDATE, History.RESTORE):
+    if history.status != History.UPDATE:
         return
     for key in new_data:
         old_value = old_data.get(key, None)
         new_value = new_data.get(key, None)
         if old_value == new_value:
             continue
-        field = HistoryField(
+        HistoryField.objects.create(
             history=history,
             field_name=key,
             old_value=str(old_value) if old_value is not None else None,
             new_value=str(new_value) if new_value is not None else None,
             data=old_value)
-        field.save()
     logger.debug("Create/update log saved for entity {} #{} ({})".format(
         instance._meta.object_name, instance.id, instance.uuid))
 
@@ -1504,7 +1525,7 @@ def log_m2m(instance, model, status_m2m):
         # Sauvegarde de l'historique si ce n'est pas déjà fait
         history = instance._history
         if not history:
-            history = History(
+            history = History.objects.create(
                 user=user,
                 status=History.M2M,
                 content_type=instance.model_type,
@@ -1514,18 +1535,16 @@ def log_m2m(instance, model, status_m2m):
                 reason=instance._reason,
                 data=None,
                 admin=instance._from_admin)
-            history.save()
             instance._history = history
         # Sauvegarde la relation modifiée
         labels = {e.id: str(e) for e in model.objects.filter(id__in=set(old_value + new_value))}
-        field = HistoryField(
+        field = HistoryField.objects.create(
             history=history,
             field_name=field,
             old_value=' | '.join(labels[id] for id in old_value if id in labels) if old_value is not None else None,
             new_value=' | '.join(labels[id] for id in new_value if id in labels) if new_value is not None else None,
             data=old_value,
             status_m2m=status_m2m)
-        field.save()
         logger.debug("Many-to-many log saved for field '{}' in entity {} #{} ({})".format(
             field, instance._meta.object_name, instance.id, instance.uuid))
 
@@ -1564,7 +1583,7 @@ def log_delete(instance):
         user = None
     data = instance.to_dict()
     # Sauvegarde de l'historique de suppression
-    history = History(
+    history = History.objects.create(
         user=user,
         status=History.DELETE,
         content_type=instance.model_type,
@@ -1574,7 +1593,6 @@ def log_delete(instance):
         reason=instance._reason,
         data=data,
         admin=instance._from_admin)
-    history.save()
     instance._history = history
     logger.debug("Delete log saved for entity {} #{} ({})".format(
         instance._meta.object_name, instance.id, instance.uuid))
