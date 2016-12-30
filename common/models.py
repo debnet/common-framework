@@ -4,6 +4,8 @@ import pickle
 import time
 import uuid
 
+from django.contrib.auth import get_user_model
+from django.contrib.auth.models import AbstractBaseUser, Group
 from django.contrib.contenttypes.fields import GenericForeignKey, GenericRelation
 from django.contrib.contenttypes.models import ContentType
 from django.core import serializers
@@ -1671,11 +1673,12 @@ def create_token_and_metadata(sender, instance=None, created=False, **kwargs):
     Génération du jeton d'authentification pour Django REST Framework
     """
     if created:
-        from django.contrib.auth import get_user_model
-        from django.contrib.auth.models import Group
         if issubclass(sender, get_user_model()):
-            from rest_framework.authtoken.models import Token
-            Token.objects.create(user=instance)
+            try:
+                from rest_framework.authtoken.models import Token
+                Token.objects.create(user=instance)
+            except (AttributeError, ImportError):
+                logger.warning("Unable to create API Token, are django-rest-framework with authtoken installed?")
             UserMetaData.objects.create(user=instance, data={})
         elif issubclass(sender, Group):
             GroupMetaData.objects.create(group=instance, data={})
@@ -1687,6 +1690,25 @@ class UserMetaData(CommonModel):
     """
     user = models.OneToOneField(settings.AUTH_USER_MODEL, verbose_name=_("utilisateur"), related_name='metadatas')
     data = JsonField(blank=True, null=True, verbose_name=_("données"))
+
+    @staticmethod
+    def set(user, **data):
+        meta = UserMetaData.objects.get(user=user)
+        meta.data.update(**data)
+        meta.save()
+        return meta.data
+
+    @staticmethod
+    def get(user, key=None):
+        meta = UserMetaData.objects.get(user=user)
+        return meta.data if key is None else meta.data.get(key)
+
+    @staticmethod
+    def remove(user, key):
+        meta = UserMetaData.objects.get(user=user)
+        meta.data.pop(key, None)
+        meta.save()
+        return meta.data
 
     def __str__(self):
         return str(self.user)
@@ -1702,6 +1724,25 @@ class GroupMetaData(CommonModel):
     """
     group = models.OneToOneField('auth.Group', verbose_name=_("groupe"), related_name='metadatas')
     data = JsonField(blank=True, null=True, verbose_name=_("données"))
+
+    @staticmethod
+    def set(group, **data):
+        meta = GroupMetaData.objects.get(group=group)
+        meta.data.update(**data)
+        meta.save()
+        return meta.data
+
+    @staticmethod
+    def get(group, key=None):
+        meta = GroupMetaData.objects.get(group=group)
+        return meta.data if key is None else meta.data.get(key)
+
+    @staticmethod
+    def remove(group, key):
+        meta = GroupMetaData.objects.get(group=group)
+        meta.data.pop(key, None)
+        meta.save()
+        return meta.data
 
     def __str__(self):
         return str(self.group)
@@ -1731,6 +1772,15 @@ class ServiceUsage(CommonModel):
         unique_together = ('name', 'user')
 
 
+# Patching User and Group for handling MetaData
+setattr(AbstractBaseUser, 'set_metadata', lambda self, **metas: UserMetaData.set(self, **metas))
+setattr(AbstractBaseUser, 'get_metadata', lambda self, key=None: UserMetaData.get(self, key=key))
+setattr(AbstractBaseUser, 'del_metadata', lambda self, key: UserMetaData.remove(self, key))
+setattr(Group, 'set_metadata', lambda self, **metas: GroupMetaData.set(self, **metas))
+setattr(Group, 'get_metadata', lambda self, key=None: GroupMetaData.get(self, key=key))
+setattr(Group, 'del_metadata', lambda self, key: GroupMetaData.remove(self, key))
+
+# Common models
 MODELS = [
     Global,
     MetaData,
