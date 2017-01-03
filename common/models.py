@@ -17,6 +17,7 @@ from django.db.models import Q, query
 from django.db.models.deletion import Collector
 from django.db.models.signals import m2m_changed, post_delete, post_init, post_save, pre_save
 from django.dispatch import receiver
+from django.forms.models import model_to_dict
 from django.utils.timezone import now
 from django.utils.translation import ugettext_lazy as _
 from rest_framework.renderers import JSONRenderer
@@ -33,7 +34,7 @@ except ImportError:
 
 from common.fields import JsonField, PickleField, json_encode
 from common.settings import settings
-from common.utils import get_current_app, to_object
+from common.utils import get_current_app
 
 
 # Logging
@@ -392,7 +393,8 @@ class CommonModel(models.Model):
         """
         return MetaData.remove(self, key=key, logic=logic, date=date, queryset=self.metadatas)
 
-    def to_dict(self, includes=None, excludes=None, editables=False, uids=False, metadatas=False, names=False,
+    def to_dict(self, includes=None, excludes=None,
+                editables=False, uids=False, metadatas=False, names=False, types=False,
                 display=False, fks=False, m2m=False, no_ids=False, functions=None, extra=None, raw=False, **kwargs):
         """
         Retourne la représentation d'une entité sous forme de dictionnaire
@@ -401,7 +403,8 @@ class CommonModel(models.Model):
         :param editables: Inclure les valeurs des attributs non éditables ?
         :param uids: Inclure les identifiants uniques de toutes les entités liées ?
         :param metadatas: Inclure les métadonnées ?
-        :param names: Inclure les données techniques de l'entité ?
+        :param names: Inclure les informations textuelles du modèle ?
+        :param types: Inclure le type d'entité ?
         :param display: Inclure le libellé de l'attribut s'il existe ?
         :param fks: Inclure les éléments liés via les clés étrangères ?
         :param m2m: Inclure les identifiants des relations ManyToMany liées ?
@@ -413,22 +416,27 @@ class CommonModel(models.Model):
         :param raw: Ne pas chercher à retourner des valeurs serialisables ?
         :return: Dictionnaire
         """
-        from django.forms import model_to_dict
-        keywords = dict(fks=fks, m2m=m2m, no_ids=no_ids, editables=editables,
-                        uids=uids, metadatas=metadatas, names=names, display=display)
+        keywords = dict(editables=editables, uids=uids, metadatas=metadatas,
+                        names=names, types=types, display=display, fks=fks, m2m=m2m, no_ids=no_ids)
         keywords.update(kwargs)
         from django.db.models.fields.related import ManyToManyField
         meta = self._meta
-        data = {}
+        data = dict()
         # Données textuelles de l'entité (nom, modèle, représentation, etc...)
         if names:
-            data.update(dict(
-                _object_name=meta.object_name,
-                _model_name=meta.model_name,
-                _app_label=meta.app_label,
-                _verbose_name=str(meta.verbose_name) if meta.verbose_name else None,
-                _verbose_name_plural=str(meta.verbose_name_plural) if meta.verbose_name_plural else None),
-                _name=str(self))
+            data.update(
+                _label=str(self),
+                _model=dict(
+                    object_name=meta.object_name,
+                    model_name=meta.model_name,
+                    app_label=meta.app_label,
+                    verbose_name=str(meta.verbose_name) if meta.verbose_name else None,
+                    verbose_name_plural=str(meta.verbose_name_plural) if meta.verbose_name_plural else None))
+        # Type de l'entité
+        if types:
+            data_type = model_to_dict(get_content_type(self))
+            data_type.pop('_state', None)  # Non serialisable
+            data.update(_content_type=data_type)
         deferred_fields = self.get_deferred_fields()
         for field in meta.concrete_fields + meta.many_to_many:
             # Ignore les champs chargés en différé pour éviter une boucle de récursion dans to_dict()
@@ -461,6 +469,8 @@ class CommonModel(models.Model):
                             data[field.name] = [v.to_dict(**keywords) for v in value]
                         else:
                             data[field.name] = [model_to_dict(v) for v in value]
+                            for item in data[field.name]:
+                                item.pop('_state', None)  # Non serialisable
                     # GUIDs (uniquement entités)
                     if uids and isinstance(related, Entity):
                         data[field.name + '_uids'] = [v.uuid for v in value]
@@ -494,6 +504,7 @@ class CommonModel(models.Model):
                                 data[field.name] = fk.to_dict(**keywords)
                             else:
                                 data[field.name] = model_to_dict(fk)
+                                data[field.name].pop('_state', None)  # Non serialisable
                         # GUID (uniquement entité)
                         if uids and isinstance(fk, Entity):
                             data[field.name + '_uid'] = fk.uuid
@@ -645,7 +656,7 @@ class CommonModel(models.Model):
         Représentation de l'instance sous forme de dictionnaire pour sérialisation JSON
         :return: dict
         """
-        data = get_data_from_object(self) or {}
+        data = self.to_dict(types=True)
         data.update(_copy=self._copy, _copy_m2m=self._copy_m2m)
         return data
 
@@ -1109,19 +1120,6 @@ class Entity(CommonModel):
                     _reason=self._reason, _from_admin=self._from_admin, _restore=self._restore,
                     _ignore_log=self._ignore_log, _force_default=self._force_default)
         return data
-
-    @staticmethod
-    def from_json(json):
-        """
-        Permet de construire une instance d'un modèle quelconque à partir de sa représentation JSON
-        :param json: Dictionnaire de données
-        :return: Instance si possible
-        """
-        instance = CommonModel.from_json(json)
-        if instance:
-            return instance
-
-        return None
 
     @staticmethod
     def from_uuid(uuid):
@@ -1675,8 +1673,6 @@ def notify_changes(instance, status, status_m2m=None):
     :param status_m2m: Sous-statut concernant un changement sur les champs many-to-many
     :return: Rien
     """
-    from django.forms.models import model_to_dict
-
     # Différences de données entre la version précédente et la version actuelle
     diff_data_prev, diff_data_next = None, None
     if status in [History.UPDATE, History.RESTORE]:
@@ -1844,53 +1840,52 @@ class ServiceUsage(CommonModel):
         unique_together = ('name', 'user')
 
 
-def get_object_from_data(data, build=False):
+def get_object_from_data(data, from_db=False):
     """
     Permet de construire une instance d'un modèle quelconque à partir de sa représentation JSON
     :param data: Dictionnaire de données
-    :param build: Construire l'objet à partir des données même si l'instance n'existe pas ?
+    :param from_db: Récupérer l'instance depuis la base de données ?
     :return: Instance (si possible)
     """
-    if isinstance(data, models.Model):
+    model = None
+    if not isinstance(data, dict):
         return data
-    if isinstance(data, str):
-        from common.utils import json_decode
-        data = json_decode(data)
-    if '_type' in data and 'id' in data:
-        data_type = data['type']
-        content_type = ContentType.objects.filter(app_label=data_type['app_label'], model=data_type['model']).first()
-        if content_type:
-            instance = content_type.model_class().objects.filter(id=data['id']).first()
-            if instance:
-                return instance
-    if 'uuid' in data:
-        instance = Entity.from_uuid(data['uuid'])
-        if instance:
-            return instance
-    return to_object(data, name=data.get('_object_name')) if build else None
+    if from_db and 'uuid' in data:
+        return Entity.from_uuid(data['uuid'])
+    if '_content_type' in data:
+        content_type = ContentType(**data.pop('_content_type'))
+        model = content_type.model_class()
+        if from_db and 'id' in data:
+            return model.objects.filter(id=data['id']).first()
+    if model:
+        instance = model()
+        for key, value in data.items():
+            setattr(instance, key, get_object_from_data(value))
+        return instance
+    return None
 
 
-def get_data_from_object(instance, content_type=True):
+def get_data_from_object(instance, types=True, **options):
     """
     Tente d'extraire les données de l'instance d'un modèle
     :param instance: Instance
-    :param content_type: Ajouter le ContentType du modèle ?
+    :param types: Ajouter le type du modèle ?
+    :param options: Options complémentaires de la méthode .to_dict()
     :return: Dictionnaire de données (si possible)
     """
     data = {}
     if not instance:
         return None
     elif hasattr(instance, 'to_dict'):
-        data = instance.to_dict(editables=True)
+        data = instance.to_dict(types=types, **options)
     elif isinstance(instance, models.Model):
-        from django.forms.models import model_to_dict
         data = model_to_dict(instance)
         data.pop('_state', None)  # Donnée non serialisable
+        if types:
+            content_type = ContentType.objects.get_for_model(instance)
+            data.update(_content_type=get_data_from_object(content_type, types=False))
     elif hasattr(instance, '__dict__'):
         data = instance.__dict__
-    if content_type:
-        content_type = ContentType.objects.get_for_model(instance)
-        data.update(_type=get_data_from_object(content_type, content_type=False))
     return data
 
 
