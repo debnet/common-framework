@@ -17,8 +17,6 @@ from itertools import chain, product
 from uuid import uuid4
 
 from django.conf import settings
-from django.contrib.contenttypes.fields import GenericForeignKey
-from django.contrib.contenttypes.models import ContentType
 from django.core.files import temp
 from django.core.files.uploadedfile import TemporaryUploadedFile
 from django.core.files.uploadhandler import TemporaryFileUploadHandler
@@ -73,8 +71,8 @@ def get_current_app():
     """
     try:
         assert getattr(settings, 'ENABLE_CELERY', True)
-        from celery.app import current_app
-        return current_app()
+        from celery import current_app
+        return current_app
     except (AssertionError, ImportError):
         return CeleryFake()
 
@@ -706,6 +704,9 @@ def prefetch_generics(weak_queryset):
     :param weak_queryset: QuerySet d'origine
     :return: QuerySet avec prefetch
     """
+    from django.contrib.contenttypes.fields import GenericForeignKey
+    from django.contrib.contenttypes.models import ContentType
+
     weak_queryset = weak_queryset.select_related()
 
     gfks = {}
@@ -751,17 +752,16 @@ def prefetch_generics(weak_queryset):
     return weak_queryset
 
 
-# Valeurs considérées comme vraies ou fausses
-TRUE_VALUES = {'true', 'yes', 'y', '1', _('vrai'), _('oui'), _('o'), _('v')}
-FALSE_VALUES = {'false', 'no', 'n', '0', _('faux'), _('non'), _('n'), _('f')}
-
-
 def str_to_bool(value):
     """
     Permet de renvoyer le booleen correspondant à la valeur entrée en paramètre
     :param value: valeur à analyser
     :return: le booleen correspondant ou None si aucune correspondance
     """
+    # Valeurs considérées comme vraies ou fausses (déclarées dans la fonction à cause du moteur i18n)
+    TRUE_VALUES = {'true', 'yes', 'y', '1', _('vrai'), _('oui'), _('o'), _('v')}
+    FALSE_VALUES = {'false', 'no', 'n', '0', _('faux'), _('non'), _('n'), _('f')}
+
     if value is True or value is False:
         return value
     if value is None or str(value).lower() not in TRUE_VALUES | FALSE_VALUES:
@@ -1064,6 +1064,11 @@ class JsonEncoder(JSONEncoder):
         return super().default(obj)
 
 
-# JSON (de-)serialization
-json_encode = lambda data, **options: json.dumps(data, cls=JsonEncoder, **options)
-json_decode = lambda data, **options: json.loads(data, parse_float=decimal, encoding=settings.DEFAULT_CHARSET, **options)
+# JSON serialization
+def json_encode(data, **options):
+    return json.dumps(data, cls=JsonEncoder, **options)
+
+
+# JSON deserialization
+def json_decode(data, **options):
+    return json.loads(data, parse_float=decimal, encoding=settings.DEFAULT_CHARSET, **options)

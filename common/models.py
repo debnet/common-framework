@@ -33,14 +33,14 @@ except ImportError:
 
 from common.fields import JsonField, PickleField, json_encode
 from common.settings import settings
-from common.utils import get_current_app
+from common.utils import get_current_app, to_object
 
-
-# Celery
-app = get_current_app()
 
 # Logging
 logger = logging.getLogger(__name__)
+
+# Celery
+app = get_current_app()
 
 
 ENTITY_FIELDS = ('uuid', 'creation_date', 'modification_date', )
@@ -306,6 +306,13 @@ class CommonQuerySet(models.QuerySet):
         :return: Liste de dictionnaires
         """
         return [e.to_dict(*args, **kwargs) if isinstance(e, CommonModel) else e for e in self]
+
+    def __json__(self):
+        """
+        Représentation de l'instance sous forme de dictionnaire pour sérialisation JSON
+        :return: dict
+        """
+        return [item.__json__() for item in self]
 
 
 class CommonModel(models.Model):
@@ -633,6 +640,15 @@ class CommonModel(models.Model):
             cache.set(key, result, timeout=3600)
         return result
 
+    def __json__(self):
+        """
+        Représentation de l'instance sous forme de dictionnaire pour sérialisation JSON
+        :return: dict
+        """
+        data = get_data_from_object(self) or {}
+        data.update(_copy=self._copy, _copy_m2m=self._copy_m2m)
+        return data
+
     class Meta:
         abstract = True
 
@@ -926,6 +942,7 @@ class EntityQuerySet(CommonQuerySet):
         :param _ignore_log: Ignorer l'historique de création ?
         :param _current_user: Utilisateur à l'origine de la création
         :param _reason: Raison de la création
+        :param _force_default: Force la suppression directe ?
         """
         if _force_default:
             return super().create(**kwargs)
@@ -1081,6 +1098,42 @@ class Entity(CommonModel):
         )
         ids = uniques.values_list('object_id', flat=True)
         setattr(self, m2m_field, ids)
+
+    def __json__(self):
+        """
+        Représentation de l'instance sous forme de dictionnaire pour sérialisation JSON
+        :return: dict
+        """
+        data = super().__json__()
+        data.update(_current_user=get_data_from_object(self._current_user),
+                    _reason=self._reason, _from_admin=self._from_admin, _restore=self._restore,
+                    _ignore_log=self._ignore_log, _force_default=self._force_default)
+        return data
+
+    @staticmethod
+    def from_json(json):
+        """
+        Permet de construire une instance d'un modèle quelconque à partir de sa représentation JSON
+        :param json: Dictionnaire de données
+        :return: Instance si possible
+        """
+        instance = CommonModel.from_json(json)
+        if instance:
+            return instance
+
+        return None
+
+    @staticmethod
+    def from_uuid(uuid):
+        """
+        Permet de récupérer une instance d'entité à partir de son UUID
+        :param uuid: UUID
+        :return: Instance
+        """
+        reference = Global.objects.filter(object_uid=uuid).first()
+        if reference:
+            return reference.entity
+        return None
 
     class Meta:
         abstract = True
@@ -1508,6 +1561,7 @@ def log_m2m(instance, model, status_m2m):
     :param status: Statut de modification de la relation
     :return: Rien
     """
+    # Sauvegarde la mise à jour de relations M2M de l'entité
     if settings.IGNORE_LOG or instance._ignore_log:
         return
     user = instance._current_user
@@ -1788,6 +1842,56 @@ class ServiceUsage(CommonModel):
         verbose_name = _("utilisation de service")
         verbose_name_plural = _("utilisation des services")
         unique_together = ('name', 'user')
+
+
+def get_object_from_data(data, build=False):
+    """
+    Permet de construire une instance d'un modèle quelconque à partir de sa représentation JSON
+    :param data: Dictionnaire de données
+    :param build: Construire l'objet à partir des données même si l'instance n'existe pas ?
+    :return: Instance (si possible)
+    """
+    if isinstance(data, models.Model):
+        return data
+    if isinstance(data, str):
+        from common.utils import json_decode
+        data = json_decode(data)
+    if '_type' in data and 'id' in data:
+        data_type = data['type']
+        content_type = ContentType.objects.filter(app_label=data_type['app_label'], model=data_type['model']).first()
+        if content_type:
+            instance = content_type.model_class().objects.filter(id=data['id']).first()
+            if instance:
+                return instance
+    if 'uuid' in data:
+        instance = Entity.from_uuid(data['uuid'])
+        if instance:
+            return instance
+    return to_object(data, name=data.get('_object_name')) if build else None
+
+
+def get_data_from_object(instance, content_type=True):
+    """
+    Tente d'extraire les données de l'instance d'un modèle
+    :param instance: Instance
+    :param content_type: Ajouter le ContentType du modèle ?
+    :return: Dictionnaire de données (si possible)
+    """
+    data = {}
+    if not instance:
+        return None
+    elif hasattr(instance, 'to_dict'):
+        data = instance.to_dict(editables=True)
+    elif isinstance(instance, models.Model):
+        from django.forms.models import model_to_dict
+        data = model_to_dict(instance)
+        data.pop('_state', None)  # Donnée non serialisable
+    elif hasattr(instance, '__dict__'):
+        data = instance.__dict__
+    if content_type:
+        content_type = ContentType.objects.get_for_model(instance)
+        data.update(_type=get_data_from_object(content_type, content_type=False))
+    return data
 
 
 # Patching User and Group for handling MetaData
