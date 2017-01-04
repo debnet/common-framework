@@ -70,11 +70,14 @@ class CustomHyperlinkedField:
         if hasattr(obj, 'pk') and obj.pk in (None, ''):
             return None
 
-        # Tente de récupérer l'URL dans les APIs qui correspond exactement au modèle ciblé
         try:
+            # Récupération du modèle de la clé étrangère via le modèle du Serializer parent
             model = self.parent.Meta.model._meta.get_field(self.field_name).rel.to
         except:
+            # Récupération du modèle lié au QuerySet
             model = getattr(getattr(self, 'queryset', None), 'model', None) or type(obj)
+
+        # Tente de récupérer l'URL dans les APIs qui correspondent exactement au modèle ciblé
         urls = self.urls_for_model[model] = self.urls_for_model.get(model) or list(recursive_get_urls(model=model))
         for urlname, url in urls:
             if urlname.endswith(view_name):
