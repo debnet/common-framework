@@ -351,6 +351,33 @@ class CommonModel(models.Model):
                 raise ValidationError(self.unique_error_message(model, fields))
         super().validate_unique(exclude)
 
+    def update(self, exclude=None):
+        """
+        Permet de mettre à jour un enregistrement existant à partir des données d'une instance
+        :param exclude: Champs à exclure de la modification
+        :return: Nombre d'enregistrements modifiés
+        """
+        exclude = exclude or []
+        non_unique_fields = set()
+        unique_fields = set()
+        model = type(self)
+        for unique_together in model._meta.unique_together:
+            unique_fields.update(unique_together)
+        for field in model._meta.fields:
+            if field.auto_created or not field.editable or field.name in exclude:
+                continue
+            if field.unique:
+                unique_fields.add(field.name)
+            else:
+                non_unique_fields.add(field.name)
+        assert unique_fields, _("Unable to update an instance which have no unique fields.")
+        queryset = model.objects.filter(**{field: getattr(self, field, None) for field in unique_fields})
+        count = queryset.update(**{field: getattr(self, field, None) for field in non_unique_fields})
+        if count:
+            self.pk = queryset.first().pk
+            self.refresh_from_db()
+        return count
+
     def get_metadata(self, key=None, valid=True, raw=False):
         """
         Permet de récupérer une valeur de métadonnée à partir de sa clé

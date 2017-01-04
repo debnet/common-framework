@@ -71,7 +71,10 @@ class CustomHyperlinkedField:
             return None
 
         # Tente de récupérer l'URL dans les APIs qui correspond exactement au modèle ciblé
-        model = getattr(getattr(self, 'queryset', None), 'model', None) or type(obj)
+        try:
+            model = self.parent.Meta.model._meta.get_field(self.field_name).rel.to
+        except:
+            model = getattr(getattr(self, 'queryset', None), 'model', None) or type(obj)
         urls = self.urls_for_model[model] = self.urls_for_model.get(model) or list(recursive_get_urls(model=model))
         for urlname, url in urls:
             if urlname.endswith(view_name):
