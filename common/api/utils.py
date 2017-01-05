@@ -192,7 +192,6 @@ def create_model_serializer_and_viewset(
     :param viewset_data: Données complémentaires à ajouter dans le viewset (dictionnaire organisé par modèle)
     :param permissions: Permissions à vérifier dans le viewset
     :param queryset: Surcharge du queryset dans le viewset
-    :param permissions: Permissions à vérifier dans le viewset
     :param metas: Metadonnées des serializers dépendants (dictionnaire organisé par modèle)
     :param exclude_related: Nom des relations inversées à exclure
     :param depth: Profondeur de récupération des modèles dépendants
