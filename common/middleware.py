@@ -135,7 +135,7 @@ class ServiceUsageMiddleware:
             if request.resolver_match and hasattr(request, 'user') and request.user.is_authenticated() and \
                     response.status_code in range(200, 300):
                 usage, created = ServiceUsage.objects.get_or_create(
-                    name=request.resolver_match,
+                    name=getattr(request.resolver_match, 'view_name', request.resolver_match),
                     user=request.user)
                 usage.count += 1
                 usage.address = get_ip(request)
