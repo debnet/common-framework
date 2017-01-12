@@ -1,4 +1,5 @@
 # coding: utf-8
+from django.core.exceptions import FieldDoesNotExist
 from django.db.models.query import EmptyResultSet, QuerySet
 from rest_framework import serializers
 from rest_framework import viewsets
@@ -70,7 +71,11 @@ class CommonModelViewSet(viewsets.ModelViewSet):
         if not isinstance(queryset, QuerySet):
             from rest_framework.response import Response
             return Response(queryset)
-        return super().list(request, *args, **kwargs)
+        try:
+            return super().list(request, *args, **kwargs)
+        except FieldDoesNotExist as e:
+            self.queryset_error = e
+            raise ValidationError("fields: {}".format(e))
 
     def paginate_queryset(self, queryset):
         # Aucune pagination si toutes les données sont demandées ou qu'il ne s'agit pas d'un QuerySet
@@ -79,157 +84,166 @@ class CommonModelViewSet(viewsets.ModelViewSet):
         return super().paginate_queryset(queryset)
 
     def get_queryset(self):
-        queryset = super().get_queryset()
-        if not isinstance(queryset, QuerySet):
-            return queryset
+        # Evite la ré-évaluation du QuerySet en cas d'erreur
+        if getattr(self, 'queryset_error', False):
+            return
 
-        options = dict(filters=None, order_by=None, distinct=None, aggregates=None)
-        url_params = self.request.query_params.dict()
+        try:
+            # Détournement en cas d'aggregation sans annotation ou de non QuerySet
+            queryset = super().get_queryset()
+            if not isinstance(queryset, QuerySet):
+                return queryset
 
-        # Mots-clés réservés dans les URLs
-        reserved_query_params = RESERVED_QUERY_PARAMS + [
-            self.paginator.page_query_param, self.paginator.page_size_query_param] if self.paginator else []
+            options = dict(filters=None, order_by=None, distinct=None, aggregates=None)
+            url_params = self.request.query_params.dict()
 
-        # Erreurs silencieuses
-        silent = str_to_bool(url_params.get('silent', None))
+            # Mots-clés réservés dans les URLs
+            reserved_query_params = RESERVED_QUERY_PARAMS + [
+                self.paginator.page_query_param, self.paginator.page_size_query_param] if self.paginator else []
 
-        # Requête simplifiée
-        fields = url_params.get('fields', '').replace('.', '__')
-        if str_to_bool(url_params.get('simple', None)) or fields:
-            queryset = queryset.model.objects.all()
-            # Champs spécifiques
+            # Erreurs silencieuses
+            silent = str_to_bool(url_params.get('silent', None))
+
+            # Requête simplifiée
+            fields = url_params.get('fields', '').replace('.', '__')
+            if str_to_bool(url_params.get('simple', None)) or fields:
+                queryset = queryset.model.objects.all()
+                # Champs spécifiques
+                try:
+                    relateds = set()
+                    field_names = set()
+                    for field in fields.split(','):
+                        if not field:
+                            continue
+                        field_names.add(field)
+                        *related, field_name = field.split('__')
+                        if related:
+                            relateds.add('__'.join(related))
+                    if relateds:
+                        queryset = queryset.select_related(*relateds)
+                    if field_names:
+                        queryset = queryset.only(*field_names)
+                except Exception as error:
+                    if not silent:
+                        raise ValidationError("fields: {}".format(error))
+            else:
+                # Récupération des métadonnées
+                metadatas = str_to_bool(url_params.get('meta', False))
+                if metadatas and hasattr(self, 'metadatas'):
+                    # Permet d'éviter les conflits entre prefetch lookups identiques
+                    viewset_lookups = [
+                        prefetch if isinstance(prefetch, str) else prefetch.prefetch_through
+                        for prefetch in queryset._prefetch_related_lookups]
+                    lookups_metadatas = []
+                    for lookup in self.metadatas or []:
+                        name = lookup if isinstance(lookup, str) else lookup.prefetch_through
+                        if name not in viewset_lookups:
+                            lookups_metadatas.append(lookup)
+                    if lookups_metadatas:
+                        queryset = queryset.prefetch_related(*lookups_metadatas)
+
+            # Filtres (dans une fonction pour être appelé par les aggregations sans group_by)
+            def do_filter(queryset):
+                try:
+                    filters = {}
+                    excludes = {}
+                    for key, value in url_params.items():
+                        if key not in reserved_query_params:
+                            key = key.replace('$', '')  # Dans le cas où un champ du modèle serait un mot-clé réservé
+                            if key.startswith('-'):
+                                excludes[key[1:]] = url_value(key[1:], value)
+                            else:
+                                filters[key] = url_value(key, value)
+                    if filters:
+                        queryset = queryset.filter(**filters)
+                    if excludes:
+                        queryset = queryset.exclude(**excludes)
+                    # Filtres génériques
+                    others = url_params.get('filters', None)
+                    if others:
+                        queryset = queryset.filter(parse_filters(others))
+                    if filters or excludes or others:
+                        options['filters'] = True
+                except Exception as error:
+                    if not silent:
+                        raise ValidationError("filters: {}".format(error))
+                    options['filters'] = False
+                    if settings.DEBUG:
+                        options['filters_error'] = str(error)
+                return queryset
+
+            # Aggregations
             try:
-                relateds = set()
-                field_names = set()
-                for field in fields.split(','):
-                    if not field:
-                        continue
-                    field_names.add(field)
-                    *related, field_name = field.split('__')
-                    if related:
-                        relateds.add('__'.join(related))
-                if relateds:
-                    queryset = queryset.select_related(*relateds)
-                if field_names:
-                    queryset = queryset.only(*field_names)
+                aggregations = {}
+                for aggegate, function in AGGREGATES.items():
+                    for field in url_params.get(aggegate, '').split(','):
+                        if not field:
+                            continue
+                        aggregations[field + '_' + aggegate] = function(field)
+                group_by = url_params.get('group_by', None)
+                if group_by:
+                    _queryset = queryset.values(*group_by.split(','))
+                    if aggregations:
+                        _queryset = _queryset.annotate(**aggregations)
+                    else:
+                        _queryset = _queryset.distinct()
+                    queryset = _queryset
+                    options['aggregates'] = True
+                elif aggregations:
+                    queryset = do_filter(queryset)  # Filtres éventuels
+                    return queryset.aggregate(**aggregations)
             except Exception as error:
                 if not silent:
-                    raise ValidationError("fields: {}".format(error))
-        else:
-            # Récupération des métadonnées
-            metadatas = str_to_bool(url_params.get('meta', False))
-            if metadatas and hasattr(self, 'metadatas'):
-                # Permet d'éviter les conflits entre prefetch lookups identiques
-                viewset_lookups = [
-                    prefetch if isinstance(prefetch, str) else prefetch.prefetch_through
-                    for prefetch in queryset._prefetch_related_lookups]
-                lookups_metadatas = []
-                for lookup in self.metadatas or []:
-                    name = lookup if isinstance(lookup, str) else lookup.prefetch_through
-                    if name not in viewset_lookups:
-                        lookups_metadatas.append(lookup)
-                if lookups_metadatas:
-                    queryset = queryset.prefetch_related(*lookups_metadatas)
-
-        # Filtres (dans une fonction pour être appelé par les aggregations sans group_by)
-        def do_filter(queryset):
-            try:
-                filters = {}
-                excludes = {}
-                for key, value in url_params.items():
-                    if key not in reserved_query_params:
-                        key = key.replace('$', '')  # Dans le cas où un champ du modèle serait un mot-clé réservé
-                        if key.startswith('-'):
-                            excludes[key[1:]] = url_value(key[1:], value)
-                        else:
-                            filters[key] = url_value(key, value)
-                if filters:
-                    queryset = queryset.filter(**filters)
-                if excludes:
-                    queryset = queryset.exclude(**excludes)
-                # Filtres génériques
-                others = url_params.get('filters', None)
-                if others:
-                    queryset = queryset.filter(parse_filters(others))
-                if filters or excludes or others:
-                    options['filters'] = True
-            except Exception as error:
-                if not silent:
-                    raise ValidationError("filters: {}".format(error))
-                options['filters'] = False
+                    raise ValidationError("aggregates: {}".format(error))
+                options['aggregates'] = False
                 if settings.DEBUG:
-                    options['filters_error'] = str(error)
+                    options['aggregates_error'] = str(error)
+
+            # Filtres
+            queryset = do_filter(queryset)
+
+            # Tris
+            try:
+                order_by = url_params.get('order_by', None)
+                if order_by:
+                    _queryset = queryset.order_by(*order_by.split(','))
+                    str(_queryset.query)  # Force SQL evaluation to retrieve exception
+                    queryset = _queryset
+                    options['order_by'] = True
+            except EmptyResultSet:
+                pass
+            except Exception as error:
+                if not silent:
+                    raise ValidationError("order_by: {}".format(error))
+                options['order_by'] = False
+                if settings.DEBUG:
+                    options['order_by_error'] = str(error)
+
+            # Distinct
+            try:
+                distinct = url_params.get('distinct', None)
+                if distinct:
+                    distincts = distinct.split(',')
+                    if str_to_bool(distinct) is not None:
+                        distincts = []
+                    queryset = queryset.distinct(*distincts)
+                    options['distinct'] = True
+            except EmptyResultSet:
+                pass
+            except Exception as error:
+                if not silent:
+                    raise ValidationError("distinct: {}".format(error))
+                options['distinct'] = False
+                if settings.DEBUG:
+                    options['distinct_error'] = str(error)
+
+            # Ajout des options de filtres/tris dans la pagination
+            if self.paginator and hasattr(self.paginator, 'additional_data'):
+                self.paginator.additional_data = dict(options=options)
             return queryset
-
-        # Aggregations
-        try:
-            aggregations = {}
-            for aggegate, function in AGGREGATES.items():
-                for field in url_params.get(aggegate, '').split(','):
-                    if not field:
-                        continue
-                    aggregations[field + '_' + aggegate] = function(field)
-            group_by = url_params.get('group_by', None)
-            if group_by:
-                _queryset = queryset.values(*group_by.split(','))
-                if aggregations:
-                    _queryset = _queryset.annotate(**aggregations)
-                else:
-                    _queryset = _queryset.distinct()
-                queryset = _queryset
-                options['aggregates'] = True
-            elif aggregations:
-                queryset = do_filter(queryset)  # Filtres éventuels
-                return queryset.aggregate(**aggregations)
-        except Exception as error:
-            if not silent:
-                raise ValidationError("aggregates: {}".format(error))
-            options['aggregates'] = False
-            if settings.DEBUG:
-                options['aggregates_error'] = str(error)
-
-        # Filtres
-        queryset = do_filter(queryset)
-
-        # Tris
-        try:
-            order_by = url_params.get('order_by', None)
-            if order_by:
-                _queryset = queryset.order_by(*order_by.split(','))
-                str(_queryset.query)  # Force SQL evaluation to retrieve exception
-                queryset = _queryset
-                options['order_by'] = True
-        except EmptyResultSet:
-            pass
-        except Exception as error:
-            if not silent:
-                raise ValidationError("order_by: {}".format(error))
-            options['order_by'] = False
-            if settings.DEBUG:
-                options['order_by_error'] = str(error)
-
-        # Distinct
-        try:
-            distinct = url_params.get('distinct', None)
-            if distinct:
-                distincts = distinct.split(',')
-                if str_to_bool(distinct) is not None:
-                    distincts = []
-                queryset = queryset.distinct(*distincts)
-                options['distinct'] = True
-        except EmptyResultSet:
-            pass
-        except Exception as error:
-            if not silent:
-                raise ValidationError("distinct: {}".format(error))
-            options['distinct'] = False
-            if settings.DEBUG:
-                options['distinct_error'] = str(error)
-
-        # Ajout des options de filtres/tris dans la pagination
-        if self.paginator and hasattr(self.paginator, 'additional_data'):
-            self.paginator.additional_data = dict(options=options)
-        return queryset
+        except ValidationError as e:
+            self.queryset_error = e
+            raise e
 
 
 class UserViewSet(CommonModelViewSet):

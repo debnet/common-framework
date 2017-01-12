@@ -258,7 +258,7 @@ class JsonHas(Lookup):
             lhs, lhs_params = self.process_lhs(compiler, connection)
             rhs, rhs_params = self.process_rhs(compiler, connection)
             assert len(rhs_params) == 1, _("A string must be provided as argument")
-            assert all(isinstance(e, str) for e in rhs_params), _("Argument must be of type string")
+            # assert all(isinstance(e, str) for e in rhs_params), _("Argument must be of type string")
             params = lhs_params + rhs_params
             return '%s ? %s' % (lhs, rhs), params
         raise NotImplementedError(
@@ -279,7 +279,7 @@ class JsonArrayLookup(Lookup):
             assert len(rhs_params) == 1, _("A list of strings must be provided as argument")
             value, *junk = rhs_params
             rhs = ','.join(['%s'] * len(value))
-            assert isinstance(value, list), _("Lookup argument must be a list of strings")
+            # assert isinstance(value, list), _("Lookup argument must be a list of strings")
             return '%s %s array[%s]' % (lhs, self.lookup_operator, rhs), value
         raise NotImplementedError(
             _("The lookup '{lookup}' is only supported in PostgreSQL").format(
@@ -318,7 +318,7 @@ class JsonDictLookup(Lookup):
             rhs, rhs_params = self.process_rhs(compiler, connection)
             assert len(rhs_params) == 1, _("A dictionary must be provided as argument")
             value, *junk = rhs_params
-            assert isinstance(value, dict), _("Lookup argument must be a dictionary")
+            # assert isinstance(value, dict), _("Lookup argument must be a dictionary")
             return '%s %s %s::jsonb' % (lhs, self.lookup_operator, rhs), [json_encode(value)]
         raise NotImplementedError(
             _("The lookup '{lookup}' is only supported in PostgreSQL").format(

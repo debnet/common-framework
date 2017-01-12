@@ -46,10 +46,10 @@ METADATAS = {}
 
 # Configuration des serializers
 CONFIGS = {
-    Group: dict(depth=1, permissions=[CurrentUserPermissions]),
-    GroupMetaData: dict(depth=1, permissions=[CurrentUserPermissions]),
+    Group: dict(many_to_many=True, depth=1, permissions=[CurrentUserPermissions]),
+    GroupMetaData: dict(permissions=[CurrentUserPermissions]),
     User: dict(many_to_many=True, depth=1, permissions=[CurrentUserPermissions]),
-    UserMetaData: dict(many_to_many=True, depth=1, permissions=[CurrentUserPermissions]),
+    UserMetaData: dict(permissions=[CurrentUserPermissions]),
 }
 
 # Configuration par défaut

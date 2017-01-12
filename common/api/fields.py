@@ -52,6 +52,12 @@ class ReadOnlyObjectField(ReadOnlyField):
     """
 
     def to_representation(self, value):
+        if getattr(value, 'url', None):
+            url = value.url
+            request = self.context.get('request', None)
+            if request is not None:
+                return request.build_absolute_uri(url)
+            return url
         return value.to_dict() if hasattr(value, 'to_dict') else getattr(value, 'id', value)
 
 
