@@ -777,7 +777,7 @@ def decimal(value=None, precision=None, rounding=ROUND_HALF_EVEN, context=None):
     :param rounding: Méthode d'arrondi
     :return: Nombre décimal
     """
-    if value is None:
+    if value is None or value == '':
         return Decimal()
     _value = value
 
