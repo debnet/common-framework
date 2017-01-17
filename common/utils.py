@@ -1070,5 +1070,7 @@ def json_encode(data, **options):
 
 
 # JSON deserialization
-def json_decode(data, **options):
+def json_decode(data, content_encoding='utf-8', **options):
+    if isinstance(data, bytes):
+        data = data.decode(content_encoding)
     return json.loads(data, parse_float=decimal, encoding=settings.DEFAULT_CHARSET, **options)
