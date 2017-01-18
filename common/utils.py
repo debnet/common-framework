@@ -8,6 +8,7 @@ import mimetypes
 import os
 import re
 import threading
+import time
 from contextlib import contextmanager
 from datetime import date, datetime, time
 from decimal import ROUND_HALF_EVEN, Decimal, InvalidOperation
@@ -1018,6 +1019,65 @@ def file_is_text(file):
     is_plaintext = lambda _bytes: not bool(_bytes.translate(None, textchars))
     with open(file, 'rb') as f:
         return is_plaintext(f.read(1024))
+
+
+def seek_end(file, count=1):
+    """
+    Récupère un nombre défini d'octets à la fin d'un fichier
+    :param file: Chemin vers le fichier
+    :param count: Nombre d'octets à récupérer
+    :return: Bytes
+    """
+    try:
+        with open(file, 'rb') as f:
+            f.seek(-count, 2)
+            result = f.read()
+        return result
+    except OSError:
+        return b''
+
+
+def process_file(file_path, sleep=5, extract_directory=None):
+    """
+    Vérifie qu'un fichier quelconque est complet et lisible
+    Si le fichier est une archive, elle sera décompressée dans le dossier selectionné
+    :param file_path: Chemin vers le fichier
+    :param sleep: Temps d'attente entre deux vérifications de la complétude du fichier
+    :param extract_directory: (Facultatif) Répertoire d'extraction sinon répertoire courant du fichier
+    :return:
+    """
+    file_base = os.path.abspath(file_path)
+    extract_directory = extract_directory or os.path.dirname(file_path)
+    # Boucle tant que la copie n'est pas terminée
+    while True:
+        try:
+            chunk = None
+            while chunk is None or chunk != seek_end(file_path, count=100):
+                chunk = seek_end(file_path, count=100)
+                time.sleep(sleep)
+            break
+        except PermissionError:
+            time.sleep(sleep)
+    # Extraction des fichiers en fonction du type d'archive
+    filename, extension = os.path.splitext(file_path)
+    if extension:
+        extension = extension.lower()
+    try:
+        if extension == '.zip':
+            from zipfile import ZipFile
+            with ZipFile(file_path) as zip:
+                zip.extractall(path=extract_directory)
+            return
+        elif extension in ['.tar', '.gz', '.bz2']:
+            import tarfile
+            tar = tarfile.open(file_path, 'r:*')
+            tar.extractall()
+            tar.close()
+            return
+    except:
+        logger.error(_("Erreur lors du désarchivage : {}").format(file_base), exc_info=True)
+        raise
+    return file_path
 
 
 def base64_encode(data):

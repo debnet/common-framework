@@ -22,7 +22,7 @@ class CommonModelPermissions(permissions.DjangoModelPermissions):
         """
         try:
             return super().has_permission(request, view)
-        except AttributeError:
+        except (AssertionError, AttributeError):
             return request.user and (request.user.is_authenticated or not self.authenticated_users_only)
 
 
