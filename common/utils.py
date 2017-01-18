@@ -8,7 +8,6 @@ import mimetypes
 import os
 import re
 import threading
-import time
 from contextlib import contextmanager
 from datetime import date, datetime, time
 from decimal import ROUND_HALF_EVEN, Decimal, InvalidOperation
@@ -1046,6 +1045,7 @@ def process_file(file_path, sleep=5, extract_directory=None):
     :param extract_directory: (Facultatif) Répertoire d'extraction sinon répertoire courant du fichier
     :return:
     """
+    import time
     file_base = os.path.abspath(file_path)
     extract_directory = extract_directory or os.path.dirname(file_path)
     # Boucle tant que la copie n'est pas terminée
