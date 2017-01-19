@@ -3,9 +3,10 @@ import base64
 import decimal
 import pickle
 
+from django.contrib.postgres.lookups import Unaccent
 from django.core.exceptions import ValidationError
 from django.db import models
-from django.db.models import Lookup, Transform
+from django.db.models import CharField, Lookup, TextField, Transform
 from django.utils.translation import ugettext_lazy as _
 
 from common.utils import json_decode, json_encode
@@ -370,11 +371,18 @@ class JsonEmpty(Lookup):
                 lookup=self.lookup_name))
 
 
-# # Substitue le JsonField générique par le JSONField de Django si l'application s'exécute sur PostgreSQL (Django 1.9)
-# try:
-#     from django.conf import settings
-#     from django.db import connection
-#     if is_postgresql(connection):
-#         from django.contrib.postgres.fields import JSONField as JsonField
-# except:
-#     pass
+@CharField.register_lookup
+@TextField.register_lookup
+class CustomUnaccent(Unaccent):
+    has_unaccent = None
+    lookup_name = 'unaccent'
+
+    def as_sql(self, compiler, connection, **kwargs):
+        if CustomUnaccent.has_unaccent is None:
+            cursor = connection.cursor()
+            cursor.execute("SELECT COUNT(proname) FROM pg_proc WHERE proname = 'f_unaccent';")
+            response = cursor.fetchone()
+            CustomUnaccent.has_unaccent = response and response[0] > 0
+        if CustomUnaccent.has_unaccent:
+            CustomUnaccent.function = 'F_UNACCENT'
+        return super().as_sql(compiler, connection, **kwargs)
