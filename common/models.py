@@ -638,7 +638,7 @@ class CommonModel(models.Model):
         """
         old_data = set(self._copy.items())
         new_data = set(self.to_dict().items())
-        return new_data ^ old_data
+        return new_data - old_data
 
     @property
     def m2m_modified(self):
@@ -647,7 +647,7 @@ class CommonModel(models.Model):
         """
         old_data = set(self._copy_m2m.items())
         new_data = set(self.m2m_to_dict().items())
-        return new_data ^ old_data
+        return new_data - old_data
 
     @staticmethod
     def _model_type(obj):
