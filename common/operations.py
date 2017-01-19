@@ -30,7 +30,7 @@ class CreateFunctionUnaccent(Operation):
             logger.error(_("L'extension 'unaccent' n'est pas installée sur la base de données."))
             return
 
-        query = "CREATE OR REPLACE FUNCTION f_unaccent(text) " \
+        query = "CREATE OR REPLACE FUNCTION F_UNACCENT(text) " \
                 "RETURNS text AS " \
                 "$func$ " \
                 "SELECT public.unaccent('public.unaccent', UPPER($1)) " \
@@ -43,7 +43,7 @@ class CreateFunctionUnaccent(Operation):
             logger.error(_("L'opération ne peut s'exécuter que sur PostgreSQL."))
             return
 
-        schema_editor.execute("DROP FUNCTION f_unaccent(text);")
+        schema_editor.execute("DROP FUNCTION IF EXISTS F_UNACCENT(text);")
 
 
 class CreateIndexUnaccent(Operation):
@@ -68,19 +68,19 @@ class CreateIndexUnaccent(Operation):
 
         # Vérification de l'extension "unaccent"
         cursor = schema_editor.connection.cursor()
-        cursor.execute("SELECT count(extname) FROM pg_extension where extname = 'unaccent';")
+        cursor.execute("SELECT COUNT(extname) FROM pg_extension WHERE extname = 'unaccent';")
         if not cursor.fetchall()[0][0]:
             logger.error(_("L'extension 'unaccent' n'est pas installée sur la base de données."))
             return
 
         # Vérification que la fonction "f_unaccent" est bien créée
-        cursor.execute("SELECT count(proname) FROM pg_proc where proname = 'f_unaccent';")
+        cursor.execute("SELECT COUNT(proname) FROM pg_proc WHERE proname = 'f_unaccent';")
         if not cursor.fetchall()[0][0]:
             logger.warning(_("Fonction 'f_unaccent' créée sur la base de données."))
             CreateFunctionUnaccent().database_forwards(app_label, schema_editor, from_state, to_state)
 
         # Template de la requête de création d'index
-        query = "CREATE INDEX {index_name}_{method} ON {db_table} USING {method} ({fields});"
+        query = "CREATE INDEX IF NOT EXISTS {index_name}_{method} ON {db_table} USING {method} ({fields});"
 
         # Template de création des méthodes d'index sur les champs
         method_sql = "UPPER(F_UNACCENT({field})) {operator_class}, F_UNACCENT({field}) {operator_class}"
