@@ -1143,29 +1143,32 @@ def application_name(name, **kwargs):
     :param name: Valeur de l'option "application_name"
     :return: Décorateur
     """
+    from django.db import connections, DEFAULT_DB_ALIAS
     from django.db.transaction import Atomic
 
     class AtomicWithApplicationName(Atomic):
         def __init__(self, name, using=None, savepoint=None):
             self.name = name
-            self.using = using or short_identifier()
-            super().__init__(using=self.using, savepoint=savepoint)
+            self.alias = short_identifier()
+            self._connection = None
+            super().__init__(using=using, savepoint=savepoint)
 
         def __enter__(self):
             if not self.name:
                 return
-            from django.db import connections, DEFAULT_DB_ALIAS
-            db = connections[DEFAULT_DB_ALIAS].settings_dict.copy()
+            self._connection = connections[self.using or DEFAULT_DB_ALIAS]
+            db = self._connection.settings_dict.copy()
             db['OPTIONS'].update(application_name=self.name)
-            connections.databases[self.using] = db
+            connections.databases[self.alias] = db
+            self.using = self.alias
             super().__enter__()
 
         def __exit__(self, exc_type, exc_val, exc_tb):
             if not self.name:
                 return
             super().__exit__(exc_type, exc_val, exc_tb)
-            from django.db import connections
-            connections.databases.pop(self.using)
+            connections.databases.pop(self.alias)
+            del connections[self.alias]
 
     return AtomicWithApplicationName(name, **kwargs)
 
@@ -1180,6 +1183,7 @@ def abort_query(name, kill=False, using=None):
     """
     from django.db import connections, DEFAULT_DB_ALIAS
     connection = connections[using or DEFAULT_DB_ALIAS]
+    assert connection.vendor == 'postgresql', _("Cette fonction ne peut être utilisée que sur PostgreSQL.")
     with connection.cursor() as cursor:
         query = "SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE application_name = %s" if kill \
             else "SELECT pg_cancel_backend(pid) FROM pg_stat_activity WHERE application_name = %s"
