@@ -1191,5 +1191,6 @@ def abort_query(name, kill=False, using=None, timeout=None):
             else "SELECT pg_cancel_backend(pid) FROM pg_stat_activity WHERE application_name = %s"
         if timeout:
             query += " AND NOW() - query_start > interval '%s seconds'"
+        query += " AND state = 'active'"
         cursor.execute(query, [name, timeout] if timeout else [name])
         return len(cursor.fetchall())
