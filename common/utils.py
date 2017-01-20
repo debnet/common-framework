@@ -1134,3 +1134,54 @@ def json_decode(data, content_encoding='utf-8', **options):
     if isinstance(data, bytes):
         data = data.decode(content_encoding)
     return json.loads(data, parse_float=decimal, encoding=settings.DEFAULT_CHARSET, **options)
+
+
+def application_name(name, **kwargs):
+    """
+    Permet de faire en sorte que toutes les requêtes en base de données soit exécutées en étant
+    identifiées comme appartenant à l'application nommée par l'option "application_name"
+    :param name: Valeur de l'option "application_name"
+    :return: Décorateur
+    """
+    from django.db.transaction import Atomic
+
+    class AtomicWithApplicationName(Atomic):
+        def __init__(self, name, using=None, savepoint=None):
+            self.name = name
+            self.using = using or short_identifier()
+            super().__init__(using=self.using, savepoint=savepoint)
+
+        def __enter__(self):
+            if not self.name:
+                return
+            from django.db import connections, DEFAULT_DB_ALIAS
+            db = connections[DEFAULT_DB_ALIAS].settings_dict.copy()
+            db['OPTIONS'].update(application_name=self.name)
+            connections.databases[self.using] = db
+            super().__enter__()
+
+        def __exit__(self, exc_type, exc_val, exc_tb):
+            if not self.name:
+                return
+            super().__exit__(exc_type, exc_val, exc_tb)
+            from django.db import connections
+            connections.databases.pop(self.using)
+
+    return AtomicWithApplicationName(name, **kwargs)
+
+
+def abort_query(name, kill=False, using=None):
+    """
+    Permet d'interrompre une ou plusieurs requêtes SQL d'une application nommée
+    :param name: Nom de l'application (paramètre "application_name" du client)
+    :param kill: Tue le processus si vrai ou essaye de stopper proprement la tâche si faux
+    :param using: Alias de la base de données sur laquelle réaliser l'action
+    :return: Vrai si toutes les requêtes ont été interrompues, faux sinon
+    """
+    from django.db import connections, DEFAULT_DB_ALIAS
+    connection = connections[using or DEFAULT_DB_ALIAS]
+    with connection.cursor() as cursor:
+        query = "SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE application_name = %s" if kill \
+            else "SELECT pg_cancel_backend(pid) FROM pg_stat_activity WHERE application_name = %s"
+        cursor.execute(query, [name])
+        return all(e[0] for e in cursor.fetchall())
