@@ -8,6 +8,7 @@ import mimetypes
 import os
 import re
 import threading
+from copy import deepcopy
 from contextlib import contextmanager
 from datetime import date, datetime, time
 from decimal import ROUND_HALF_EVEN, Decimal, InvalidOperation
@@ -1157,7 +1158,7 @@ def application_name(name, **kwargs):
             if not self.name:
                 return
             self._connection = connections[self.using or DEFAULT_DB_ALIAS]
-            db = self._connection.settings_dict.copy()
+            db = deepcopy(self._connection.settings_dict)
             db['OPTIONS'].update(application_name=self.name)
             connections.databases[self.alias] = db
             self.using = self.alias
@@ -1173,12 +1174,13 @@ def application_name(name, **kwargs):
     return AtomicWithApplicationName(name, **kwargs)
 
 
-def abort_query(name, kill=False, using=None):
+def abort_query(name, kill=False, using=None, timeout=None):
     """
     Permet d'interrompre une ou plusieurs requêtes SQL d'une application nommée
     :param name: Nom de l'application (paramètre "application_name" du client)
     :param kill: Tue le processus si vrai ou essaye de stopper proprement la tâche si faux
     :param using: Alias de la base de données sur laquelle réaliser l'action
+    :param timeout: Timeout (en secondes) à partir duquel il faut supprimer les requêtes
     :return: Vrai si toutes les requêtes ont été interrompues, faux sinon
     """
     from django.db import connections, DEFAULT_DB_ALIAS
@@ -1187,5 +1189,7 @@ def abort_query(name, kill=False, using=None):
     with connection.cursor() as cursor:
         query = "SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE application_name = %s" if kill \
             else "SELECT pg_cancel_backend(pid) FROM pg_stat_activity WHERE application_name = %s"
-        cursor.execute(query, [name])
-        return all(e[0] for e in cursor.fetchall())
+        if timeout:
+            query += " AND NOW() - query_start > interval '%s seconds'"
+        cursor.execute(query, [name, timeout] if timeout else [name])
+        return all([e[0] for e in cursor.fetchall()] or [False])
