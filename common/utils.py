@@ -1192,4 +1192,4 @@ def abort_query(name, kill=False, using=None, timeout=None):
         if timeout:
             query += " AND NOW() - query_start > interval '%s seconds'"
         cursor.execute(query, [name, timeout] if timeout else [name])
-        return all([e[0] for e in cursor.fetchall()] or [False])
+        return len(cursor.fetchall())

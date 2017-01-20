@@ -15,6 +15,8 @@ logger = logging.getLogger(__name__)
 
 
 class Command(BaseCommand):
+    help = "Supprime les données de l'application"
+    leave_locale_alone = True
 
     def add_arguments(self, parser):
         parser.add_argument('app_label', type=str, help=_("Nom de l'application"))
