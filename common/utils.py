@@ -8,7 +8,6 @@ import mimetypes
 import os
 import re
 import threading
-from copy import deepcopy
 from contextlib import contextmanager
 from datetime import date, datetime, time
 from decimal import ROUND_HALF_EVEN, Decimal, InvalidOperation
@@ -230,11 +229,10 @@ def download_file(function):
 
 def render_to(template=None, content_type=None):
     """
-    Decorator for Django views that sends returned dict to render_to_response
-    function.
+    Decorator for Django views that sends returned dict to render_to_response function.
 
-    Template name can be decorator parameter or TEMPLATE item in returned
-    dictionary.  RequestContext always added as context instance.
+    Template name can be decorator parameter or TEMPLATE item in returned dictionary.
+    RequestContext always added as context instance.
     If view doesn't return dict then decorator simply returns output.
 
     Parameters:
@@ -252,26 +250,21 @@ def render_to(template=None, content_type=None):
     # equals to
     def foo(request):
         bar = Bar.object.all()
-        return render_to_response('template.html',
-                                  {'bar': bar},
-                                  context_instance=RequestContext(request))
+        return render_to_response('template.html', {'bar': bar}, context_instance=RequestContext(request))
 
 
     # 2. Template name as _template item value in return dictionary.
-         if _template is given then its value will have higher priority
-         than render_to argument.
+         If _template is given then its value will have higher priority than render_to argument.
 
     @render_to()
     def foo(request, category):
         template_name = '%s.html' % category
         return {'bar': bar, '_template': template_name}
 
-    #equals to
+    # equals to
     def foo(request, category):
         template_name = '%s.html' % category
-        return render_to_response(template_name,
-                                  {'bar': bar},
-                                  context_instance=RequestContext(request))
+        return render_to_response(template_name, {'bar': bar}, context_instance=RequestContext(request))
 
     """
     def renderer(function):
@@ -1137,50 +1130,13 @@ def json_decode(data, content_encoding='utf-8', **options):
     return json.loads(data, parse_float=decimal, encoding=settings.DEFAULT_CHARSET, **options)
 
 
-def application_name(name, **kwargs):
+def abort_sql(name, kill=False, using=None, timeout=None):
     """
-    Permet de faire en sorte que toutes les requêtes en base de données soit exécutées en étant
-    identifiées comme appartenant à l'application nommée par l'option "application_name"
-    :param name: Valeur de l'option "application_name"
-    :return: Décorateur
-    """
-    from django.db import connections, DEFAULT_DB_ALIAS
-    from django.db.transaction import Atomic
-
-    class AtomicWithApplicationName(Atomic):
-        def __init__(self, name, using=None, savepoint=None):
-            self.name = name
-            self.alias = short_identifier()
-            self._connection = None
-            super().__init__(using=using, savepoint=savepoint)
-
-        def __enter__(self):
-            if not self.name:
-                return
-            self._connection = connections[self.using or DEFAULT_DB_ALIAS]
-            db = deepcopy(self._connection.settings_dict)
-            db['OPTIONS'].update(application_name=self.name)
-            connections.databases[self.alias] = db
-            self.using = self.alias
-            super().__enter__()
-
-        def __exit__(self, exc_type, exc_val, exc_tb):
-            if not self.name:
-                return
-            super().__exit__(exc_type, exc_val, exc_tb)
-            connections.databases.pop(self.alias)
-            del connections[self.alias]
-
-    return AtomicWithApplicationName(name, **kwargs)
-
-
-def abort_query(name, kill=False, using=None, timeout=None):
-    """
-    Permet d'interrompre une ou plusieurs requêtes SQL d'une application nommée
+    Permet d'interrompre une ou plusieurs connexions SQL d'une application nommée
     :param name: Nom de l'application (paramètre "application_name" du client)
     :param kill: Tue le processus si vrai ou essaye de stopper proprement la tâche si faux
     :param using: Alias de la base de données sur laquelle réaliser l'action
-    :param timeout: Timeout (en secondes) à partir duquel il faut supprimer les requêtes
+    :param timeout: Temps d'exécution maximal (en secondes) à partir duquel il faut supprimer les requêtes
     :return: Vrai si toutes les requêtes ont été interrompues, faux sinon
     """
     from django.db import connections, DEFAULT_DB_ALIAS
