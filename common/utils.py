@@ -1130,13 +1130,14 @@ def json_decode(data, content_encoding='utf-8', **options):
     return json.loads(data, parse_float=decimal, encoding=settings.DEFAULT_CHARSET, **options)
 
 
-def abort_sql(name, kill=False, using=None, timeout=None):
+def abort_sql(name, kill=False, using=None, timeout=None, state='active'):
     """
     Permet d'interrompre une ou plusieurs connexions SQL d'une application nommée
     :param name: Nom de l'application (paramètre "application_name" du client)
     :param kill: Tue le processus si vrai ou essaye de stopper proprement la tâche si faux
     :param using: Alias de la base de données sur laquelle réaliser l'action
     :param timeout: Temps d'exécution maximal (en secondes) à partir duquel il faut supprimer les requêtes
+    :param state: Etat des connexion à interrompre ('active' ou 'idle')
     :return: Vrai si toutes les requêtes ont été interrompues, faux sinon
     """
     from django.db import connections, DEFAULT_DB_ALIAS
@@ -1145,8 +1146,12 @@ def abort_sql(name, kill=False, using=None, timeout=None):
     with connection.cursor() as cursor:
         query = "SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE application_name = %s" if kill \
             else "SELECT pg_cancel_backend(pid) FROM pg_stat_activity WHERE application_name = %s"
+        params = [name]
         if timeout:
             query += " AND NOW() - query_start > interval '%s seconds'"
-        query += " AND state = 'active'"
-        cursor.execute(query, [name, timeout] if timeout else [name])
+            params.append(timeout)
+        if state:
+            query += " AND state = %s"
+            params.append(state)
+        cursor.execute(query, params)
         return len(cursor.fetchall())
