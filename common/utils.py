@@ -431,7 +431,7 @@ def evaluate(expression, _globals=None, _locals=None, default=False):
     return eval(expression, _globals, _locals)
 
 
-def execute(statement, _globals=globals(), _locals=locals(), default=False):
+def execute(statement, _globals=None, _locals=None, default=False):
     """
     Exécute un statement Python
     :param statement: Statement
