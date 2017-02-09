@@ -10,7 +10,8 @@ from django.utils.translation import ugettext_lazy as _
 from common.fields import JsonField, PickleField
 from common.forms import CommonInlineFormSet
 from common.models import (
-    Global, GroupMetaData, History, HistoryField, MetaData, PerishableEntity, ServiceUsage, UserMetaData, Webhook)
+    Entity, Global, GroupMetaData, History, HistoryField, MetaData,
+    PerishableEntity, ServiceUsage, UserMetaData, Webhook)
 
 
 def delete_selected(modeladmin, request, queryset):
@@ -89,7 +90,10 @@ class EntityAdmin(CommonAdmin):
         obj.delete(_current_user=request.user)
 
     def get_list_filter(self, request):
-        return tuple(super().get_list_filter(request)) + ('creation_date', 'modification_date', )
+        list_filter = list(super().get_list_filter(request))
+        list_filter += ['creation_date'] if 'creation_date' not in list_filter else []
+        list_filter += ['modification_date'] if 'modification_date' not in list_filter else []
+        return tuple(list_filter)
 
 
 class PerishableValidFilter(admin.SimpleListFilter):
@@ -123,10 +127,18 @@ class PerishableEntityAdmin(EntityAdmin):
         super().save_model(request, obj, form, change)
 
     def get_list_display(self, request):
-        return tuple(super().get_list_display(request)) + ('start_date', 'end_date', 'valid', )
+        list_display = list(super().get_list_display(request))
+        list_display += ['start_date'] if 'start_date' not in list_display else []
+        list_display += ['end_date'] if 'end_date' not in list_display else []
+        list_display += ['valid']
+        return tuple(list_display)
 
     def get_list_filter(self, request):
-        return tuple(super().get_list_filter(request)) + ('start_date', 'end_date', PerishableValidFilter)
+        list_filter = list(super().get_list_filter(request))
+        list_filter += ['start_date'] if 'start_date' not in list_filter else []
+        list_filter += ['end_date'] if 'end_date' not in list_filter else []
+        list_filter += [PerishableValidFilter]
+        return tuple(list_filter)
 
     def get_fieldsets(self, request, obj=None):
         fieldsets = super().get_fieldsets(request, obj=obj)
@@ -476,14 +488,22 @@ def create_admin(model):
     :param model: Modèle
     :return: Classe d'administration
     """
+    admin_class = PerishableEntityAdmin if issubclass(model, PerishableEntity) else \
+        EntityAdmin if issubclass(model, Entity) else CommonAdmin
+
     @admin.register(model)
-    class GenericAdmin(CommonAdmin):
-        list_display = [field.name for field in model._meta.concrete_fields if field.editable and not isinstance(
-            field, (models.TextField, JsonField, PickleField)) and not field.primary_key]
-        list_filter = [field.name for field in model._meta.get_fields() if getattr(field, 'choices', None) or isinstance(
-            field, (models.BooleanField, models.NullBooleanField, models.DateField, models.DateTimeField))]
-        search_fields = [field.name for field in model._meta.get_fields()
-                         if isinstance(field, (models.CharField, models.TextField))]
+    class GenericAdmin(admin_class):
+        list_display = [
+            field.name for field in model._meta.concrete_fields
+            if not field.primary_key and field.editable and not isinstance(field, (
+                models.TextField, JsonField, PickleField))]
+        list_filter = [
+            field.name for field in model._meta.get_fields()
+            if getattr(field, 'choices', None) or isinstance(field, (
+                models.BooleanField, models.NullBooleanField, models.DateField, models.DateTimeField))]
+        search_fields = [
+            field.name for field in model._meta.get_fields()
+            if isinstance(field, (models.CharField, models.TextField))]
         autocomplete_lookup_fields = {
             'fk': [
                 field.name for field in model._meta.get_fields()
