@@ -2,7 +2,7 @@
 from functools import wraps
 
 from django.conf import settings
-from django.db.models import Q, QuerySet, Count, Sum, Avg, Min, Max
+from django.db.models import F, Q, QuerySet, Count, Sum, Avg, Min, Max
 from django.db.models.query import EmptyResultSet
 from rest_framework import serializers, viewsets
 from rest_framework.decorators import api_view
@@ -36,6 +36,8 @@ def url_value(filter, value):
     :param value: Valeur
     :return: Valeur
     """
+    if not isinstance(value, str):
+        return value
     if filter and (filter.endswith('__in') or filter.endswith('__range')):
         return value.split(',')
     if filter and filter.endswith('__isnull'):
@@ -66,7 +68,13 @@ def parse_filters(filters):
         if isinstance(filter, tuple):
             elements.append(parse_filters(filter))
         elif isinstance(filter, dict):
-            elements.append(Q(**{key: url_value(key, value) for key, value in filter.items()}))
+            fields = {}
+            for key, value in filter.items():
+                key = key[1:] if key.startswith('@') else key
+                if value.startswith('[') and value.endswith(']'):
+                    value = F(value[1:-1])
+                fields[key] = url_value(key, value)
+            elements.append(Q(**fields))
         else:
             operator = filter.lower()
     if operator == 'or':
@@ -516,6 +524,9 @@ def paginate(request, queryset, serializer, pagination=None,
         filters = {}
         excludes = {}
         for key, value in url_params.items():
+            if value.startswith('[') and value.endswith(']'):
+                value = F(value[1:-1])
+            key = key[1:] if key.startswith('@') else key
             if key not in reserved_query_params:
                 if key.startswith('-'):
                     excludes[key[1:]] = url_value(key[1:], value)

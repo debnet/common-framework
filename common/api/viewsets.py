@@ -1,6 +1,6 @@
 # coding: utf-8
 from django.core.exceptions import FieldDoesNotExist
-from django.db.models.query import EmptyResultSet, QuerySet
+from django.db.models.query import F, EmptyResultSet, QuerySet
 from rest_framework import serializers
 from rest_framework import viewsets
 from rest_framework.exceptions import ValidationError
@@ -148,8 +148,10 @@ class CommonModelViewSet(viewsets.ModelViewSet):
                     filters = {}
                     excludes = {}
                     for key, value in url_params.items():
+                        if value.startswith('[') and value.endswith(']'):
+                            value = F(value[1:-1])
                         if key not in reserved_query_params:
-                            key = key.replace('$', '')  # Dans le cas où un champ du modèle serait un mot-clé réservé
+                            key = key[1:] if key.startswith('@') else key
                             if key.startswith('-'):
                                 excludes[key[1:]] = url_value(key[1:], value)
                             else:
