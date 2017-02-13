@@ -34,7 +34,7 @@ except ImportError:
 
 from common.fields import JsonField, PickleField, json_encode
 from common.settings import settings
-from common.utils import get_current_app
+from common.utils import get_current_app, merge_dict
 
 
 # Logging
@@ -1013,6 +1013,14 @@ class EntityQuerySet(CommonQuerySet):
             filters |= Q(modification_date=item['max_modification_date'], **field_filter)
         return self.filter(filters)
 
+    def get_by_natural_key(self, uuid, *args, **kwargs):
+        """
+        Recherche une instance du modèle par sa clé naturelle
+        :param uuid: UUID
+        :return: Instance du modèle
+        """
+        return self.get(uuid=uuid)
+
 
 class Entity(CommonModel):
     """
@@ -1136,6 +1144,13 @@ class Entity(CommonModel):
         )
         ids = uniques.values_list('object_id', flat=True)
         setattr(self, m2m_field, ids)
+
+    def natural_key(self):
+        """
+        Retourne la clé naturelle de l'objet
+        :return: (UUID, )
+        """
+        return self.uuid,
 
     def __json__(self):
         """
@@ -1805,6 +1820,13 @@ class UserMetaData(CommonModel):
         meta.save()
         return meta.data
 
+    @staticmethod
+    def merge(group, *idict, **data):
+        meta = GroupMetaData.objects.get(group=group)
+        merge_dict(meta.data, *idict, **data)
+        meta.save()
+        return meta.data
+
     def __str__(self):
         return str(self.user)
 
@@ -1836,6 +1858,13 @@ class GroupMetaData(CommonModel):
     def remove(group, key):
         meta = GroupMetaData.objects.get(group=group)
         meta.data.pop(key, None)
+        meta.save()
+        return meta.data
+
+    @staticmethod
+    def merge(group, *idict, **data):
+        meta = GroupMetaData.objects.get(group=group)
+        merge_dict(meta.data, *idict, **data)
         meta.save()
         return meta.data
 
@@ -1920,9 +1949,11 @@ def get_data_from_object(instance, types=True, **options):
 setattr(AbstractBaseUser, 'set_metadata', lambda self, **metas: UserMetaData.set(self, **metas))
 setattr(AbstractBaseUser, 'get_metadata', lambda self, key=None: UserMetaData.get(self, key=key))
 setattr(AbstractBaseUser, 'del_metadata', lambda self, key: UserMetaData.remove(self, key))
+setattr(AbstractBaseUser, 'merge_metadata', lambda self, *idict, **metas: UserMetaData.merge(self, *idict, **metas))
 setattr(Group, 'set_metadata', lambda self, **metas: GroupMetaData.set(self, **metas))
 setattr(Group, 'get_metadata', lambda self, key=None: GroupMetaData.get(self, key=key))
 setattr(Group, 'del_metadata', lambda self, key: GroupMetaData.remove(self, key))
+setattr(Group, 'merge_metadata', lambda self, *idict, **metas: GroupMetaData.merge(self, *idict, **metas))
 
 # Common models
 MODELS = [

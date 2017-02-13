@@ -912,6 +912,26 @@ def sort_dict(idict):
     return json_decode(json_encode(idict, sort_keys=True), object_pairs_hook=collections.OrderedDict)
 
 
+def merge_dict(mdict, *idicts, **kwargs):
+    """
+    Permet de fusionner un ou plusieurs dictionnaires imbriqués sur un autre
+    :param mdict: Dictionnaire sur lequel fusionner les données
+    :param idicts: Liste des dictionnaires à fusionner
+    :param kwargs: Données supplémentaires à fusionner
+    :return: Dictionnaire sur lequel les données ont été fusionnées
+    """
+    mdict = mdict if mdict is not None else {}
+    for idict in idicts:
+        for key, value in idict.items():
+            if key in mdict and isinstance(mdict[key], dict) and isinstance(idict[key], dict):
+                merge_dict(mdict[key], idict[key])
+            else:
+                mdict[key] = idict[key]
+    if kwargs:
+        merge_dict(mdict, kwargs)
+    return mdict
+
+
 class Null(object):
     """
     Objet nul absolu

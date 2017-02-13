@@ -15,6 +15,7 @@ from rest_framework.settings import api_settings
 from common.api.fields import CustomHyperlinkedIdentityField, CustomHyperlinkedRelatedField
 from common.api.utils import create_model_serializer, to_model_serializer
 from common.models import MetaData
+from common.utils import merge_dict
 
 
 # URLs dans les serializers
@@ -224,6 +225,6 @@ class UserInfosSerializer(CommonModelSerializer):
     def get_metadatas(self, user):
         data = {}
         for group in user.groups.all():
-            data.update(group.metadatas.data or {})
-        data.update(user.metadatas.data or {})
+            merge_dict(data, group.metadatas.data or {})
+        merge_dict(data, user.metadatas.data or {})
         return data
