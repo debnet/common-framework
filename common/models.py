@@ -1145,13 +1145,6 @@ class Entity(CommonModel):
         ids = uniques.values_list('object_id', flat=True)
         setattr(self, m2m_field, ids)
 
-    def natural_key(self):
-        """
-        Retourne la clé naturelle de l'objet
-        :return: (UUID, )
-        """
-        return self.uuid,
-
     def __json__(self):
         """
         Représentation de l'instance sous forme de dictionnaire pour sérialisation JSON
