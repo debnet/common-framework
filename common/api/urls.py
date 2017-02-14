@@ -13,4 +13,5 @@ urlpatterns = ([
     url(_(r'^user/infos/(?P<user_id>\d+)/$'), api_views.user_infos, name='user_infos_by_id'),
     url(_(r'^user/reset_password/$'), api_views.reset_password, name='user_reset_password'),
     url(_(r'^user/confirm_password/$'), api_views.confirm_password, name='user_confirm_password'),
+    url(_(r'^metadata/(?P<uuid>[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})/$'), api_views.metadata, name='metadata')
 ] + router.urls, 'common')

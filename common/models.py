@@ -153,7 +153,7 @@ class MetaDataQuerySet(models.QuerySet):
         if valid is None:
             return self
         function = self.filter if valid else self.exclude
-        return function(Q(deletion_date__isnull=True) | Q(deletion_date__lte=date or now()))
+        return function(Q(deletion_date__isnull=True) | Q(deletion_date__gte=date or now()))
 
     valid = property(select_valid)
 
@@ -166,7 +166,7 @@ class MetaData(models.Model):
     object_id = models.PositiveIntegerField(verbose_name=_("identifiant"))
     entity = GenericForeignKey()
 
-    key = models.CharField(max_length=100, verbose_name=_("clé"))
+    key = models.CharField(max_length=100, db_index=True, verbose_name=_("clé"))
     value = JsonField(blank=True, null=True, verbose_name=_("valeur"))
     creation_date = models.DateTimeField(auto_now_add=True, verbose_name=_("date de création"))
     modification_date = models.DateTimeField(auto_now=True, verbose_name=_("date de modification"))
@@ -195,7 +195,8 @@ class MetaData(models.Model):
         if key:
             metadata = queryset.filter(key=key).first()
             return metadata if raw or not metadata else metadata.value
-        return queryset.all() if raw else {m.key: m.value for m in queryset.all()}
+        queryset = queryset.order_by('key')
+        return queryset if raw else {m.key: m.value for m in queryset}
 
     @staticmethod
     def set(instance, key, value, date=None, queryset=None):
@@ -286,6 +287,7 @@ class MetaData(models.Model):
         verbose_name = _("métadonnée")
         verbose_name_plural = _("métadonnées")
         unique_together = ('content_type', 'object_id', 'key')
+        index_together = ('key', 'deletion_date')
 
 
 class CommonQuerySet(models.QuerySet):

@@ -17,6 +17,7 @@ from common.api.input_serializers import (
     ResolveUrlInputSerializer, ResetPasswordSerializer, ConfirmPasswordSerializer)
 from common.api.serializers import UserInfosSerializer
 from common.api.utils import api_view_with_serializer
+from common.models import Global
 from common.settings import settings
 from common.utils import base64_decode, base64_encode, recursive_get_urls
 
@@ -112,3 +113,20 @@ def confirm_password(request):
     user.set_password(password)
     user.save()
     return Response(status=status.HTTP_200_OK)
+
+
+@api_view(['GET', 'POST'])
+def metadata(request, uuid):
+    """
+    Liste et/ou ajoute des métadonnées sur une entité spécifique
+    """
+    entity = Global.objects.entity(uuid)
+    if not entity:
+        raise NotFound(_("Entité inconnue."))
+    if request.method == 'POST':
+        for key, value in request.data.items():
+            if value is None:
+                entity.del_metadata(key)
+            else:
+                entity.set_metadata(key, value)
+    return Response(entity.get_metadata())

@@ -1,13 +1,13 @@
 # coding: utf-8
 from django.core.exceptions import FieldDoesNotExist
-from django.db.models.query import F, EmptyResultSet, QuerySet
+from django.db.models.query import F, EmptyResultSet, Prefetch, QuerySet
 from rest_framework import serializers
 from rest_framework import viewsets
 from rest_framework.exceptions import ValidationError
 
 from common.api.utils import AGGREGATES, RESERVED_QUERY_PARAMS, url_value, parse_filters
 from common.api.fields import ReadOnlyObjectField
-from common.models import Entity
+from common.models import Entity, MetaData
 from common.settings import settings
 from common.utils import str_to_bool
 
@@ -136,9 +136,11 @@ class CommonModelViewSet(viewsets.ModelViewSet):
                         for prefetch in queryset._prefetch_related_lookups]
                     lookups_metadatas = []
                     for lookup in self.metadatas or []:
-                        name = lookup if isinstance(lookup, str) else lookup.prefetch_through
-                        if name not in viewset_lookups:
+                        if isinstance(lookup, str):
+                            lookup = Prefetch(lookup)
+                        if lookup.prefetch_through not in viewset_lookups:
                             lookups_metadatas.append(lookup)
+                        lookup.queryset = MetaData.objects.select_valid()
                     if lookups_metadatas:
                         queryset = queryset.prefetch_related(*lookups_metadatas)
 

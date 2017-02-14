@@ -360,11 +360,11 @@ def create_api_test_class(
             url = reverse(self.url_detail_api, args=[item.id]) + '?meta=1'
             response = self.client.get(url)
             self.assertEqual(response.status_code, status.HTTP_200_OK, response.data)
-            metadatas = response.data.get('metadatas', [])
+            metadatas = response.data.get('metadatas', {})
             self.assertEqual(len(metadatas), 1)
-            metadata, *junk = metadatas
-            self.assertEqual(metadata.get('key', None), 'test_key')
-            self.assertEqual(metadata.get('value', None), 'test_value')
+            key, value = next(iter(metadatas.items()))
+            self.assertEqual(key, 'test_key')
+            self.assertEqual(value, 'test_value')
         test_class.test_api_metadatas = _test_api_metadatas
 
     if test_simple:

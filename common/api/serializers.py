@@ -14,7 +14,6 @@ from rest_framework.settings import api_settings
 
 from common.api.fields import CustomHyperlinkedIdentityField, CustomHyperlinkedRelatedField
 from common.api.utils import create_model_serializer, to_model_serializer
-from common.models import MetaData
 from common.utils import merge_dict
 
 
@@ -36,7 +35,7 @@ class CommonModelSerializer(serializers.HyperlinkedModelSerializer if HYPERLINKE
         request = self.context.get('request', None)
         meta = request and getattr(request, 'query_params', None) and request.query_params.get('meta', False)
         if meta and hasattr(instance, 'metadatas'):
-            return create_model_serializer(MetaData, fields=('key', 'value'))(instance.metadatas, many=True).data
+            return {meta.key: meta.value for meta in instance.metadatas.all()}
         return None
 
     def create(self, validated_data):
@@ -137,8 +136,7 @@ class GenericFormSerializer(CommonModelSerializer):
             if related_name in self._declared_fields and related_name in validated_data and
             (related_object.one_to_many or related_object.one_to_one)}
         # Récupère les données propres à chaque relation inversée tout en les supprimant des données du modèle courant
-        relations_data = {relation_name: validated_data.pop(relation_name) for relation_name in
-                          related_objects.keys()}
+        relations_data = {relation_name: validated_data.pop(relation_name) for relation_name in related_objects.keys()}
         # Données externes au modèle
         donnees_externes = {key: value for key, value in validated_data.items() if key not in field_names}
         # Sauvegarde l'instance du modèle courant

@@ -2,6 +2,7 @@
 from django.utils.translation import ugettext_lazy as _
 from rest_framework import serializers
 
+from common.api.fields import JsonField
 from common.api.serializers import BaseCustomSerializer
 
 
@@ -30,3 +31,12 @@ class ConfirmPasswordSerializer(BaseCustomSerializer):
     uid = serializers.CharField(label=_("identifiant"))
     token = serializers.CharField(label=_("token"))
     password = serializers.CharField(label=_("mot de passe"), write_only=True, style=dict(input_type='password'))
+
+
+class MetaDataSerializer(BaseCustomSerializer):
+    """
+    Serializer pour l'ajout de métadonnées sur une entité
+    """
+    key = serializers.CharField(label=_("clé"))
+    value = JsonField(required=False, label=_("valeur"))
+    date = serializers.DateTimeField(required=False, label=_("date péremption"))
