@@ -89,19 +89,19 @@ class Serialized(object):
             self.meta = value.model._meta
             self.count = value.count()
             self.query = str(value.query or '') or None
-            self.alone = False
+            self.single = False
         elif isinstance(value, models.Model):
             self.meta = value._meta
             self.count = 1
             self.query = None
-            self.alone = True
+            self.single = True
             value = [value, ]
         self.data = serializers.serialize(format, value)
 
     def deserialize(self):
         data = serializers.deserialize(self.format, self.data)
         objects = [item.object for item in data]
-        return objects[0] if self.alone and len(objects) == 1 else objects
+        return objects[0] if self.single else objects
 
     def __str__(self):
         return self.data
@@ -227,13 +227,12 @@ class MetaData(models.Model):
         return metadata
 
     @staticmethod
-    def add(instance, key, value, default=None, allow_duplicate=True, queryset=None):
+    def add(instance, key, value, allow_duplicate=True, queryset=None):
         """
         Permet d'ajouter une valeur à une métadonnée existante
         :param instance: Instance du modèle
         :param key: Clé
         :param value: Valeur
-        :param default: Valeur par défaut si la métadonnée n'existe pas (facultatif)
         :param allow_duplicate: Autorise l'ajout de doublons dans les listes de valeur (par défaut)
         :param queryset: QuerySet de récupération des métadonnées
         :return: Métadonnée
@@ -252,12 +251,9 @@ class MetaData(models.Model):
                 metadata.value = values if allow_duplicate else set(values)
             else:
                 metadata.value += value
-        if default:
-            content_type = get_content_type(instance.__class__)
-            metadata = MetaData(content_type=content_type, object_id=instance.pk, key=key, value=default)
-        if metadata:
             metadata.save()
             return metadata
+        return MetaData.set(key=key, value=key, queryset=queryset)
 
     @staticmethod
     def remove(instance, key=None, logic=False, date=None, queryset=None):
@@ -400,7 +396,7 @@ class CommonModel(models.Model):
         """
         return MetaData.set(self, key=key, value=value, date=date, queryset=self.metadatas)
 
-    def add_metadata(self, key, value, default=None, allow_duplicate=True):
+    def add_metadata(self, key, value, allow_duplicate=True):
         """
         Permet d'ajouter une valeur à une métadonnée existante
         :param key: Clé
@@ -409,8 +405,7 @@ class CommonModel(models.Model):
         :param allow_duplicate: Autorise l'ajout de doublons dans les listes de valeur (par défaut)
         :return: Métadonnée
         """
-        return MetaData.add(self, key=key, value=value, default=default,
-                            allow_duplicate=allow_duplicate, queryset=self.metadatas)
+        return MetaData.add(self, key=key, value=value, allow_duplicate=allow_duplicate, queryset=self.metadatas)
 
     def del_metadata(self, key=None, logic=False, date=None):
         """
@@ -633,23 +628,33 @@ class CommonModel(models.Model):
         """
         return Serialized(self, format=format)
 
+    def get_modified(self, **options):
+        """
+        Retourne l'ensemble des modifications effectuées sur l'entité
+        :param options: Paramètres de la fonction .to_dict()
+        :return: Set structuré par (champ, (valeur avant, valeur après))
+        """
+        old_data = set(self._copy.items())
+        if options:
+            old_data = set(type(self)(**self._copy).to_dict(**options).items())
+        new_data = set(self.to_dict(**options).items())
+        return {(k, (p, n)) for (k, p), (k, n) in zip(old_data - new_data, new_data - old_data)}
+
     @property
     def modified(self):
         """
         Retourne l'ensemble des modifications effectuées sur l'entité
         """
-        old_data = set(self._copy.items())
-        new_data = set(self.to_dict().items())
-        return new_data - old_data
+        return self.get_modified()
 
     @property
     def m2m_modified(self):
         """
-        Retourne l'ensemble des modifications effectuées sur les relations de type many-to-many de l'entité
+        Retourne les identifiants modifiés sur les relations de type many-to-many de l'entité
         """
         old_data = set(self._copy_m2m.items())
         new_data = set(self.m2m_to_dict().items())
-        return new_data - old_data
+        return {(k, (p, n)) for (k, p), (k, n) in zip(old_data - new_data, new_data - old_data)}
 
     @staticmethod
     def _model_type(obj):

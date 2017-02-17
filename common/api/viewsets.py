@@ -73,7 +73,7 @@ class CommonModelViewSet(viewsets.ModelViewSet):
             return Response(queryset)
         try:
             return super().list(request, *args, **kwargs)
-        except FieldDoesNotExist as e:
+        except (AttributeError, FieldDoesNotExist) as e:
             self.queryset_error = e
             raise ValidationError("fields: {}".format(e))
 
