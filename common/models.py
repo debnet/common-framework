@@ -634,11 +634,12 @@ class CommonModel(models.Model):
         :param options: Paramètres de la fonction .to_dict()
         :return: Set structuré par (champ, (valeur avant, valeur après))
         """
-        old_data = set(self._copy.items())
+        old_data = self._copy
         if options:
-            old_data = set(type(self)(**self._copy).to_dict(**options).items())
-        new_data = set(self.to_dict(**options).items())
-        return {(k, (p, n)) for (k, p), (k, n) in zip(old_data - new_data, new_data - old_data)}
+            old_data = type(self)(**self._copy).to_dict(**options)
+        new_data = self.to_dict(**options)
+        keys = set(old_data.keys()) | set(new_data.keys())
+        return {k: (old_data.get(k), new_data.get(k)) for k in keys if old_data.get(k) != new_data.get(k)}
 
     @property
     def modified(self):
@@ -652,9 +653,9 @@ class CommonModel(models.Model):
         """
         Retourne les identifiants modifiés sur les relations de type many-to-many de l'entité
         """
-        old_data = set(self._copy_m2m.items())
-        new_data = set(self.m2m_to_dict().items())
-        return {(k, (p, n)) for (k, p), (k, n) in zip(old_data - new_data, new_data - old_data)}
+        old_data, new_data = self._copy_m2m, self.m2m_to_dict()
+        keys = set(old_data.keys()) | set(new_data.keys())
+        return {k: (old_data.get(k), new_data.get(k)) for k in keys if old_data.get(k) != new_data.get(k)}
 
     @staticmethod
     def _model_type(obj):
