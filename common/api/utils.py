@@ -6,7 +6,7 @@ from django.db.models import F, Q, QuerySet, Count, Sum, Avg, Min, Max
 from django.db.models.query import EmptyResultSet
 from rest_framework import serializers, viewsets
 from rest_framework.decorators import api_view
-from rest_framework.exceptions import ValidationError
+from rest_framework.exceptions import NotFound, ValidationError
 from rest_framework.relations import PrimaryKeyRelatedField
 from rest_framework.response import Response
 
@@ -177,6 +177,39 @@ def excludes_many_to_many_from_serializer(serializer):
         serializer.Meta.exclude = list(
             set(getattr(serializer.Meta, 'exclude', [])) |
             {field.name for field in model._meta.many_to_many})
+
+
+def create_model_serializer(model, bases=None, attributes=None, hyperlinked=True, **metas):
+    """
+    Permet de créer le ModelSerializer pour le modèle fourni en paramètre
+    :param model: Modèle à sérialiser
+    :param bases: Classes dont devra hériter le serializer
+    :param attributes: Attributs spécifiques du serializer
+    :param hyperlinked: Active ou non la gestion des URLs pour la clé primaire
+    :param metas: Métadonnées du serializer
+    :return: serializer
+    """
+    from common.api.serializers import CommonModelSerializer
+    serializer = type('{}AutoSerializer'.format(model._meta.object_name),
+                      (bases or (CommonModelSerializer, )), (attributes or {}))
+    if not hyperlinked:
+        serializer.serializer_related_field = PrimaryKeyRelatedField
+    return to_model_serializer(model, **metas)(serializer)
+
+
+def serializer_factory(excludes):
+    """
+    Factory fournissant les 2 méthodes de récuperation de classe et d'instance du serializer
+    :param excludes: Liste de champs à exclure du ModelSerializer
+    :return: Méthode de récupération de la classe du serializer, méthode de récupération de l'instance du serializer
+    """
+    def get_serializer_class(model):
+        return create_model_serializer(model, excludes=excludes.get(model, ()))
+
+    def get_serializer(model, *args, **kwargs):
+        return get_serializer_class(model)(*args, **kwargs)
+
+    return get_serializer_class, get_serializer
 
 
 def create_model_serializer_and_viewset(
@@ -459,41 +492,51 @@ def api_view_with_serializer(http_method_names=None, input_serializer=None, seri
     return decorator
 
 
-def create_model_serializer(model, bases=None, attributes=None, hyperlinked=True, **metas):
+def auto_view(http_method_names, serializer, many=False, paginate=True,
+              custom_func=None, query_func=None, func_args=None, func_kwargs=None):
     """
-    Permet de créer le ModelSerializer pour le modèle fourni en paramètre
-    :param model: Modèle à sérialiser
-    :param bases: Classes dont devra hériter le serializer
-    :param attributes: Attributs spécifiques du serializer
-    :param hyperlinked: Active ou non la gestion des URLs pour la clé primaire
-    :param metas: Métadonnées du serializer
-    :return: serializer
+    Décorateur permettant de générer le corps d'une APIView à partir d'un QuerySet
+    :param http_method_names: Méthodes HTTP supportées
+    :param serializer: Serializer
+    :param many: Affichage de plusieurs éléments ou élément individuel (404 si élément non trouvé) ?
+    :param paginate: Pagination des résultats ?
+    :param custom_func: Fonction facultive de transformation de QuerySet (
+    :param query_func: Fonction de récupération des éléments (first() et all() par défaut)
+    :param func_args: Arguments optionnels de la fonction de récupération (pour latest() ou earliest() par exemple)
+    :param func_kwargs: Arguments optionnels nommés de la fonction de récupération
+    :return: API View
     """
-    from common.api.serializers import CommonModelSerializer
-    serializer = type('{}AutoSerializer'.format(model._meta.object_name),
-                      (bases or (CommonModelSerializer, )), (attributes or {}))
-    if not hyperlinked:
-        serializer.serializer_related_field = PrimaryKeyRelatedField
-    return to_model_serializer(model, **metas)(serializer)
+    query_func = (query_func or QuerySet.all) if many else (query_func or QuerySet.first)
+    func_args = func_args or []
+    func_kwargs = func_kwargs or {}
+
+    def wrapper(func):
+        @wraps(func)
+        def wrapped(request, **kwargs):
+            context = {}
+            queryset = func(request, **kwargs)
+            if isinstance(queryset, tuple):
+                # (Facultatif) La fonction peut retourner un contexte en plus de son QuerySet
+                queryset, context = queryset
+            if custom_func:
+                queryset = custom_func(request, queryset)
+            if many:
+                if paginate:
+                    return api_paginate(
+                        request, queryset, serializer, context=context,
+                        func=query_func, func_args=func_args, func_kwargs=func_kwargs)
+                items = query_func(queryset, *func_args, **func_kwargs)
+                return Response(serializer(items, context=dict(request=request, **context), many=True).data)
+            item = query_func(queryset, *func_args, **func_kwargs)
+            if not item:
+                raise NotFound()
+            return Response(serializer(item, context=dict(request=request, **context)).data)
+        return api_view_with_serializer(http_method_names, serializer=serializer)(wrapped)
+    return wrapper
 
 
-def serializer_factory(excludes):
-    """
-    Factory fournissant les 2 méthodes de récuperation de classe et d'instance du serializer
-    :param excludes: Liste de champs à exclure du ModelSerializer
-    :return: Méthode de récupération de la classe du serializer, méthode de récupération de l'instance du serializer
-    """
-    def get_serializer_class(model):
-        return create_model_serializer(model, excludes=excludes.get(model, ()))
-
-    def get_serializer(model, *args, **kwargs):
-        return get_serializer_class(model)(*args, **kwargs)
-
-    return get_serializer_class, get_serializer
-
-
-def paginate(request, queryset, serializer, pagination=None,
-             context=None, func=None, func_args=None, func_kwargs=None):
+def api_paginate(request, queryset, serializer, pagination=None,
+                 context=None, func=None, func_args=None, func_kwargs=None):
     """
     Ajoute de la pagination aux résultats d'un QuerySet dans un serializer donné
     :param request: Requête HTTP
@@ -519,40 +562,67 @@ def paginate(request, queryset, serializer, pagination=None,
     # Erreurs silencieuses
     silent = str_to_bool(url_params.get('silent', None))
 
-    # Filtres
+    # Filtres (dans une fonction pour être appelé par les aggregations sans group_by)
+    def do_filter(queryset):
+        try:
+            filters = {}
+            excludes = {}
+            for key, value in url_params.items():
+                if value.startswith('[') and value.endswith(']'):
+                    value = F(value[1:-1])
+                key = key[1:] if key.startswith('@') else key
+                if key not in reserved_query_params:
+                    if key.startswith('-'):
+                        excludes[key[1:]] = url_value(key[1:], value)
+                    else:
+                        filters[key] = url_value(key, value)
+            if filters:
+                queryset = queryset.filter(**filters)
+            if excludes:
+                queryset = queryset.exclude(**excludes)
+            # Filtres génériques
+            others = url_params.get('filters', None)
+            if others:
+                queryset = queryset.filter(parse_filters(others))
+            if filters or excludes or others:
+                options['filters'] = True
+        except Exception as error:
+            if not silent:
+                raise ValidationError("filters: {}".format(error))
+            options['filters'] = False
+            if settings.DEBUG:
+                options['filters_error'] = str(error)
+        return queryset
+
+    # Aggregations
     try:
-        filters = {}
-        excludes = {}
-        for key, value in url_params.items():
-            if value.startswith('[') and value.endswith(']'):
-                value = F(value[1:-1])
-            key = key[1:] if key.startswith('@') else key
-            if key not in reserved_query_params:
-                if key.startswith('-'):
-                    excludes[key[1:]] = url_value(key[1:], value)
-                else:
-                    filters[key] = url_value(key, value)
-        if filters:
-            queryset = queryset.filter(**filters)
-        if excludes:
-            queryset = queryset.exclude(**excludes)
-        # Filtres génériques
-        others = url_params.get('filters', None)
-        if others:
-            queryset = queryset.filter(parse_filters(others))
-        if filters or excludes or others:
-            options['filters'] = True
-        # Fonction spécifique
-        if func:
-            func_args = func_args or []
-            func_kwargs = func_kwargs or {}
-            queryset = func(queryset, *func_args, **func_kwargs)
+        aggregations = {}
+        for aggegate, function in AGGREGATES.items():
+            for field in url_params.get(aggegate, '').split(','):
+                if not field:
+                    continue
+                aggregations[field + '_' + aggegate] = function(field)
+        group_by = url_params.get('group_by', None)
+        if group_by:
+            _queryset = queryset.values(*group_by.split(','))
+            if aggregations:
+                _queryset = _queryset.annotate(**aggregations)
+            else:
+                _queryset = _queryset.distinct()
+            queryset = _queryset
+            options['aggregates'] = True
+        elif aggregations:
+            queryset = do_filter(queryset)  # Filtres éventuels
+            return queryset.aggregate(**aggregations)
     except Exception as error:
         if not silent:
-            raise ValidationError("filters: {}".format(error))
-        options['filters'] = False
+            raise ValidationError("aggregates: {}".format(error))
+        options['aggregates'] = False
         if settings.DEBUG:
-            options['filters_error'] = str(error)
+            options['aggregates_error'] = str(error)
+
+    # Filtres
+    queryset = do_filter(queryset)
 
     # Tris
     try:
@@ -588,6 +658,34 @@ def paginate(request, queryset, serializer, pagination=None,
         options['distinct'] = False
         if settings.DEBUG:
             options['distinct_error'] = str(error)
+
+    # Création de serializer à la volée en cas d'aggregation ou de restriction de champs
+    aggregations = {}
+    for aggregate in AGGREGATES.keys():
+        for field in url_params.get(aggregate, '').split(','):
+            if not field:
+                continue
+            aggregations[field + '_' + aggregate] = serializers.ReadOnlyField()
+    if 'group_by' in url_params or aggregations:
+        fields = {
+            field: serializers.ReadOnlyField()
+            for field in url_params.get('group_by', '').split(',')}
+        fields.update(aggregations)
+        # Un serializer avec les données groupées est créé à la volée
+        serializer = type(serializer.__name__, (serializers.Serializer, ), fields)
+    elif 'fields' in url_params:
+        from common.api.fields import ReadOnlyObjectField
+        fields = {
+            field: ReadOnlyObjectField(source=field.replace('__', '.') if '__' in field else None)
+            for field in url_params.get('fields').split(',')}
+        # Un serializer avec restriction des champs est créé à la volée
+        serializer = type(serializer.__name__, (serializers.Serializer, ), fields)
+
+    # Fonction spécifique
+    if func:
+        func_args = func_args or []
+        func_kwargs = func_kwargs or {}
+        queryset = func(queryset, *func_args, **func_kwargs)
 
     # Uniquement si toutes les données sont demandées
     all_data = str_to_bool(url_params.get('all', False))
