@@ -94,7 +94,7 @@ class CommonModelViewSet(viewsets.ModelViewSet):
             if not isinstance(queryset, QuerySet):
                 return queryset
 
-            options = dict(filters=None, order_by=None, distinct=None, aggregates=None)
+            options = dict(aggregates=None, distinct=None, filters=None, order_by=None)
             url_params = self.request.query_params.dict()
 
             # Mots-clés réservés dans les URLs

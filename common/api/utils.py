@@ -492,17 +492,17 @@ def api_view_with_serializer(http_method_names=None, input_serializer=None, seri
     return decorator
 
 
-def auto_view(http_method_names, serializer, many=False, paginate=True,
-              custom_func=None, query_func=None, func_args=None, func_kwargs=None):
+def auto_view(http_method_names, serializer, many=False, custom_func=None,
+              query_func=None, func_args=None, func_kwargs=None):
     """
     Décorateur permettant de générer le corps d'une APIView à partir d'un QuerySet
     :param http_method_names: Méthodes HTTP supportées
     :param serializer: Serializer
     :param many: Affichage de plusieurs éléments ou élément individuel (404 si élément non trouvé) ?
-    :param paginate: Pagination des résultats ?
-    :param custom_func: Fonction facultive de transformation de QuerySet (
-    :param query_func: Fonction de récupération des éléments (first() et all() par défaut)
-    :param func_args: Arguments optionnels de la fonction de récupération (pour latest() ou earliest() par exemple)
+    :param custom_func: Fonction facultive de transformation du QuerySet
+        fonction(request: Request, queryset: QuerySet) -> Union[QuerySet, Tuple[QuerySet, dict]]
+    :param query_func: Fonction de récupération des éléments ('first' ou 'all' par défaut selon le paramètre 'many')
+    :param func_args: Arguments optionnels de la fonction de récupération (pour 'latest' ou 'earliest' par exemple)
     :param func_kwargs: Arguments optionnels nommés de la fonction de récupération
     :return: API View
     """
@@ -521,12 +521,9 @@ def auto_view(http_method_names, serializer, many=False, paginate=True,
             if custom_func:
                 queryset = custom_func(request, queryset)
             if many:
-                if paginate:
-                    return api_paginate(
-                        request, queryset, serializer, context=context,
-                        func=query_func, func_args=func_args, func_kwargs=func_kwargs)
-                items = query_func(queryset, *func_args, **func_kwargs)
-                return Response(serializer(items, context=dict(request=request, **context), many=True).data)
+                return api_paginate(
+                    request, queryset, serializer, context=context,
+                    query_func=query_func, func_args=func_args, func_kwargs=func_kwargs)
             item = query_func(queryset, *func_args, **func_kwargs)
             if not item:
                 raise NotFound()
@@ -535,16 +532,17 @@ def auto_view(http_method_names, serializer, many=False, paginate=True,
     return wrapper
 
 
-def api_paginate(request, queryset, serializer, pagination=None,
-                 context=None, func=None, func_args=None, func_kwargs=None):
+def api_paginate(request, queryset, serializer, pagination=None, enable_options=True,
+                 context=None, query_func=None, func_args=None, func_kwargs=None):
     """
     Ajoute de la pagination aux résultats d'un QuerySet dans un serializer donné
     :param request: Requête HTTP
     :param queryset: QuerySet
     :param serializer: Serializer
     :param pagination: Classe de pagination
+    :param enable_options: Active toutes les options de filtre/tri/aggregation/distinct
     :param context: Contexte du serializer
-    :param func: Fonction spécifique à exécuter sur le QuerySet avant la pagination
+    :param query_func: Fonction spécifique à exécuter sur le QuerySet avant la pagination
     :param func_args: Arguments de la fonction
     :param func_kwargs: Arguments mots-clés de la fonction
     :return: Réponse HTTP des résultats avec pagination
@@ -552,140 +550,143 @@ def api_paginate(request, queryset, serializer, pagination=None,
     from common.api.pagination import CustomPageNumberPagination
     pagination = pagination or CustomPageNumberPagination
 
-    context = dict(request=request, **(context or {}))
-    options = dict(filters=None, order_by=None, distinct=None)
-    url_params = request.query_params.dict()
-
     # Mots-clés réservés dans les URLs
     reserved_query_params = RESERVED_QUERY_PARAMS + [pagination.page_query_param, pagination.page_size_query_param]
 
-    # Erreurs silencieuses
-    silent = str_to_bool(url_params.get('silent', None))
+    url_params = request.query_params.dict()
+    context = dict(request=request, **(context or {}))
 
-    # Filtres (dans une fonction pour être appelé par les aggregations sans group_by)
-    def do_filter(queryset):
+    # Activation des options
+    if enable_options:
+        options = dict(aggregates=None, distinct=None, filters=None, order_by=None)
+
+        # Erreurs silencieuses
+        silent = str_to_bool(url_params.get('silent', None))
+
+        # Filtres (dans une fonction pour être appelé par les aggregations sans group_by)
+        def do_filter(queryset):
+            try:
+                filters = {}
+                excludes = {}
+                for key, value in url_params.items():
+                    if value.startswith('[') and value.endswith(']'):
+                        value = F(value[1:-1])
+                    key = key[1:] if key.startswith('@') else key
+                    if key not in reserved_query_params:
+                        if key.startswith('-'):
+                            excludes[key[1:]] = url_value(key[1:], value)
+                        else:
+                            filters[key] = url_value(key, value)
+                if filters:
+                    queryset = queryset.filter(**filters)
+                if excludes:
+                    queryset = queryset.exclude(**excludes)
+                # Filtres génériques
+                others = url_params.get('filters', None)
+                if others:
+                    queryset = queryset.filter(parse_filters(others))
+                if filters or excludes or others:
+                    options['filters'] = True
+            except Exception as error:
+                if not silent:
+                    raise ValidationError("filters: {}".format(error))
+                options['filters'] = False
+                if settings.DEBUG:
+                    options['filters_error'] = str(error)
+            return queryset
+
+        # Aggregations
         try:
-            filters = {}
-            excludes = {}
-            for key, value in url_params.items():
-                if value.startswith('[') and value.endswith(']'):
-                    value = F(value[1:-1])
-                key = key[1:] if key.startswith('@') else key
-                if key not in reserved_query_params:
-                    if key.startswith('-'):
-                        excludes[key[1:]] = url_value(key[1:], value)
-                    else:
-                        filters[key] = url_value(key, value)
-            if filters:
-                queryset = queryset.filter(**filters)
-            if excludes:
-                queryset = queryset.exclude(**excludes)
-            # Filtres génériques
-            others = url_params.get('filters', None)
-            if others:
-                queryset = queryset.filter(parse_filters(others))
-            if filters or excludes or others:
-                options['filters'] = True
+            aggregations = {}
+            for aggegate, function in AGGREGATES.items():
+                for field in url_params.get(aggegate, '').split(','):
+                    if not field:
+                        continue
+                    aggregations[field + '_' + aggegate] = function(field)
+            group_by = url_params.get('group_by', None)
+            if group_by:
+                _queryset = queryset.values(*group_by.split(','))
+                if aggregations:
+                    _queryset = _queryset.annotate(**aggregations)
+                else:
+                    _queryset = _queryset.distinct()
+                queryset = _queryset
+                options['aggregates'] = True
+            elif aggregations:
+                queryset = do_filter(queryset)  # Filtres éventuels
+                return queryset.aggregate(**aggregations)
         except Exception as error:
             if not silent:
-                raise ValidationError("filters: {}".format(error))
-            options['filters'] = False
+                raise ValidationError("aggregates: {}".format(error))
+            options['aggregates'] = False
             if settings.DEBUG:
-                options['filters_error'] = str(error)
-        return queryset
+                options['aggregates_error'] = str(error)
 
-    # Aggregations
-    try:
+        # Filtres
+        queryset = do_filter(queryset)
+
+        # Tris
+        try:
+            order_by = url_params.get('order_by', None)
+            if order_by:
+                temp_queryset = queryset.order_by(*order_by.split(','))
+                str(temp_queryset.query)  # Force SQL evaluation to retrieve exception
+                queryset = temp_queryset
+                options['order_by'] = True
+        except EmptyResultSet:
+            pass
+        except Exception as error:
+            if not silent:
+                raise ValidationError("order_by: {}".format(error))
+            options['order_by'] = False
+            if settings.DEBUG:
+                options['order_by_error'] = str(error)
+
+        # Distinct
+        try:
+            distinct = url_params.get('distinct', None)
+            if distinct:
+                distincts = distinct.split(',')
+                if str_to_bool(distinct) is not None:
+                    distincts = []
+                queryset = queryset.distinct(*distincts)
+                options['distinct'] = True
+        except EmptyResultSet:
+            pass
+        except Exception as error:
+            if not silent:
+                raise ValidationError("distinct: {}".format(error))
+            options['distinct'] = False
+            if settings.DEBUG:
+                options['distinct_error'] = str(error)
+
+        # Création de serializer à la volée en cas d'aggregation ou de restriction de champs
         aggregations = {}
-        for aggegate, function in AGGREGATES.items():
-            for field in url_params.get(aggegate, '').split(','):
+        for aggregate in AGGREGATES.keys():
+            for field in url_params.get(aggregate, '').split(','):
                 if not field:
                     continue
-                aggregations[field + '_' + aggegate] = function(field)
-        group_by = url_params.get('group_by', None)
-        if group_by:
-            _queryset = queryset.values(*group_by.split(','))
-            if aggregations:
-                _queryset = _queryset.annotate(**aggregations)
-            else:
-                _queryset = _queryset.distinct()
-            queryset = _queryset
-            options['aggregates'] = True
-        elif aggregations:
-            queryset = do_filter(queryset)  # Filtres éventuels
-            return queryset.aggregate(**aggregations)
-    except Exception as error:
-        if not silent:
-            raise ValidationError("aggregates: {}".format(error))
-        options['aggregates'] = False
-        if settings.DEBUG:
-            options['aggregates_error'] = str(error)
-
-    # Filtres
-    queryset = do_filter(queryset)
-
-    # Tris
-    try:
-        order_by = url_params.get('order_by', None)
-        if order_by:
-            temp_queryset = queryset.order_by(*order_by.split(','))
-            str(temp_queryset.query)  # Force SQL evaluation to retrieve exception
-            queryset = temp_queryset
-            options['order_by'] = True
-    except EmptyResultSet:
-        pass
-    except Exception as error:
-        if not silent:
-            raise ValidationError("order_by: {}".format(error))
-        options['order_by'] = False
-        if settings.DEBUG:
-            options['order_by_error'] = str(error)
-
-    # Distinct
-    try:
-        distinct = url_params.get('distinct', None)
-        if distinct:
-            distincts = distinct.split(',')
-            if str_to_bool(distinct) is not None:
-                distincts = []
-            queryset = queryset.distinct(*distincts)
-            options['distinct'] = True
-    except EmptyResultSet:
-        pass
-    except Exception as error:
-        if not silent:
-            raise ValidationError("distinct: {}".format(error))
-        options['distinct'] = False
-        if settings.DEBUG:
-            options['distinct_error'] = str(error)
-
-    # Création de serializer à la volée en cas d'aggregation ou de restriction de champs
-    aggregations = {}
-    for aggregate in AGGREGATES.keys():
-        for field in url_params.get(aggregate, '').split(','):
-            if not field:
-                continue
-            aggregations[field + '_' + aggregate] = serializers.ReadOnlyField()
-    if 'group_by' in url_params or aggregations:
-        fields = {
-            field: serializers.ReadOnlyField()
-            for field in url_params.get('group_by', '').split(',')}
-        fields.update(aggregations)
-        # Un serializer avec les données groupées est créé à la volée
-        serializer = type(serializer.__name__, (serializers.Serializer, ), fields)
-    elif 'fields' in url_params:
-        from common.api.fields import ReadOnlyObjectField
-        fields = {
-            field: ReadOnlyObjectField(source=field.replace('__', '.') if '__' in field else None)
-            for field in url_params.get('fields').split(',')}
-        # Un serializer avec restriction des champs est créé à la volée
-        serializer = type(serializer.__name__, (serializers.Serializer, ), fields)
+                aggregations[field + '_' + aggregate] = serializers.ReadOnlyField()
+        if 'group_by' in url_params or aggregations:
+            fields = {
+                field: serializers.ReadOnlyField()
+                for field in url_params.get('group_by', '').split(',')}
+            fields.update(aggregations)
+            # Un serializer avec les données groupées est créé à la volée
+            serializer = type(serializer.__name__, (serializers.Serializer, ), fields)
+        elif 'fields' in url_params:
+            from common.api.fields import ReadOnlyObjectField
+            fields = {
+                field: ReadOnlyObjectField(source=field.replace('__', '.') if '__' in field else None)
+                for field in url_params.get('fields').split(',')}
+            # Un serializer avec restriction des champs est créé à la volée
+            serializer = type(serializer.__name__, (serializers.Serializer, ), fields)
 
     # Fonction spécifique
-    if func:
+    if query_func:
         func_args = func_args or []
         func_kwargs = func_kwargs or {}
-        queryset = func(queryset, *func_args, **func_kwargs)
+        queryset = query_func(queryset, *func_args, **func_kwargs)
 
     # Uniquement si toutes les données sont demandées
     all_data = str_to_bool(url_params.get('all', False))
