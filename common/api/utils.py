@@ -25,8 +25,12 @@ AGGREGATES = {
     'max': Max,
 }
 RESERVED_QUERY_PARAMS = [
-    'format', 'filters', 'fields', 'order_by', 'group_by', 'all',
-    'distinct', 'silent', 'simple', 'meta'] + list(AGGREGATES.keys())
+    'filters', 'fields', 'order_by', 'group_by', 'all',
+    'distinct', 'silent', 'simple', 'meta', 'cache', 'timeout'] + list(AGGREGATES.keys())
+
+# Gestion du cache
+CACHE_PREFIX = 'api_'
+CACHE_TIMEOUT = 3600  # 1 hour
 
 
 def url_value(filter, value):
@@ -551,14 +555,42 @@ def api_paginate(request, queryset, serializer, pagination=None, enable_options=
     pagination = pagination or CustomPageNumberPagination
 
     # Mots-clés réservés dans les URLs
-    reserved_query_params = RESERVED_QUERY_PARAMS + [pagination.page_query_param, pagination.page_size_query_param]
+    reserved_query_params = ['format', pagination.page_query_param, pagination.page_size_query_param]
+    custom_query_params = reserved_query_params + RESERVED_QUERY_PARAMS
 
     url_params = request.query_params.dict()
     context = dict(request=request, **(context or {}))
+    options = dict(aggregates=None, distinct=None, filters=None, order_by=None)
 
     # Activation des options
     if enable_options:
-        options = dict(aggregates=None, distinct=None, filters=None, order_by=None)
+
+        # Critères de recherche dans le cache
+        cache_key = url_params.pop('cache', None)
+        if cache_key:
+            from django.core.cache import cache
+            cache_params = cache.get(CACHE_PREFIX + cache_key, {})
+            new_url_params = {}
+            new_url_params.update(**cache_params)
+            new_url_params.update(**url_params)
+            url_params = new_url_params
+            new_cache_params = {key: value for key, value in url_params.items() if key not in reserved_query_params}
+            if new_cache_params:
+                from django.utils.timezone import now
+                from datetime import timedelta
+                cache_timeout = int(url_params.pop('timeout', CACHE_TIMEOUT)) or None
+                cache.set(CACHE_PREFIX + cache_key, new_cache_params, timeout=cache_timeout)
+                options['cache_expires'] = now() + timedelta(seconds=cache_timeout)
+            cache_url = '{}?cache={}'.format(request.build_absolute_uri(request.path), cache_key)
+            plain_url = cache_url
+            for key, value in url_params.items():
+                url_param = '&{}={}'.format(key, value)
+                if key in reserved_query_params:
+                    cache_url += url_param
+                plain_url += url_param
+            options['raw_url'] = plain_url
+            options['cache_url'] = cache_url
+            options['cache_data'] = new_cache_params
 
         # Erreurs silencieuses
         silent = str_to_bool(url_params.get('silent', None))
@@ -572,7 +604,7 @@ def api_paginate(request, queryset, serializer, pagination=None, enable_options=
                     if value.startswith('[') and value.endswith(']'):
                         value = F(value[1:-1])
                     key = key[1:] if key.startswith('@') else key
-                    if key not in reserved_query_params:
+                    if key not in custom_query_params:
                         if key.startswith('-'):
                             excludes[key[1:]] = url_value(key[1:], value)
                         else:
@@ -695,7 +727,7 @@ def api_paginate(request, queryset, serializer, pagination=None, enable_options=
 
     # Pagination avec ajout des options de filtres/tris dans la pagination
     paginator = pagination()
-    if hasattr(paginator, 'additional_data'):
+    if enable_options and hasattr(paginator, 'additional_data'):
         paginator.additional_data = dict(options=options)
     serializer = serializer(paginator.paginate_queryset(queryset, request), context=context, many=True)
     return paginator.get_paginated_response(serializer.data)

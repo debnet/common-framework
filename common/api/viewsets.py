@@ -5,7 +5,7 @@ from rest_framework import serializers
 from rest_framework import viewsets
 from rest_framework.exceptions import ValidationError
 
-from common.api.utils import AGGREGATES, RESERVED_QUERY_PARAMS, url_value, parse_filters
+from common.api.utils import AGGREGATES, CACHE_PREFIX, CACHE_TIMEOUT, RESERVED_QUERY_PARAMS, url_value, parse_filters
 from common.api.fields import ReadOnlyObjectField
 from common.models import Entity, MetaData
 from common.settings import settings
@@ -98,8 +98,37 @@ class CommonModelViewSet(viewsets.ModelViewSet):
             url_params = self.request.query_params.dict()
 
             # Mots-clés réservés dans les URLs
-            reserved_query_params = RESERVED_QUERY_PARAMS + [
-                self.paginator.page_query_param, self.paginator.page_size_query_param] if self.paginator else []
+            reserved_query_params = ['format'] + ([
+                self.paginator.page_query_param,
+                self.paginator.page_size_query_param] if self.paginator else [])
+            custom_query_params = reserved_query_params + RESERVED_QUERY_PARAMS
+
+            # Critères de recherche dans le cache
+            cache_key = url_params.pop('cache', None)
+            if cache_key:
+                from django.core.cache import cache
+                cache_params = cache.get(CACHE_PREFIX + cache_key, {})
+                new_url_params = {}
+                new_url_params.update(**cache_params)
+                new_url_params.update(**url_params)
+                url_params = new_url_params
+                new_cache_params = {key: value for key, value in url_params.items() if key not in reserved_query_params}
+                if new_cache_params:
+                    from django.utils.timezone import now
+                    from datetime import timedelta
+                    cache_timeout = int(url_params.pop('timeout', CACHE_TIMEOUT)) or None
+                    cache.set(CACHE_PREFIX + cache_key, new_cache_params, timeout=cache_timeout)
+                    options['cache_expires'] = now() + timedelta(seconds=cache_timeout)
+                cache_url = '{}?cache={}'.format(self.request.build_absolute_uri(self.request.path), cache_key)
+                plain_url = cache_url
+                for key, value in url_params.items():
+                    url_param = '&{}={}'.format(key, value)
+                    if key in reserved_query_params:
+                        cache_url += url_param
+                    plain_url += url_param
+                options['raw_url'] = plain_url
+                options['cache_url'] = cache_url
+                options['cache_data'] = new_cache_params
 
             # Erreurs silencieuses
             silent = str_to_bool(url_params.get('silent', None))
@@ -152,7 +181,7 @@ class CommonModelViewSet(viewsets.ModelViewSet):
                     for key, value in url_params.items():
                         if value.startswith('[') and value.endswith(']'):
                             value = F(value[1:-1])
-                        if key not in reserved_query_params:
+                        if key not in custom_query_params:
                             key = key[1:] if key.startswith('@') else key
                             if key.startswith('-'):
                                 excludes[key[1:]] = url_value(key[1:], value)
