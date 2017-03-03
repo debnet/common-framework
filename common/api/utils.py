@@ -532,7 +532,7 @@ def auto_view(http_method_names, serializer, many=False, custom_func=None,
             if not item:
                 raise NotFound()
             return Response(serializer(item, context=dict(request=request, **context)).data)
-        return api_view_with_serializer(http_method_names, serializer=serializer)(wrapped)
+        return api_view_with_serializer(http_method_names, input_serializer=serializer)(wrapped)
     return wrapper
 
 
@@ -555,8 +555,8 @@ def api_paginate(request, queryset, serializer, pagination=None, enable_options=
     pagination = pagination or CustomPageNumberPagination
 
     # Mots-clés réservés dans les URLs
-    reserved_query_params = ['format', pagination.page_query_param, pagination.page_size_query_param]
-    custom_query_params = reserved_query_params + RESERVED_QUERY_PARAMS
+    default_reserved_query_params = ['format', pagination.page_query_param, pagination.page_size_query_param]
+    reserved_query_params = default_reserved_query_params + RESERVED_QUERY_PARAMS
 
     url_params = request.query_params.dict()
     context = dict(request=request, **(context or {}))
@@ -574,7 +574,7 @@ def api_paginate(request, queryset, serializer, pagination=None, enable_options=
             new_url_params.update(**cache_params)
             new_url_params.update(**url_params)
             url_params = new_url_params
-            new_cache_params = {key: value for key, value in url_params.items() if key not in reserved_query_params}
+            new_cache_params = {key: value for key, value in url_params.items() if key not in default_reserved_query_params}
             if new_cache_params:
                 from django.utils.timezone import now
                 from datetime import timedelta
@@ -585,7 +585,7 @@ def api_paginate(request, queryset, serializer, pagination=None, enable_options=
             plain_url = cache_url
             for key, value in url_params.items():
                 url_param = '&{}={}'.format(key, value)
-                if key in reserved_query_params:
+                if key in default_reserved_query_params:
                     cache_url += url_param
                 plain_url += url_param
             options['raw_url'] = plain_url
@@ -604,7 +604,7 @@ def api_paginate(request, queryset, serializer, pagination=None, enable_options=
                     if value.startswith('[') and value.endswith(']'):
                         value = F(value[1:-1])
                     key = key[1:] if key.startswith('@') else key
-                    if key not in custom_query_params:
+                    if key not in reserved_query_params:
                         if key.startswith('-'):
                             excludes[key[1:]] = url_value(key[1:], value)
                         else:

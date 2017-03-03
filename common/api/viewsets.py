@@ -98,10 +98,10 @@ class CommonModelViewSet(viewsets.ModelViewSet):
             url_params = self.request.query_params.dict()
 
             # Mots-clés réservés dans les URLs
-            reserved_query_params = ['format'] + ([
+            default_reserved_query_params = ['format'] + ([
                 self.paginator.page_query_param,
                 self.paginator.page_size_query_param] if self.paginator else [])
-            custom_query_params = reserved_query_params + RESERVED_QUERY_PARAMS
+            reserved_query_params = default_reserved_query_params + RESERVED_QUERY_PARAMS
 
             # Critères de recherche dans le cache
             cache_key = url_params.pop('cache', None)
@@ -112,7 +112,7 @@ class CommonModelViewSet(viewsets.ModelViewSet):
                 new_url_params.update(**cache_params)
                 new_url_params.update(**url_params)
                 url_params = new_url_params
-                new_cache_params = {key: value for key, value in url_params.items() if key not in reserved_query_params}
+                new_cache_params = {key: value for key, value in url_params.items() if key not in default_reserved_query_params}
                 if new_cache_params:
                     from django.utils.timezone import now
                     from datetime import timedelta
@@ -123,7 +123,7 @@ class CommonModelViewSet(viewsets.ModelViewSet):
                 plain_url = cache_url
                 for key, value in url_params.items():
                     url_param = '&{}={}'.format(key, value)
-                    if key in reserved_query_params:
+                    if key in default_reserved_query_params:
                         cache_url += url_param
                     plain_url += url_param
                 options['raw_url'] = plain_url
@@ -181,7 +181,7 @@ class CommonModelViewSet(viewsets.ModelViewSet):
                     for key, value in url_params.items():
                         if value.startswith('[') and value.endswith(']'):
                             value = F(value[1:-1])
-                        if key not in custom_query_params:
+                        if key not in reserved_query_params:
                             key = key[1:] if key.startswith('@') else key
                             if key.startswith('-'):
                                 excludes[key[1:]] = url_value(key[1:], value)
