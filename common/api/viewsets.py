@@ -285,25 +285,17 @@ class UserViewSet(CommonModelViewSet):
     ViewSet spécifique pour l'utilisateur
     """
 
-    _default_data = {
-        'is_active': True,
-        'is_staff': False,
-        'is_superuser': False,
-        'groups': [],
-        'user_permissions': [],
-    }
-
     def check_permissions(self, request):
         # Autorise l'utilisateur à modifier ses propres informations ou les informations des utilisateurs non-staff
         if self.action in ['create']:
             # Autorise la création pour tout le monde
             return True
         elif self.action in ['update', 'partial_update']:
-            # Autorise la modification de soi-même ou d'un autre utilisateur de rang inféreiru
+            # Autorise la modification de soi-même ou d'un autre utilisateur de rang inférieur
             current_user = request.user
             user = self.get_object()
             if (current_user.is_staff and not user.is_staff) or (current_user == user):
-                return
+                return True
         # Applique le système de permissions dans les autres cas
         return super().check_permissions(request)
 
