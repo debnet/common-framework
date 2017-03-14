@@ -595,6 +595,30 @@ def api_paginate(request, queryset, serializer, pagination=None, enable_options=
         # Erreurs silencieuses
         silent = str_to_bool(url_params.get('silent', None))
 
+        # Extraction de champs spécifiques
+        fields = url_params.get('fields', '').replace('.', '__')
+        if fields:
+            # Supprime la récupération des relations
+            queryset = queryset.select_related(None).prefetch_related(None)
+            # Champs spécifiques
+            try:
+                relateds = set()
+                field_names = set()
+                for field in fields.split(','):
+                    if not field:
+                        continue
+                    field_names.add(field)
+                    *related, field_name = field.split('__')
+                    if related:
+                        relateds.add('__'.join(related))
+                if relateds:
+                    queryset = queryset.select_related(*relateds)
+                if field_names:
+                    queryset = queryset.only(*field_names)
+            except Exception as error:
+                if not silent:
+                    raise ValidationError("fields: {}".format(error))
+
         # Filtres (dans une fonction pour être appelé par les aggregations sans group_by)
         def do_filter(queryset):
             try:

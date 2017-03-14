@@ -133,10 +133,11 @@ class CommonModelViewSet(viewsets.ModelViewSet):
             # Erreurs silencieuses
             silent = str_to_bool(url_params.get('silent', None))
 
-            # Requête simplifiée
+            # Requête simplifiée et/ou extraction de champs spécifiques
             fields = url_params.get('fields', '').replace('.', '__')
             if str_to_bool(url_params.get('simple', None)) or fields:
-                queryset = queryset.model.objects.all()
+                # Supprime la récupération des relations
+                queryset = queryset.select_related(None).prefetch_related(None)
                 # Champs spécifiques
                 try:
                     relateds = set()
