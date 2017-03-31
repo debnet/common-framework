@@ -44,31 +44,31 @@ class LdapAuthenticationBackend(ModelBackend):
                         user = User.objects.get(username=username)
                         user.set_password(password)
                     except User.DoesNotExist:
-                        user = User(
-                            username=username,
-                            password=password,
-                            first_name=attributes['givenName'],
-                            last_name=attributes['sn'],
-                            email=attributes['mail'],
-                            is_active=True,
-                            is_staff=True,
-                        )
+                        user = User(username=username, password=password)
+
+                    # Informations
+                    setattr(user, 'first_name', attributes['givenName'])
+                    setattr(user, 'last_name', attributes['sn'])
+                    setattr(user, 'email', attributes['mail'])
+                    setattr(user, 'is_active', True)
+                    setattr(user, 'is_staff', True)
 
                     # Vérification du statut de l'utilisateur
-                    user.is_superuser = False
+                    setattr(user, 'is_superuser', False)
                     group_names = [group.split(',')[0].split('=')[1] for group in attributes['memberOf']]
                     if username in settings.LDAP_ADMIN_USERS or set(group_names) & set(settings.LDAP_ADMIN_GROUPS):
-                        user.is_superuser = True
+                        setattr(user, 'is_superuser', True)
                     user.save()
 
                     # Récupération des groupes de l'utilisateur
-                    non_ldap_groups = list(user.groups.exclude(name__startswith=settings.LDAP_GROUP_PREFIX))
-                    user.groups.clear()
-                    for group_name in group_names:
-                        group, created = Group.objects.get_or_create(
-                            name='{}{}'.format(settings.LDAP_GROUP_PREFIX, group_name))
-                        user.groups.add(group)
-                    user.groups.add(*non_ldap_groups)
+                    if hasattr(User, 'groups'):
+                        non_ldap_groups = list(user.groups.exclude(name__startswith=settings.LDAP_GROUP_PREFIX))
+                        user.groups.clear()
+                        for group_name in group_names:
+                            group, created = Group.objects.get_or_create(
+                                name='{}{}'.format(settings.LDAP_GROUP_PREFIX, group_name))
+                            user.groups.add(group)
+                        user.groups.add(*non_ldap_groups)
                     return user
 
                 logger.info(_("Utilisateur {username} non trouvé dans le répertoire LDAP.").format(username=username))
