@@ -515,6 +515,9 @@ class CommonModel(models.Model):
                 # Cas spécifique des champs fichier & image
                 elif isinstance(field, (models.FileField, models.ImageField)):
                     data[field.name] = (value if raw else getattr(value, 'url', None)) if value else None
+                # Cas spécifique pour les listes
+                elif isinstance(value, (list, set, tuple)):
+                    data[field.name] = value if raw else ','.join(value)
                 # Gestion des clés étrangères
                 elif isinstance(field, (models.ForeignKey, models.OneToOneField)):
                     # Identifiant
