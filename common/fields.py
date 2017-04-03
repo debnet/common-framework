@@ -95,6 +95,10 @@ class JsonDict(dict):
     def __repr__(self):
         return json_encode(self, sort_keys=True)
 
+    @property
+    def base(self):
+        return dict(self)
+
 
 class JsonString(str):
     """
@@ -104,6 +108,10 @@ class JsonString(str):
     def __repr__(self):
         return json_encode(self, sort_keys=True)
 
+    @property
+    def base(self):
+        return str(self)
+
 
 class JsonList(list):
     """
@@ -112,6 +120,10 @@ class JsonList(list):
 
     def __repr__(self):
         return json_encode(self, sort_keys=True)
+
+    @property
+    def base(self):
+        return list(self)
 
 
 class JsonField(models.Field):

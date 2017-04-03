@@ -365,7 +365,7 @@ class HistoryAdmin(admin.ModelAdmin):
     has_reason.short_description = _("Motif")
 
     def get_queryset(self, request):
-        return super().get_queryset(request).prefetch_related('entity', 'content_type', 'user')
+        return super().get_queryset(request).select_related('content_type', 'user').prefetch_related('entity')
 
 
 @admin.register(HistoryField)
@@ -375,7 +375,7 @@ class HistoryFieldAdmin(admin.ModelAdmin):
     """
     date_hierarchy = 'creation_date'
     readonly_fields = ('history', 'field_name', 'old_value', 'new_value', 'status_m2m', 'data', )
-    list_display = ('id', 'creation_date', 'history_url', 'field_name', 'old_value', 'new_value',
+    list_display = ('id', 'creation_date', 'history_url', 'field', 'old_value', 'new_value',
                     'data_size', 'status_m2m', 'restoration_date', 'restored', )
     list_display_links = ('id', )
     list_filter = (
@@ -391,17 +391,26 @@ class HistoryFieldAdmin(admin.ModelAdmin):
     search_fields = ('field_name', 'history__object_str', 'history__content_type', )
     actions = [restore]
 
+    def field(self, obj):
+        try:
+            model = obj.history.content_type.model_class()
+            field = model._meta.get_field(obj.field_name)
+            return format_html('<dfn title="{label}">{code}</dfn>', label=field.verbose_name, code=obj.field_name)
+        except:
+            return obj.field_name
+    field.short_description = _("Champ")
+
     def history_url(self, obj):
         from django.core.urlresolvers import reverse
         pattern = 'admin:{app_label}_{model}_changelist'.format(
             app_label=History._meta.app_label, model=History._meta.model_name)
-        url = reverse(pattern) + '?id={}'.format(obj.history.id)
+        url = reverse(pattern) + '?id={}'.format(obj.history_id)
         return format_html('<a href="{url}">{label}</a>', url=url, label=str(obj.history))
     history_url.admin_order_field = 'history'
     history_url.short_description = _("Historique")
 
     def get_queryset(self, request):
-        return super().get_queryset(request).select_related('history')
+        return super().get_queryset(request).select_related('history__content_type')
 
 
 @admin.register(Webhook)

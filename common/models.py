@@ -715,7 +715,7 @@ class HistoryCommon(CommonModel):
 
     def save(self, *args, **kwargs):
         self.data_size = 0
-        if self.data:
+        if self.data is not None:
             self.data_size = len(str(self.data))
         super().save(*args, **kwargs)
 
@@ -729,9 +729,10 @@ class CustomGenericForeignKey(GenericForeignKey):
     """
 
     def __set__(self, instance, value):
-        ct = getattr(instance, self.ct_field, None)
-        fk = getattr(instance, self.fk_field, None)
-        if value is not None:
+        if value is None:
+            ct = getattr(instance, self.ct_field, None)
+            fk = getattr(instance, self.fk_field, None)
+        else:
             ct = self.get_content_type(obj=value)
             fk = value._get_pk_val()
         setattr(instance, self.ct_field, ct)
