@@ -17,7 +17,7 @@ class LdapAuthenticationBackend(ModelBackend):
     """
     Authentification via LDAP
     """
-    def authenticate(self, username=None, password=None, **kwargs):
+    def authenticate(self, request, username=None, password=None, **kwargs):
         if settings.LDAP_ENABLE is False or len(password) == 0:
             return None
 
