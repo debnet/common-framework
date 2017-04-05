@@ -273,6 +273,9 @@ class CommonModelViewSet(viewsets.ModelViewSet):
 
             # Ajout des options de filtres/tris dans la pagination
             if self.paginator and hasattr(self.paginator, 'additional_data'):
+                # Force un tri sur la clé primaire en cas de pagination
+                if hasattr(queryset, 'ordered') and not queryset.ordered:
+                    queryset = queryset.order_by(*(getattr(queryset, '_fields', None) or [queryset.model._meta.pk.name]))
                 self.paginator.additional_data = dict(options=options)
             return queryset
         except ValidationError as e:

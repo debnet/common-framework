@@ -6,7 +6,7 @@ import pickle
 from django.contrib.postgres.lookups import Unaccent
 from django.core.exceptions import ValidationError
 from django.db import models
-from django.db.models import CharField, Lookup, TextField, Transform
+from django.db.models import CharField, Lookup, TextField, Transform, lookups
 from django.utils.translation import ugettext_lazy as _
 
 from common.utils import json_decode, json_encode
@@ -75,7 +75,9 @@ class PickleField(models.BinaryField):
 
     def get_prep_value(self, value):
         if not value:
-            return None if self.null else ''
+            return None if self.null else b''
+        if isinstance(value, bytes):
+            return value
         return pickle.dumps(value)
 
     def value_from_object(self, obj):
@@ -134,10 +136,11 @@ class JsonField(models.Field):
     def __init__(self, *args, **kwargs):
         null = kwargs.get('null', False)
         default = kwargs.get('default', None)
+        self.encoder = kwargs.get('encoder', None)
         if not null and default is None:
             kwargs['default'] = '{}'
         if isinstance(default, (list, dict)):
-            kwargs['default'] = json_encode(default, sort_keys=True)
+            kwargs['default'] = json_encode(default, cls=self.encoder, sort_keys=True)
         models.Field.__init__(self, *args, **kwargs)
 
     def db_type(self, connection):
@@ -190,7 +193,7 @@ class JsonField(models.Field):
                 value = json_decode(value)
             except ValueError:
                 pass
-        value = json_encode(value, sort_keys=True)
+        value = json_encode(value, cls=self.encoder, sort_keys=True)
         return value
 
     def deconstruct(self):
@@ -202,7 +205,7 @@ class JsonField(models.Field):
     def validate(self, value, model_instance):
         super().validate(value, model_instance)
         try:
-            json_encode(value)
+            json_encode(value, cls=self.encoder)
         except TypeError:
             raise ValidationError(
                 self.error_messages['invalid'],
@@ -226,6 +229,8 @@ class JsonField(models.Field):
 
 
 class JsonKeyTransform(Transform):
+    operator = '->'
+    nested_operator = '#>'
 
     def __init__(self, key_name, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -239,14 +244,71 @@ class JsonKeyTransform(Transform):
             previous = previous.lhs
         lhs, params = compiler.compile(previous)
         if len(key_transforms) > 1:
-            return "{} #> %s".format(lhs), [key_transforms] + params
+            return "(%s %s %%s)" % (lhs, self.nested_operator), [key_transforms] + params
         try:
             int(self.key_name)
         except ValueError:
             lookup = "'%s'" % self.key_name
         else:
             lookup = "%s" % self.key_name
-        return "%s -> %s" % (lhs, lookup), params
+        return "(%s %s %s)" % (lhs, self.operator, lookup), params
+
+
+class JsonKeyTextTransform(JsonKeyTransform):
+    """
+    Transformation pour JsonField afin d'utiliser les lookups sur les éléments texte
+    """
+    operator = '->>'
+    nested_operator = '#>>'
+    _output_field = TextField()
+
+
+class JsonKeyTransformTextLookupMixin(object):
+    def __init__(self, key_transform, *args, **kwargs):
+        assert isinstance(key_transform, JsonKeyTransform)
+        key_text_transform = JsonKeyTextTransform(
+            key_transform.key_name, *key_transform.source_expressions, **key_transform.extra)
+        super(JsonKeyTransformTextLookupMixin, self).__init__(key_text_transform, *args, **kwargs)
+
+
+@JsonKeyTransform.register_lookup
+class JsonKeyTransformIExact(JsonKeyTransformTextLookupMixin, lookups.IExact):
+    pass
+
+
+@JsonKeyTransform.register_lookup
+class JsonKeyTransformIContains(JsonKeyTransformTextLookupMixin, lookups.IContains):
+    pass
+
+
+@JsonKeyTransform.register_lookup
+class JsonKeyTransformStartsWith(JsonKeyTransformTextLookupMixin, lookups.StartsWith):
+    pass
+
+
+@JsonKeyTransform.register_lookup
+class JsonKeyTransformIStartsWith(JsonKeyTransformTextLookupMixin, lookups.IStartsWith):
+    pass
+
+
+@JsonKeyTransform.register_lookup
+class JsonKeyTransformEndsWith(JsonKeyTransformTextLookupMixin, lookups.EndsWith):
+    pass
+
+
+@JsonKeyTransform.register_lookup
+class JsonKeyTransformIEndsWith(JsonKeyTransformTextLookupMixin, lookups.IEndsWith):
+    pass
+
+
+@JsonKeyTransform.register_lookup
+class JsonKeyTransformRegex(JsonKeyTransformTextLookupMixin, lookups.Regex):
+    pass
+
+
+@JsonKeyTransform.register_lookup
+class JsonKeyTransformIRegex(JsonKeyTransformTextLookupMixin, lookups.IRegex):
+    pass
 
 
 class JsonKeyTransformFactory(object):

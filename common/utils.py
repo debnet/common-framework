@@ -1171,8 +1171,8 @@ class JsonEncoder(JSONEncoder):
 
 
 # JSON serialization
-def json_encode(data, **options):
-    return json.dumps(data, cls=JsonEncoder, **options)
+def json_encode(data, cls=None, **options):
+    return json.dumps(data, cls=cls or JsonEncoder, **options)
 
 
 # JSON deserialization

@@ -753,6 +753,9 @@ def api_paginate(request, queryset, serializer, pagination=None, enable_options=
     paginator = pagination()
     if enable_options and hasattr(paginator, 'additional_data'):
         paginator.additional_data = dict(options=options)
+    # Force un tri sur la clé primaire en cas de pagination
+    if hasattr(queryset, 'ordered') and not queryset.ordered:
+        queryset = queryset.order_by(*(getattr(queryset, '_fields', None) or [queryset.model._meta.pk.name]))
     serializer = serializer(paginator.paginate_queryset(queryset, request), context=context, many=True)
     return paginator.get_paginated_response(serializer.data)
 
