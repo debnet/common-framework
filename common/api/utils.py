@@ -61,6 +61,7 @@ def parse_filters(filters):
     if isinstance(filters, str):
         import ast
         import re
+        filters = filters.replace('\'', '\\\'').replace('"', '\\"')
         filters = re.sub(r'(\w+):([\w\s-]*)', r'{"\1":"\2"}', filters)
         filters = re.sub(r'(and|or|not)\(', r'("\1",', filters)
         filters = ast.literal_eval(filters)
