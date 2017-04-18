@@ -289,15 +289,17 @@ class UserViewSet(CommonModelViewSet):
     """
 
     def check_permissions(self, request):
-        # Autorise l'utilisateur à modifier ses propres informations ou les informations des utilisateurs non-staff
-        if self.action in ['create']:
+        # Autorise l'utilisateur à modifier ses propres informations ou les informations des utilisateurs en dessous
+        current_user = request.user
+        if current_user.is_superuser:
+            return True
+        elif self.action in ['create']:
             # Autorise la création pour tout le monde
             return True
         elif self.action in ['update', 'partial_update']:
             # Autorise la modification de soi-même ou d'un autre utilisateur de rang inférieur
-            current_user = request.user
             user = self.get_object()
-            if (current_user.is_staff and not user.is_staff) or (current_user == user):
+            if (current_user == user) or (current_user.is_staff and not (user.is_staff or user.is_superuser)):
                 return True
         # Applique le système de permissions dans les autres cas
         return super().check_permissions(request)

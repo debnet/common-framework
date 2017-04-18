@@ -5,11 +5,11 @@ coverage==4.3.4
 djangorestframework==3.6.2
 flake8==3.2.1
 model_mommy==1.2.6
-openpyxl==2.4.5
+openpyxl==2.4.6
 python-dateutil==2.6.0
 pip==9.0.1
 pytz==2017.2
 requests==2.13.0
-setuptools==34.4.1
+setuptools==35.0.0
 wheel==0.29.0
 -e .
