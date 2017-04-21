@@ -10,8 +10,8 @@ from django.utils.translation import ugettext_lazy as _
 from common.fields import JsonField, PickleField
 from common.forms import CommonInlineFormSet
 from common.models import (
-    Entity, Global, GroupMetaData, History, HistoryField, MetaData,
-    PerishableEntity, ServiceUsage, UserMetaData, Webhook)
+    CommonModel, Entity, Global, GroupMetaData, History, HistoryField,
+    MetaData, PerishableEntity, ServiceUsage, UserMetaData, Webhook)
 
 
 def delete_selected(modeladmin, request, queryset):
@@ -55,9 +55,9 @@ class CommonAdmin(admin.ModelAdmin):
         return view_perm
 
     def metadata_url(self, obj):
-        from django.core.urlresolvers import reverse
         count = obj.metadatas.count()
         if count:
+            from django.core.urlresolvers import reverse
             type = ContentType.objects.get_for_model(obj)
             url = reverse('admin:common_metadata_changelist') + '?object_id={}&content_type={}'.format(obj.id, type.id)
             return format_html('<a href="{url}">{label}</a>', url=url, label=count)
@@ -65,9 +65,14 @@ class CommonAdmin(admin.ModelAdmin):
     metadata_url.short_description = _("méta")
 
     def get_list_display(self, request):
-        return ('id', ) + tuple(super().get_list_display(request)) + ('metadata_url', )
+        list_display = ('id', ) + tuple(super().get_list_display(request))
+        if not issubclass(self.model, CommonModel):
+            return list_display
+        return list_display + ('metadata_url', )
 
     def get_queryset(self, request):
+        if not issubclass(self.model, CommonModel):
+            return super().get_queryset(request)
         return super().get_queryset(request).prefetch_related('metadatas')
 
 
@@ -465,18 +470,18 @@ class ContentTypeAdmin(admin.ModelAdmin):
 class UserMetaDataAdmin(admin.ModelAdmin):
     list_display = ('user', )
     list_display_links = ('user', )
-    list_filter = ('user', )
-    ordering = ('user', )
-    search_fields = ('user', )
+    list_filter = ('user__username', )
+    ordering = ('user__username', )
+    search_fields = ('user__username', 'user__first_name', 'user__last_name', 'user__email', )
 
 
 @admin.register(GroupMetaData)
 class GroupMetaDataAdmin(admin.ModelAdmin):
     list_display = ('group', )
     list_display_links = ('group', )
-    list_filter = ('group', )
-    ordering = ('group', )
-    search_fields = ('group', )
+    list_filter = ('group__name', )
+    ordering = ('group__name', )
+    search_fields = ('group__name', )
 
 
 @admin.register(ServiceUsage)
