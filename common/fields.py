@@ -36,14 +36,6 @@ class CustomDecimalField(models.DecimalField):
             if value == value.to_integral() else value.normalize(context)
 
 
-# Mommy monkey-patch for CustomDecimalField
-try:
-    from model_mommy import mommy
-    mommy.default_mapping[CustomDecimalField] = mommy.default_mapping.get(models.DecimalField)
-except ImportError:
-    pass
-
-
 class PickleField(models.BinaryField):
     """
     Champ binaire utilisant pickle pour sérialiser des données diverses
@@ -226,6 +218,16 @@ class JsonField(models.Field):
         defaults = {'form_class': JsonField}
         defaults.update(kwargs)
         return super().formfield(**defaults)
+
+
+# Mommy monkey-patch for CustomDecimalField
+try:
+    from django.contrib.postgres.fields import JSONField
+    from model_mommy.generators import default_mapping
+    default_mapping[CustomDecimalField] = default_mapping.get(models.DecimalField)
+    default_mapping[JsonField] = default_mapping.get(JSONField)
+except ImportError:
+    pass
 
 
 class JsonKeyTransform(Transform):
