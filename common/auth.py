@@ -46,18 +46,23 @@ class LdapAuthenticationBackend(ModelBackend):
                     except User.DoesNotExist:
                         user = User(username=username, password=password)
 
+                    def set_value(obj, name, value):
+                        item = getattr(type(obj), name, None)
+                        if item and not isinstance(item, property):
+                            setattr(obj, name, value)
+
                     # Informations
-                    setattr(user, 'first_name', attributes['givenName'])
-                    setattr(user, 'last_name', attributes['sn'])
-                    setattr(user, 'email', attributes['mail'])
-                    setattr(user, 'is_active', True)
-                    setattr(user, 'is_staff', True)
+                    set_value(user, 'first_name', attributes['givenName'])
+                    set_value(user, 'last_name', attributes['sn'])
+                    set_value(user, 'email', attributes['mail'])
+                    set_value(user, 'is_active', True)
 
                     # Vérification du statut de l'utilisateur
-                    setattr(user, 'is_superuser', False)
+                    set_value(user, 'is_superuser', False)
                     group_names = [group.split(',')[0].split('=')[1] for group in attributes['memberOf']]
                     if username in settings.LDAP_ADMIN_USERS or set(group_names) & set(settings.LDAP_ADMIN_GROUPS):
-                        setattr(user, 'is_superuser', True)
+                        set_value(user, 'is_superuser', True)
+                        set_value(user, 'is_staff', True)
                     user.save()
 
                     # Récupération des groupes de l'utilisateur
