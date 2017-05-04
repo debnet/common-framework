@@ -747,6 +747,20 @@ def prefetch_generics(weak_queryset):
     return weak_queryset
 
 
+def get_field_by_path(model, path):
+    """
+    Permet de récupérer un champ de modèle depuis un modèle d'origine en suivant un chemin
+    :param model: Modèle d'origine
+    :param path: Chemin vers le champ ciblé
+    :return: Champ
+    """
+    field_name, *inner_path = path.replace('__', '.').split('.')
+    field = model._meta.get_field(field_name)
+    if inner_path:
+        return get_field_by_path(field.remote_field.model, '.'.join(inner_path))
+    return field
+
+
 def str_to_bool(value):
     """
     Permet de renvoyer le booleen correspondant à la valeur entrée en paramètre

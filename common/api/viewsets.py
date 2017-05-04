@@ -6,10 +6,10 @@ from rest_framework import viewsets
 from rest_framework.exceptions import ValidationError
 
 from common.api.utils import AGGREGATES, CACHE_PREFIX, CACHE_TIMEOUT, RESERVED_QUERY_PARAMS, url_value, parse_filters
-from common.api.fields import ReadOnlyObjectField
+from common.api.fields import ChoiceDisplayField, ReadOnlyObjectField
 from common.models import Entity, MetaData
 from common.settings import settings
-from common.utils import str_to_bool
+from common.utils import get_field_by_path, str_to_bool
 
 
 class CommonModelViewSet(viewsets.ModelViewSet):
@@ -41,12 +41,17 @@ class CommonModelViewSet(viewsets.ModelViewSet):
                 # Un serializer avec les données groupées est créé à la volée
                 return type(default_serializer.__name__, (serializers.Serializer, ), fields)
             elif 'fields' in url_params:
-                fields = {
-                    field: ReadOnlyObjectField(source=field.replace('__', '.') if '__' in field else None)
-                    for field in url_params.get('fields').split(',')}
+                fields = {}
+                for field in url_params.get('fields').split(','):
+                    # Champ spécifique en cas d'énumération
+                    choices = get_field_by_path(self.queryset.model, field).choices
+                    if choices and str_to_bool(url_params.get('display')):
+                        fields[field + '_display'] = ChoiceDisplayField(choices=choices, source=field.replace('__', '.'))
+                    # Champ spécifique pour l'affichage de la valeur
+                    fields[field] = ReadOnlyObjectField(source=field.replace('__', '.') if '__' in field else None)
                 # Un serializer avec restriction des champs est créé à la volée
                 return type(default_serializer.__name__, (serializers.Serializer, ), fields)
-            elif 'simple' in url_params:
+            elif str_to_bool(url_params.get('simple')):
                 return getattr(self, 'simple_serializer', default_serializer)
         return super().get_serializer_class()
 

@@ -10,7 +10,7 @@ from rest_framework.exceptions import NotFound, ValidationError
 from rest_framework.relations import PrimaryKeyRelatedField
 from rest_framework.response import Response
 
-from common.utils import get_prefetchs, get_related, parsedate, prefetch_metadatas, str_to_bool
+from common.utils import get_field_by_path, get_prefetchs, get_related, parsedate, prefetch_metadatas, str_to_bool
 
 
 # URLs dans les serializers
@@ -25,7 +25,7 @@ AGGREGATES = {
     'max': Max,
 }
 RESERVED_QUERY_PARAMS = [
-    'filters', 'fields', 'order_by', 'group_by', 'all',
+    'filters', 'fields', 'order_by', 'group_by', 'all', 'display',
     'distinct', 'silent', 'simple', 'meta', 'cache', 'timeout'] + list(AGGREGATES.keys())
 
 # Gestion du cache
@@ -732,10 +732,15 @@ def api_paginate(request, queryset, serializer, pagination=None, enable_options=
             # Un serializer avec les données groupées est créé à la volée
             serializer = type(serializer.__name__, (serializers.Serializer, ), fields)
         elif 'fields' in url_params:
-            from common.api.fields import ReadOnlyObjectField
-            fields = {
-                field: ReadOnlyObjectField(source=field.replace('__', '.') if '__' in field else None)
-                for field in url_params.get('fields').split(',')}
+            from common.api.fields import ChoiceDisplayField, ReadOnlyObjectField
+            fields = {}
+            for field in url_params.get('fields').split(','):
+                # Champ spécifique en cas d'énumération
+                choices = get_field_by_path(queryset.model, field).choices
+                if choices and str_to_bool(url_params.get('display')):
+                    fields[field + '_display'] = ChoiceDisplayField(choices=choices, source=field.replace('__', '.'))
+                # Champ spécifique pour l'affichage de la valeur
+                fields[field] = ReadOnlyObjectField(source=field.replace('__', '.') if '__' in field else None)
             # Un serializer avec restriction des champs est créé à la volée
             serializer = type(serializer.__name__, (serializers.Serializer, ), fields)
 

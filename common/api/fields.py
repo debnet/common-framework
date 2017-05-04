@@ -46,6 +46,19 @@ class QuerySetChoiceField(ChoiceField):
             return []
 
 
+class ChoiceDisplayField(ReadOnlyField):
+    """
+    Champ pour récupérer la valeur d'une énumération à partir d'un modèle
+    """
+
+    def __init__(self, choices, **kwargs):
+        self.choices = dict(choices)
+        super().__init__(**kwargs)
+
+    def to_representation(self, value):
+        return self.choices.get(value)
+
+
 class ReadOnlyObjectField(ReadOnlyField):
     """
     Surcharge du champ "lecture seule" de DRF pour prendre en compte les objets complets
