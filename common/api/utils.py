@@ -10,6 +10,7 @@ from rest_framework.exceptions import NotFound, ValidationError
 from rest_framework.relations import PrimaryKeyRelatedField
 from rest_framework.response import Response
 
+from common.api.fields import ChoiceDisplayField, ReadOnlyObjectField
 from common.utils import get_field_by_path, get_prefetchs, get_related, parsedate, prefetch_metadatas, str_to_bool
 
 
@@ -42,9 +43,9 @@ def url_value(filter, value):
     """
     if not isinstance(value, str):
         return value
-    if filter and (filter.endswith('__in') or filter.endswith('__range')):
+    if filter and any(filter.endswith(lookup) for lookup in ('__in', '__range', '__any', '__all')):
         return value.split(',')
-    if filter and filter.endswith('__isnull'):
+    if filter and any(filter.endswith(lookup) for lookup in ('__isnull', '__isempty')):
         return str_to_bool(value)
     return value
 
@@ -597,7 +598,7 @@ def api_paginate(request, queryset, serializer, pagination=None, enable_options=
         silent = str_to_bool(url_params.get('silent', None))
 
         # Extraction de champs spécifiques
-        fields = url_params.get('fields', '').replace('.', '__')
+        fields = url_params.get('fields', '').replace('.', '__').replace(' ', '')
         if fields:
             # Supprime la récupération des relations
             queryset = queryset.select_related(None).prefetch_related(None)
@@ -615,7 +616,7 @@ def api_paginate(request, queryset, serializer, pagination=None, enable_options=
                 if relateds:
                     queryset = queryset.select_related(*relateds)
                 if field_names:
-                    queryset = queryset.only(*field_names)
+                    queryset = queryset.values(*field_names)
             except Exception as error:
                 if not silent:
                     raise ValidationError("fields: {}".format(error))
@@ -626,13 +627,15 @@ def api_paginate(request, queryset, serializer, pagination=None, enable_options=
                 filters = {}
                 excludes = {}
                 for key, value in url_params.items():
-                    if value.startswith('[') and value.endswith(']'):
+                    key = key.replace('.', '__')
+                    if value.startswith('(') and value.endswith(')'):
                         value = F(value[1:-1])
-                    key = key[1:] if key.startswith('@') else key
                     if key not in reserved_query_params:
                         if key.startswith('-'):
-                            excludes[key[1:]] = url_value(key[1:], value)
+                            key = key[1:]
+                            excludes[key] = url_value(key, value)
                         else:
+                            key = key.strip()
                             filters[key] = url_value(key, value)
                 if filters:
                     queryset = queryset.filter(**filters)
@@ -655,12 +658,14 @@ def api_paginate(request, queryset, serializer, pagination=None, enable_options=
         # Aggregations
         try:
             aggregations = {}
-            for aggegate, function in AGGREGATES.items():
-                for field in url_params.get(aggegate, '').split(','):
+            for aggregate, function in AGGREGATES.items():
+                for field in url_params.get(aggregate, '').split(','):
                     if not field:
                         continue
-                    aggregations[field + '_' + aggegate] = function(field)
-            group_by = url_params.get('group_by', None)
+                    distinct = field.startswith(' ')
+                    field = field.strip().replace('.', '__')
+                    aggregations[field + '_' + aggregate] = function(field, distinct=distinct)
+            group_by = url_params.get('group_by', '').replace('.', '__').replace(' ', '')
             if group_by:
                 _queryset = queryset.values(*group_by.split(','))
                 if aggregations:
@@ -684,7 +689,7 @@ def api_paginate(request, queryset, serializer, pagination=None, enable_options=
 
         # Tris
         try:
-            order_by = url_params.get('order_by', None)
+            order_by = url_params.get('order_by', '').replace('.', '__').replace(' ', '')
             if order_by:
                 temp_queryset = queryset.order_by(*order_by.split(','))
                 str(temp_queryset.query)  # Force SQL evaluation to retrieve exception
@@ -701,7 +706,7 @@ def api_paginate(request, queryset, serializer, pagination=None, enable_options=
 
         # Distinct
         try:
-            distinct = url_params.get('distinct', None)
+            distinct = url_params.get('distinct', '').replace('.', '__').replace(' ', '')
             if distinct:
                 distincts = distinct.split(',')
                 if str_to_bool(distinct) is not None:
@@ -717,30 +722,39 @@ def api_paginate(request, queryset, serializer, pagination=None, enable_options=
             if settings.DEBUG:
                 options['distinct_error'] = str(error)
 
+        # Fonction utilitaire d'ajout de champ au serializer
+        def add_field_to_serializer(fields, field):
+            field = field.strip()
+            source = field.strip().replace('.', '__')
+            # Champ spécifique en cas d'énumération
+            choices = get_field_by_path(queryset.model, field).choices
+            if choices and str_to_bool(url_params.get('display')):
+                fields[field + '_display'] = ChoiceDisplayField(choices=choices, source=source)
+            # Champ spécifique pour l'affichage de la valeur
+            fields[field] = ReadOnlyObjectField(source=source if '.' in field else None)
+
         # Création de serializer à la volée en cas d'aggregation ou de restriction de champs
         aggregations = {}
         for aggregate in AGGREGATES.keys():
             for field in url_params.get(aggregate, '').split(','):
                 if not field:
                     continue
-                aggregations[field + '_' + aggregate] = serializers.ReadOnlyField()
+                field_name = field.strip() + '_' + aggregate
+                source = field_name.replace('.', '__') if '.' in field else None
+                aggregations[field_name] = serializers.ReadOnlyField(source=source)
+        # Regroupements & aggregations
         if 'group_by' in url_params or aggregations:
-            fields = {
-                field: serializers.ReadOnlyField()
-                for field in url_params.get('group_by', '').split(',')}
+            fields = {}
+            for field in url_params.get('fields').split(','):
+                add_field_to_serializer(fields, field)
             fields.update(aggregations)
             # Un serializer avec les données groupées est créé à la volée
             serializer = type(serializer.__name__, (serializers.Serializer, ), fields)
+        # Restriction de champs
         elif 'fields' in url_params:
-            from common.api.fields import ChoiceDisplayField, ReadOnlyObjectField
             fields = {}
             for field in url_params.get('fields').split(','):
-                # Champ spécifique en cas d'énumération
-                choices = get_field_by_path(queryset.model, field).choices
-                if choices and str_to_bool(url_params.get('display')):
-                    fields[field + '_display'] = ChoiceDisplayField(choices=choices, source=field.replace('__', '.'))
-                # Champ spécifique pour l'affichage de la valeur
-                fields[field] = ReadOnlyObjectField(source=field.replace('__', '.') if '__' in field else None)
+                add_field_to_serializer(fields, field)
             # Un serializer avec restriction des champs est créé à la volée
             serializer = type(serializer.__name__, (serializers.Serializer, ), fields)
 

@@ -26,29 +26,40 @@ class CommonModelViewSet(viewsets.ModelViewSet):
         # Le serializer peut être substitué en fonction des paramètres d'appel de l'API
         url_params = self.request.query_params.dict()
         if default_serializer:
+
+            # Fonction utilitaire d'ajout de champ au serializer
+            def add_field_to_serializer(fields, field):
+                field = field.strip()
+                source = field.replace('.', '__')
+                # Champ spécifique en cas d'énumération
+                choices = get_field_by_path(self.queryset.model, field).choices
+                if choices and str_to_bool(url_params.get('display')):
+                    fields[field + '_display'] = ChoiceDisplayField(choices=choices, source=source)
+                # Champ spécifique pour l'affichage de la valeur
+                fields[field] = ReadOnlyObjectField(source=source if '.' in field else None)
+
             # Ajoute les champs d'aggregation au serializer
             aggregations = {}
             for aggregate in AGGREGATES.keys():
                 for field in url_params.get(aggregate, '').split(','):
                     if not field:
                         continue
-                    aggregations[field + '_' + aggregate] = serializers.ReadOnlyField()
+                    field_name = field.strip() + '_' + aggregate
+                    source = field_name.replace('.', '__') if '.' in field else None
+                    aggregations[field_name] = serializers.ReadOnlyField(source=source)
+            # Ajoute les regroupements au serializer
             if 'group_by' in url_params or aggregations:
-                fields = {
-                    field: serializers.ReadOnlyField()
-                    for field in url_params.get('group_by', '').split(',')}
+                fields = {}
+                for field in url_params.get('group_by', '').split(','):
+                    add_field_to_serializer(fields, field)
                 fields.update(aggregations)
-                # Un serializer avec les données groupées est créé à la volée
+                # Un serializer avec les données regroupées est créé à la volée
                 return type(default_serializer.__name__, (serializers.Serializer, ), fields)
+            # Ajoute la restriction des champs au serializer
             elif 'fields' in url_params:
                 fields = {}
                 for field in url_params.get('fields').split(','):
-                    # Champ spécifique en cas d'énumération
-                    choices = get_field_by_path(self.queryset.model, field).choices
-                    if choices and str_to_bool(url_params.get('display')):
-                        fields[field + '_display'] = ChoiceDisplayField(choices=choices, source=field.replace('__', '.'))
-                    # Champ spécifique pour l'affichage de la valeur
-                    fields[field] = ReadOnlyObjectField(source=field.replace('__', '.') if '__' in field else None)
+                    add_field_to_serializer(fields, field)
                 # Un serializer avec restriction des champs est créé à la volée
                 return type(default_serializer.__name__, (serializers.Serializer, ), fields)
             elif str_to_bool(url_params.get('simple')):
@@ -139,7 +150,7 @@ class CommonModelViewSet(viewsets.ModelViewSet):
             silent = str_to_bool(url_params.get('silent', None))
 
             # Requête simplifiée et/ou extraction de champs spécifiques
-            fields = url_params.get('fields', '').replace('.', '__')
+            fields = url_params.get('fields', '').replace('.', '__').replace(' ', '')
             if str_to_bool(url_params.get('simple', None)) or fields:
                 # Supprime la récupération des relations
                 queryset = queryset.select_related(None).prefetch_related(None)
@@ -157,7 +168,7 @@ class CommonModelViewSet(viewsets.ModelViewSet):
                     if relateds:
                         queryset = queryset.select_related(*relateds)
                     if field_names:
-                        queryset = queryset.only(*field_names)
+                        queryset = queryset.values(*field_names)
                 except Exception as error:
                     if not silent:
                         raise ValidationError("fields: {}".format(error))
@@ -185,13 +196,15 @@ class CommonModelViewSet(viewsets.ModelViewSet):
                     filters = {}
                     excludes = {}
                     for key, value in url_params.items():
-                        if value.startswith('[') and value.endswith(']'):
+                        key = key.replace('.', '__')
+                        if value.startswith('(') and value.endswith(')'):
                             value = F(value[1:-1])
                         if key not in reserved_query_params:
-                            key = key[1:] if key.startswith('@') else key
                             if key.startswith('-'):
-                                excludes[key[1:]] = url_value(key[1:], value)
+                                key = key[1:]
+                                excludes[key] = url_value(key, value)
                             else:
+                                key = key.strip()
                                 filters[key] = url_value(key, value)
                     if filters:
                         queryset = queryset.filter(**filters)
@@ -214,12 +227,14 @@ class CommonModelViewSet(viewsets.ModelViewSet):
             # Aggregations
             try:
                 aggregations = {}
-                for aggegate, function in AGGREGATES.items():
-                    for field in url_params.get(aggegate, '').split(','):
+                for aggregate, function in AGGREGATES.items():
+                    for field in url_params.get(aggregate, '').split(','):
                         if not field:
                             continue
-                        aggregations[field + '_' + aggegate] = function(field)
-                group_by = url_params.get('group_by', None)
+                        distinct = field.startswith(' ')
+                        field = field.strip().replace('.', '__')
+                        aggregations[field + '_' + aggregate] = function(field, distinct=distinct)
+                group_by = url_params.get('group_by', '').replace('.', '__').replace(' ', '')
                 if group_by:
                     _queryset = queryset.values(*group_by.split(','))
                     if aggregations:
@@ -243,7 +258,7 @@ class CommonModelViewSet(viewsets.ModelViewSet):
 
             # Tris
             try:
-                order_by = url_params.get('order_by', None)
+                order_by = url_params.get('order_by', '').replace('.', '__').replace(' ', '')
                 if order_by:
                     _queryset = queryset.order_by(*order_by.split(','))
                     str(_queryset.query)  # Force SQL evaluation to retrieve exception
@@ -260,7 +275,7 @@ class CommonModelViewSet(viewsets.ModelViewSet):
 
             # Distinct
             try:
-                distinct = url_params.get('distinct', None)
+                distinct = url_params.get('distinct', '').replace('.', '__').replace(' ', '')
                 if distinct:
                     distincts = distinct.split(',')
                     if str_to_bool(distinct) is not None:

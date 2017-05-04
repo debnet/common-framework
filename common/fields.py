@@ -428,7 +428,7 @@ class JsonEmpty(Lookup):
     Recherche les éléments dont la valeur est considérée comme vide ou nulle
     Uniquement pour PostgreSQL
     """
-    lookup_name = 'empty'
+    lookup_name = 'isempty'
     empty_values = ['{}', '[]', '', 'null', None]
 
     def as_sql(self, compiler, connection):
