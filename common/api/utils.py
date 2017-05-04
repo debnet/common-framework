@@ -76,9 +76,9 @@ def parse_filters(filters):
         elif isinstance(filter, dict):
             fields = {}
             for key, value in filter.items():
-                key = key[1:] if key.startswith('@') else key
+                key = key.strip().replace('.', '__')
                 if value.startswith('[') and value.endswith(']'):
-                    value = F(value[1:-1])
+                    value = F(value[1:-1].replace('.', '__'))
                 fields[key] = url_value(key, value)
             elements.append(Q(**fields))
         else:
