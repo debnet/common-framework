@@ -32,7 +32,7 @@ class CommonModelViewSet(viewsets.ModelViewSet):
                 field = field.strip()
                 source = field.replace('.', '__')
                 # Champ spécifique en cas d'énumération
-                choices = get_field_by_path(self.queryset.model, field).choices
+                choices = get_field_by_path(self.queryset.model, field).flatchoices
                 if choices and str_to_bool(url_params.get('display')):
                     fields[field + '_display'] = ChoiceDisplayField(choices=choices, source=source)
                 # Champ spécifique pour l'affichage de la valeur

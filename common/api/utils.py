@@ -727,7 +727,7 @@ def api_paginate(request, queryset, serializer, pagination=None, enable_options=
             field = field.strip()
             source = field.strip().replace('.', '__')
             # Champ spécifique en cas d'énumération
-            choices = get_field_by_path(queryset.model, field).choices
+            choices = get_field_by_path(queryset.model, field).flatchoices
             if choices and str_to_bool(url_params.get('display')):
                 fields[field + '_display'] = ChoiceDisplayField(choices=choices, source=source)
             # Champ spécifique pour l'affichage de la valeur
