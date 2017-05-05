@@ -52,7 +52,7 @@ def get_urls(request):
 @api_view(['GET'])
 def user_infos(request, user_id=None):
     """
-    Permet d'afficher les données (user, groupes, métadatas) de l'utilisateur en cours
+    Permet d'afficher les données (user, groupes, métadonnées) de l'utilisateur en cours
     """
     user_id = user_id or request.user.pk
     user = get_object_or_404(

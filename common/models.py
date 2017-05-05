@@ -1808,26 +1808,32 @@ class UserMetaData(CommonModel):
 
     @staticmethod
     def set(user, **data):
-        meta = UserMetaData.objects.get(user=user)
+        meta = user.metadatas
         meta.data.update(**data)
         meta.save()
         return meta.data
 
     @staticmethod
-    def get(user, key=None):
-        meta = UserMetaData.objects.get(user=user)
-        return meta.data if key is None else meta.data.get(key)
+    def get(user, key=None, groups=True):
+        if groups:
+            data = {}
+            for group in user.groups.select_related('metadatas').all():
+                merge_dict(data, group.metadatas.data or {})
+            merge_dict(data, user.metadatas.data or {})
+        else:
+            data = user.metadatas.data
+        return data.get(key) if key else data
 
     @staticmethod
     def remove(user, key):
-        meta = UserMetaData.objects.get(user=user)
+        meta = user.metadatas
         meta.data.pop(key, None)
         meta.save()
         return meta.data
 
     @staticmethod
-    def merge(group, *idict, **data):
-        meta = GroupMetaData.objects.get(group=group)
+    def merge(user, *idict, **data):
+        meta = user.metadatas
         merge_dict(meta.data, *idict, **data)
         meta.save()
         return meta.data
@@ -1849,26 +1855,26 @@ class GroupMetaData(CommonModel):
 
     @staticmethod
     def set(group, **data):
-        meta = GroupMetaData.objects.get(group=group)
+        meta = group.metadatas
         meta.data.update(**data)
         meta.save()
         return meta.data
 
     @staticmethod
     def get(group, key=None):
-        meta = GroupMetaData.objects.get(group=group)
-        return meta.data if key is None else meta.data.get(key)
+        meta = group.metadatas
+        return meta.data.get(key) if key else meta.data
 
     @staticmethod
     def remove(group, key):
-        meta = GroupMetaData.objects.get(group=group)
+        meta = group.metadatas
         meta.data.pop(key, None)
         meta.save()
         return meta.data
 
     @staticmethod
     def merge(group, *idict, **data):
-        meta = GroupMetaData.objects.get(group=group)
+        meta = group.metadatas
         merge_dict(meta.data, *idict, **data)
         meta.save()
         return meta.data
@@ -1952,7 +1958,7 @@ def get_data_from_object(instance, types=True, **options):
 
 # Patching User and Group for handling MetaData
 setattr(AbstractBaseUser, 'set_metadata', lambda self, **metas: UserMetaData.set(self, **metas))
-setattr(AbstractBaseUser, 'get_metadata', lambda self, key=None: UserMetaData.get(self, key=key))
+setattr(AbstractBaseUser, 'get_metadata', lambda self, key=None, groups=True: UserMetaData.get(self, key=key, groups=groups))
 setattr(AbstractBaseUser, 'del_metadata', lambda self, key: UserMetaData.remove(self, key))
 setattr(AbstractBaseUser, 'merge_metadata', lambda self, *idict, **metas: UserMetaData.merge(self, *idict, **metas))
 setattr(Group, 'set_metadata', lambda self, **metas: GroupMetaData.set(self, **metas))

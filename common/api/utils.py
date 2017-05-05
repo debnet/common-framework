@@ -56,7 +56,7 @@ def parse_filters(filters):
         [and|or|not](champ__lookup:valeur[,champ__lookup:valeur])
     Il est possible de chainer les opérateurs dans un même filtres, exemple :
         or(and(champ_1:valeur_1,champ_2:valeur_2),and(not(champ_3:valeur_3),champ_4:valeur_4))
-    :param filters: Filtres sous forme de chaîne de caract_re
+    :param filters: Filtres sous forme de chaîne de caractères
     :return: Chaîne de conditions Django
     """
     if isinstance(filters, str):

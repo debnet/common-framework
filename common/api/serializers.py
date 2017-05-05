@@ -14,7 +14,6 @@ from rest_framework.settings import api_settings
 
 from common.api.fields import CustomHyperlinkedIdentityField, CustomHyperlinkedRelatedField
 from common.api.utils import create_model_serializer, to_model_serializer
-from common.utils import merge_dict
 
 
 # URLs dans les serializers
@@ -28,7 +27,6 @@ class CommonModelSerializer(serializers.HyperlinkedModelSerializer if HYPERLINKE
     id = serializers.PrimaryKeyRelatedField(read_only=True)
     serializer_url_field = CustomHyperlinkedIdentityField
     serializer_related_field = CustomHyperlinkedRelatedField if HYPERLINKED else PrimaryKeyRelatedField
-
     metadatas = serializers.SerializerMethodField(read_only=True)
 
     def get_metadatas(self, instance):
@@ -220,9 +218,5 @@ class UserInfosSerializer(CommonModelSerializer):
                 permissions[permission.id] = permission_serializer_class(permission).data
         return sorted(permissions.values(), key=itemgetter('id'))
 
-    def get_metadatas(self, user):
-        data = {}
-        for group in user.groups.all():
-            merge_dict(data, group.metadatas.data or {})
-        merge_dict(data, user.metadatas.data or {})
-        return data
+    def get_metadata(self, user):
+        return user.get_metadata()
