@@ -723,15 +723,15 @@ def api_paginate(request, queryset, serializer, pagination=None, enable_options=
                 options['distinct_error'] = str(error)
 
         # Fonction utilitaire d'ajout de champ au serializer
-        def add_field_to_serializer(fields, field):
-            field = field.strip()
-            source = field.strip().replace('.', '__')
+        def add_field_to_serializer(fields, field_name):
+            field_name = field_name.strip()
+            source = field_name.strip().replace('.', '__')
             # Champ spécifique en cas d'énumération
-            choices = get_field_by_path(queryset.model, field).flatchoices
+            choices = getattr(get_field_by_path(queryset.model, field_name), 'flatchoices', None)
             if choices and str_to_bool(url_params.get('display')):
-                fields[field + '_display'] = ChoiceDisplayField(choices=choices, source=source)
+                fields[field_name + '_display'] = ChoiceDisplayField(choices=choices, source=source)
             # Champ spécifique pour l'affichage de la valeur
-            fields[field] = ReadOnlyObjectField(source=source if '.' in field else None)
+            fields[field_name] = ReadOnlyObjectField(source=source if '.' in field_name else None)
 
         # Création de serializer à la volée en cas d'aggregation ou de restriction de champs
         aggregations = {}
