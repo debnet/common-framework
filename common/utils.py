@@ -19,11 +19,13 @@ from uuid import uuid4
 
 from django.conf import settings
 from django.core.files import temp
+from django.core.files.storage import FileSystemStorage
 from django.core.files.uploadedfile import TemporaryUploadedFile
 from django.core.files.uploadhandler import TemporaryFileUploadHandler
 from django.db.models import ForeignKey, OneToOneField
 from django.http import HttpResponse
 from django.shortcuts import render
+from django.utils.timezone import now
 from django.utils.translation import ugettext_lazy as _
 from django.views.decorators.csrf import csrf_exempt, csrf_protect
 from rest_framework.utils.encoders import JSONEncoder
@@ -170,9 +172,20 @@ class TemporaryFile(TemporaryUploadedFile):
     Fichier temporaire avec conservation du nom d'origine
     """
 
-    def __init__(self, name, content_type, size, charset, content_type_extra=None):
+    def __init__(self, name, content_type, size, charset, content_type_extra=None, folder=None):
         file = temp.NamedTemporaryFile(suffix='.' + name)
         super(TemporaryUploadedFile, self).__init__(file, name, content_type, size, charset, content_type_extra)
+        self.folder = folder
+
+    def close(self):
+        if self.folder is not None:
+            file_name = '{}.{}'.format(now().strftime('%Y%m%d%H%M%S'), self._get_name())
+            try:
+                to = os.path.join(self.folder, file_name)
+                FileSystemStorage(location=settings.MEDIA_ROOT).save(to, self.file)
+            except (IOError, OSError):
+                logger.error(_("Erreur lors de la sauvegarde du fichier : {}").format(file_name), exc_info=True)
+        return super().close()
 
 
 class TemporaryFileHandler(TemporaryFileUploadHandler):
@@ -180,23 +193,30 @@ class TemporaryFileHandler(TemporaryFileUploadHandler):
     Gestionnaire d'upload de fichier temporaire avec conservation du nom d'origine
     """
 
+    def __init__(self, folder=None, *args, **kwargs):
+        super(TemporaryFileUploadHandler, self).__init__(*args, **kwargs)
+        self.folder = folder
+
     def new_file(self, file_name, *args, **kwargs):
         super(TemporaryFileUploadHandler, self).new_file(file_name, *args, **kwargs)
-        self.file = TemporaryFile(self.file_name, self.content_type, 0, self.charset, self.content_type_extra)
+        self.file = TemporaryFile(
+            self.file_name, self.content_type, 0, self.charset, self.content_type_extra, folder=self.folder)
 
 
-def temporary_upload(function):
+def temporary_upload(folder=None):
     """
     Décorateur permettant d'indiquer que la vue utilisera l'import de fichier temporaire dans son traitement
-    :param function: Méthode à décorer
+    :param folder: Nom ou chemin du repertoire cible de la sauvegarde du fichier
     :return: Méthode décorée
     """
-    @wraps(function)
-    @csrf_exempt
-    def wrapped(request, *args, **kwargs):
-        request.upload_handlers = [TemporaryFileHandler()]
-        return csrf_protect(function)(request, *args, **kwargs)
-    return wrapped
+    def decorateur(function):
+        @wraps(function)
+        @csrf_exempt
+        def wrapped(request, *args, **kwargs):
+            request.upload_handlers = [TemporaryFileHandler(folder=folder)]
+            return csrf_protect(function)(request, *args, **kwargs)
+        return wrapped
+    return decorateur
 
 
 # Objet permettant de définir un fichier à télécharger
