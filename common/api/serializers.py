@@ -218,5 +218,5 @@ class UserInfosSerializer(CommonModelSerializer):
                 permissions[permission.id] = permission_serializer_class(permission).data
         return sorted(permissions.values(), key=itemgetter('id'))
 
-    def get_metadata(self, user):
+    def get_metadatas(self, user):
         return user.get_metadata()
