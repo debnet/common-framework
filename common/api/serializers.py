@@ -33,7 +33,8 @@ class CommonModelSerializer(serializers.HyperlinkedModelSerializer if HYPERLINKE
         request = self.context.get('request', None)
         meta = request and getattr(request, 'query_params', None) and request.query_params.get('meta', False)
         if meta and hasattr(instance, 'metadatas'):
-            return {meta.key: meta.value for meta in instance.metadatas.all()}
+            return instance.metadatas.data if hasattr(instance.metadatas, 'data') \
+                else {meta.key: meta.value for meta in instance.metadatas.all()}
         return None
 
     def create(self, validated_data):
