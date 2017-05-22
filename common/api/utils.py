@@ -60,12 +60,15 @@ def parse_filters(filters):
     :return: Chaîne de conditions Django
     """
     if isinstance(filters, str):
-        import ast
-        import re
-        filters = filters.replace('\'', '\\\'').replace('"', '\\"')
-        filters = re.sub(r'(\w+):([\w\s-]*)', r'{"\1":"\2"}', filters)
-        filters = re.sub(r'(and|or|not)\(', r'("\1",', filters)
-        filters = ast.literal_eval(filters)
+        try:
+            import ast
+            import re
+            filters = filters.replace('\'', '\\\'')
+            filters = re.sub(r'(\w+):((\"([^"]*)\")|([^,()]*))', r'{"\1":"\4\5"}', filters)
+            filters = re.sub(r'(and|or|not)\(', r'("\1",', filters)
+            filters = ast.literal_eval(filters)
+        except Exception as exception:
+            raise Exception("{filters} : {exception}".format(filters=filters, exception=exception))
     if isinstance(filters, dict):
         filters = filters,
     operator = None
