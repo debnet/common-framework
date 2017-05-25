@@ -1,11 +1,16 @@
 # coding: utf-8
-from common.api.permissions import CurrentUserPermissions
+from django.conf import settings
 from django.contrib.admin.models import LogEntry
 from django.contrib.auth import get_user_model
 from django.contrib.auth.models import Group, Permission
 from django.contrib.contenttypes.models import ContentType
-from rest_framework.authtoken.models import Token
+try:
+    from rest_framework.authtoken.models import Token
+    assert 'rest_framework.authtoken' in settings.INSTALLED_APPS
+except (AssertionError, ImportError):
+    Token = None
 
+from common.api.permissions import CurrentUserPermissions
 from common.api.serializers import UserSerializer
 from common.api.utils import create_api, disable_relation_fields
 from common.api.viewsets import UserViewSet

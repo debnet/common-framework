@@ -199,7 +199,7 @@ def create_model_serializer(model, bases=None, attributes=None, hyperlinked=True
     :return: serializer
     """
     from common.api.serializers import CommonModelSerializer
-    serializer = type('{}AutoSerializer'.format(model._meta.object_name),
+    serializer = type('{}GenericSerializer'.format(model._meta.object_name),
                       (bases or (CommonModelSerializer, )), (attributes or {}))
     if not hyperlinked:
         serializer.serializer_related_field = PrimaryKeyRelatedField
@@ -824,6 +824,8 @@ def create_api(*models, default_config=None, router=None, all_serializers=None, 
 
     # Création des serializers et viewsets par défaut
     for model in models:
+        if not model:
+            continue
         serializers[model], viewsets[model] = create_model_serializer_and_viewset(
             model, serializer_base=all_bases_serializers, viewset_base=all_bases_viewsets,
             serializer_data=all_data_serializers, viewset_data=all_data_viewsets,
@@ -855,6 +857,8 @@ def disable_relation_fields(*models, all_metadatas=None):
     all_metadatas = all_metadatas or METADATAS
 
     for model in models:
+        if not model:
+            continue
         metas = {}
         for field in model._meta.get_fields():
             if field.concrete and not field.auto_created and field.related_model:

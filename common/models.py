@@ -1025,13 +1025,13 @@ class EntityQuerySet(CommonQuerySet):
             filters |= Q(modification_date=item['max_modification_date'], **field_filter)
         return self.filter(filters)
 
-    def get_by_natural_key(self, uuid, *args, **kwargs):
+    def get_by_natural_key(self, *args, **kwargs):
         """
         Recherche une instance du modèle par sa clé naturelle
-        :param uuid: UUID
+        :param natural_key: Clé naturelle (par défaut l'UUID de l'instance)
         :return: Instance du modèle
         """
-        return self.get(uuid=uuid)
+        return self.get(**dict(zip(self.model._natural_key, args)))
 
 
 class Entity(CommonModel):
@@ -1053,6 +1053,7 @@ class Entity(CommonModel):
     _force_default = False
     _history = None
     _init = False
+    _natural_key = ('uuid', )
 
     def save(self, *args, _ignore_log=None, _current_user=None, _reason=None,
              _force_default=None, force_insert=False, **kwargs):
@@ -1956,7 +1957,7 @@ def get_data_from_object(instance, types=True, **options):
     return data
 
 
-# Patching User and Group for handling MetaData
+# Monkey-patch des utilisateurs et groupes pour ajouter les fonctions utilitaires de gestion des métadonnées
 setattr(AbstractBaseUser, 'set_metadata', lambda self, **metas: UserMetaData.set(self, **metas))
 setattr(AbstractBaseUser, 'get_metadata', lambda self, key=None, groups=True: UserMetaData.get(self, key=key, groups=groups))
 setattr(AbstractBaseUser, 'del_metadata', lambda self, key: UserMetaData.remove(self, key))
@@ -1965,6 +1966,7 @@ setattr(Group, 'set_metadata', lambda self, **metas: GroupMetaData.set(self, **m
 setattr(Group, 'get_metadata', lambda self, key=None: GroupMetaData.get(self, key=key))
 setattr(Group, 'del_metadata', lambda self, key: GroupMetaData.remove(self, key))
 setattr(Group, 'merge_metadata', lambda self, *idict, **metas: GroupMetaData.merge(self, *idict, **metas))
+
 
 # Common models
 MODELS = [
