@@ -593,9 +593,9 @@ def api_paginate(request, queryset, serializer, pagination=None, enable_options=
                 if key in default_reserved_query_params:
                     cache_url += url_param
                 plain_url += url_param
-            options['raw_url'] = plain_url
-            options['cache_url'] = cache_url
             options['cache_data'] = new_cache_params
+            options['cache_url'] = cache_url
+            options['raw_url'] = plain_url
 
         # Erreurs silencieuses
         silent = str_to_bool(url_params.get('silent', None))
@@ -708,6 +708,7 @@ def api_paginate(request, queryset, serializer, pagination=None, enable_options=
                 options['order_by_error'] = str(error)
 
         # Distinct
+        distincts = []
         try:
             distinct = url_params.get('distinct', '').replace('.', '__').replace(' ', '')
             if distinct:
@@ -778,7 +779,8 @@ def api_paginate(request, queryset, serializer, pagination=None, enable_options=
         paginator.additional_data = dict(options=options)
     # Force un tri sur la clé primaire en cas de pagination
     if hasattr(queryset, 'ordered') and not queryset.ordered:
-        queryset = queryset.order_by(*(getattr(queryset, '_fields', None) or [queryset.model._meta.pk.name]))
+        queryset = queryset.order_by(*(
+            getattr(queryset, '_fields', None) or distincts or [queryset.model._meta.pk.name]))
     serializer = serializer(paginator.paginate_queryset(queryset, request), context=context, many=True)
     return paginator.get_paginated_response(serializer.data)
 

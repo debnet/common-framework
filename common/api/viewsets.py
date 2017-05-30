@@ -1,5 +1,6 @@
 # coding: utf-8
 from django.core.exceptions import FieldDoesNotExist
+from django.db import ProgrammingError
 from django.db.models.query import F, EmptyResultSet, Prefetch, QuerySet
 from rest_framework import serializers
 from rest_framework import viewsets
@@ -16,6 +17,7 @@ class CommonModelViewSet(viewsets.ModelViewSet):
     """
     Définition commune de ModelViewSet pour l'API REST
     """
+    url_params = {}
 
     def get_serializer_class(self):
         # Le serializer par défaut est utilisé en cas de modification/suppression
@@ -24,7 +26,7 @@ class CommonModelViewSet(viewsets.ModelViewSet):
             return default_serializer
 
         # Le serializer peut être substitué en fonction des paramètres d'appel de l'API
-        url_params = self.request.query_params.dict()
+        url_params = self.url_params or self.request.query_params.dict()
         if default_serializer:
 
             # Fonction utilitaire d'ajout de champ au serializer
@@ -97,7 +99,10 @@ class CommonModelViewSet(viewsets.ModelViewSet):
         # Aucune pagination si toutes les données sont demandées ou qu'il ne s'agit pas d'un QuerySet
         if not isinstance(queryset, QuerySet) or str_to_bool(self.request.query_params.get('all', None)):
             return None
-        return super().paginate_queryset(queryset)
+        try:
+            return super().paginate_queryset(queryset)
+        except ProgrammingError as e:
+            raise ValidationError(str(e).split('\n'))
 
     def get_queryset(self):
         # Evite la ré-évaluation du QuerySet en cas d'erreur
@@ -111,7 +116,7 @@ class CommonModelViewSet(viewsets.ModelViewSet):
                 return queryset
 
             options = dict(aggregates=None, distinct=None, filters=None, order_by=None)
-            url_params = self.request.query_params.dict()
+            self.url_params = url_params = self.request.query_params.dict()
 
             # Mots-clés réservés dans les URLs
             default_reserved_query_params = ['format'] + ([
@@ -127,8 +132,10 @@ class CommonModelViewSet(viewsets.ModelViewSet):
                 new_url_params = {}
                 new_url_params.update(**cache_params)
                 new_url_params.update(**url_params)
-                url_params = new_url_params
-                new_cache_params = {key: value for key, value in url_params.items() if key not in default_reserved_query_params}
+                self.url_params = url_params = new_url_params
+                new_cache_params = {
+                    key: value for key, value in url_params.items()
+                    if key not in default_reserved_query_params}
                 if new_cache_params:
                     from django.utils.timezone import now
                     from datetime import timedelta
@@ -142,9 +149,9 @@ class CommonModelViewSet(viewsets.ModelViewSet):
                     if key in default_reserved_query_params:
                         cache_url += url_param
                     plain_url += url_param
-                options['raw_url'] = plain_url
-                options['cache_url'] = cache_url
                 options['cache_data'] = new_cache_params
+                options['cache_url'] = cache_url
+                options['raw_url'] = plain_url
 
             # Erreurs silencieuses
             silent = str_to_bool(url_params.get('silent', None))
@@ -274,6 +281,7 @@ class CommonModelViewSet(viewsets.ModelViewSet):
                     options['order_by_error'] = str(error)
 
             # Distinct
+            distincts = []
             try:
                 distinct = url_params.get('distinct', '').replace('.', '__').replace(' ', '')
                 if distinct:
@@ -295,7 +303,8 @@ class CommonModelViewSet(viewsets.ModelViewSet):
             if self.paginator and hasattr(self.paginator, 'additional_data'):
                 # Force un tri sur la clé primaire en cas de pagination
                 if hasattr(queryset, 'ordered') and not queryset.ordered:
-                    queryset = queryset.order_by(*(getattr(queryset, '_fields', None) or [queryset.model._meta.pk.name]))
+                    queryset = queryset.order_by(*(
+                        getattr(queryset, '_fields', None) or distincts or [queryset.model._meta.pk.name]))
                 self.paginator.additional_data = dict(options=options)
             return queryset
         except ValidationError as e:
