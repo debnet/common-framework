@@ -318,7 +318,8 @@ def create_model_serializer_and_viewset(
             serializer._declared_fields[field.name] = fk_serializer(read_only=True)
             relateds.append(field.name)
             # Récupération des relations de plus haut niveau si nécessaire
-            field_relateds = get_related(field.related_model, null=null_fks, height=height - 1)
+            field_relateds = get_related(
+                field.related_model, null=null_fks, height=height - 1, _models=[model])
             relateds += ['__'.join([field.name, field_related]) for field_related in field_relateds
                          if field_related not in exclude_related.get(field.related_model, [])]
         elif _level > 0:
@@ -372,7 +373,8 @@ def create_model_serializer_and_viewset(
             serializer._declared_fields[field_name] = child_serializer(read_only=True)
             relateds.append(field_name)
             # Récupération des relations de plus haut niveau si nécessaire
-            field_relateds = get_related(field.related_model, one_to_one=True, null=null_fks, height=height - 1)
+            field_relateds = get_related(
+                field.related_model, one_to_one=True, null=null_fks, height=height - 1, _models=[model])
             relateds += ['__'.join([field_name, field_related]) for field_related in field_relateds
                          if field_related not in exclude_related.get(field.related_model, [])]
 
