@@ -167,5 +167,5 @@ class AsymetricRelatedField(serializers.PrimaryKeyRelatedField):
     def from_serializer(cls, serializer, name=None, args=(), kwargs={}):
         if name is None:
             item = serializer.Meta.model if isinstance(serializer, serializers.ModelSerializer) else serializer
-            name = f"{item.__name__}AsymetricAutoField"
+            name = '{}AsymetricAutoField'.format(item.__name__)
         return type(name, (cls, ), {"serializer_class": serializer})
