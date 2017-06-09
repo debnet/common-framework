@@ -124,13 +124,22 @@ class CustomHyperlinkedRelatedField(CustomHyperlinkedField, HyperlinkedRelatedFi
 
 class AsymetricRelatedField(serializers.PrimaryKeyRelatedField):
     """
-    Surcharge du PrimaryKeyRelatedField permettant le get sous forme d'objet serialisé
-    et le post/put sous forme d'ID
+    Surcharge du PrimaryKeyRelatedField permettant la lecture sous forme d'objet serialisé
+    et l'écriture sous forme d'ID
     """
 
-    # en lecture, on veut l'objet serialisé, pas juste l'id
+    # Constructeur permettant de  générer le field depuis un serializer
+    @classmethod
+    def from_serializer(cls, serializer, name=None, args=(), kwargs={}):
+        if name is None:
+            item = serializer.Meta.model if isinstance(serializer, serializers.ModelSerializer) else \
+                serializer.__class__
+            name = '{}AsymetricAutoField'.format(item.__name__)
+        return type(name, (cls,), {"serializer_class": serializer})
+
+    # Surcharge permettant de récupérer l'objet serializé (et non juste l'id)
     def to_representation(self, value):
-        return self.serializer_class(value).data
+        return self.serializer_class(value, context=self.context).data
 
     # Permet de prendre le queryset du model du serializer
     def get_queryset(self):
@@ -138,9 +147,8 @@ class AsymetricRelatedField(serializers.PrimaryKeyRelatedField):
             return self.queryset
         return self.serializer_class.Meta.model.objects.all()
 
-    # Get choices est utilisé par l'autodoc DRF et s'attend à ce que
-    # to_representation() retourne un ID ce qui fait tout planter. On
-    # réécrit le truc pour utiliser item.pk au lieu de to_representation()
+    # Surcharge retournant directement l'ID de chaque item au lieu de faire appel à 'to_representation'
+    # qui ne retourne plus uniquement l'ID, mais un objet serializé
     def get_choices(self, cutoff=None):
         queryset = self.get_queryset()
         if queryset is None:
@@ -156,16 +164,3 @@ class AsymetricRelatedField(serializers.PrimaryKeyRelatedField):
             )
             for item in queryset
         ])
-
-    # DRF saute certaines validations quand il n'y a que l'id, et comme ce
-    # n'est pas le cas ici, tout plante. On desactive ça.
-    def use_pk_only_optimization(self):
-        return False
-
-    # Constructeur permettant de  générer le field depuis un serializer
-    @classmethod
-    def from_serializer(cls, serializer, name=None, args=(), kwargs={}):
-        if name is None:
-            item = serializer.Meta.model if isinstance(serializer, serializers.ModelSerializer) else serializer
-            name = '{}AsymetricAutoField'.format(item.__name__)
-        return type(name, (cls, ), {"serializer_class": serializer})
