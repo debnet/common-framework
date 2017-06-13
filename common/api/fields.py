@@ -1,4 +1,5 @@
 # coding: utf-8
+from rest_framework import serializers
 from rest_framework.fields import ChoiceField, Field, ReadOnlyField
 from rest_framework.relations import HyperlinkedRelatedField, HyperlinkedIdentityField
 
@@ -117,3 +118,40 @@ class CustomHyperlinkedRelatedField(CustomHyperlinkedField, HyperlinkedRelatedFi
     """
     Surcharge du champ identifiant par URL pour les clés étrangères
     """
+
+
+class AsymetricRelatedField(serializers.PrimaryKeyRelatedField):
+    """
+    Surcharge du PrimaryKeyRelatedField permettant la lecture (GET) de d'objet serialisé complet
+    et l'écriture (POST/PUT) uniquement avec l'identifiant
+    """
+
+    # Constructeur permettant de générer le field depuis un serializer
+    @classmethod
+    def from_serializer(cls, serializer, name=None):
+        if name is None:
+            item = serializer.Meta.model \
+                if isinstance(serializer, serializers.ModelSerializer) \
+                else serializer.__class__
+            name = '{}AsymetricAutoField'.format(item.__name__)
+        return type(name, (cls, ), {"serializer_class": serializer})
+
+    # Surcharge permettant de récupérer l'objet serializé (et non juste l'identifiant)
+    def to_representation(self, value):
+        return self.serializer_class(value, context=self.context).data
+
+    # Permet de prendre le queryset du model du serializer
+    def get_queryset(self):
+        if self.queryset:
+            return self.queryset
+        return self.serializer_class.Meta.model.objects.all()
+
+    # Surcharge retournant directement l'identifiant de chaque item au lieu de faire appel à 'to_representation'
+    # qui ne retourne plus uniquement l'identifiant mais un objet serializé
+    def get_choices(self, cutoff=None):
+        queryset = self.get_queryset()
+        if queryset is None:
+            return {}
+        if cutoff is not None:
+            queryset = queryset[:cutoff]
+        return {item.pk: self.display_value(item) for item in queryset}
