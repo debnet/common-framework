@@ -136,18 +136,18 @@ class AsymetricRelatedField(serializers.PrimaryKeyRelatedField):
             name = '{}AsymetricAutoField'.format(item.__name__)
         return type(name, (cls, ), {"serializer_class": serializer})
 
-    # Surcharge permettant de récupérer l'objet serializé (et non juste l'identifiant)
+    # Surcharge permettant de récupérer l'objet serialisé (et non juste l'identifiant)
     def to_representation(self, value):
         return self.serializer_class(value, context=self.context).data
 
-    # Permet de prendre le queryset du model du serializer
+    # Permet de prendre le queryset du modèle du serializer
     def get_queryset(self):
         if self.queryset:
             return self.queryset
         return self.serializer_class.Meta.model.objects.all()
 
     # Surcharge retournant directement l'identifiant de chaque item au lieu de faire appel à 'to_representation'
-    # qui ne retourne plus uniquement l'identifiant mais un objet serializé
+    # qui ne retourne plus uniquement l'identifiant mais un objet serialisé
     def get_choices(self, cutoff=None):
         queryset = self.get_queryset()
         if queryset is None:
