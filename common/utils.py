@@ -490,8 +490,8 @@ def patch_settings(**kwargs):
             setattr(settings, key, old_value)
 
 
-def recursive_dict_product(input_dict, all_keys=None, long_keys=False,
-                           separator='_', ignore='*', auto_id='id', prefix=''):
+def recursive_dict_product(
+        input_dict, all_keys=None, long_keys=False, separator='_', ignore='*', auto_id='id', prefix=''):
     """
     Retourne le produit de combinaisons d'un dictionnaire (avec listes et dictionnaires imbriqués) en renommant les clés
     :param input_dict: Dictionnaire à mettre à plat
@@ -612,12 +612,13 @@ def prefetch_metadatas(model, lookup=None, name=None):
     return []
 
 
-def get_prefetchs(parent, depth=1, foreign_keys=False, one_to_one=True, one_to_many=False, many_to_many=False,
+def get_prefetchs(parent, depth=1, height=1, foreign_keys=False, one_to_one=True, one_to_many=False, many_to_many=False,
                   metadatas=False, excludes=None, null=False, _model=None, _prefetch='', _level=1):
     """
     Permet de récupérer récursivement tous les prefetch related d'un modèle
     :param parent: Modèle parent
     :param depth: Profondeur de récupération
+    :param height: Hauteur de récupération
     :param foreign_keys: Récupère les relations de type foreign-key ?
     :param one_to_one: Récupère les relations de type one-to-one ?
     :param one_to_many: Récupère les relations de type one-to-many ? (peut-être très coûteux selon les données)
@@ -655,10 +656,15 @@ def get_prefetchs(parent, depth=1, foreign_keys=False, one_to_one=True, one_to_m
                     _prefetch=recursive_prefetch,
                     _level=_level + 1)
                 results += prefetchs
-            for related in get_related(
-                    field.related_model, excludes=excludes,
-                    foreign_keys=foreign_keys, one_to_one=one_to_one, null=null, height=1):
-                results.append('__'.join((recursive_prefetch, related)))
+            if height and not field.many_to_many:
+                for related in get_related(
+                        field.related_model,
+                        excludes=excludes,
+                        foreign_keys=foreign_keys,
+                        one_to_one=one_to_one,
+                        null=null,
+                        height=height):
+                    results.append('__'.join((recursive_prefetch, related)))
             if metadatas:
                 results.extend(prefetch_metadatas(parent, lookup=recursive_prefetch))
             elif not prefetchs:
