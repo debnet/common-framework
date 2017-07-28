@@ -125,24 +125,32 @@ class GenericFormSerializer(CommonModelSerializer):
         model = self.Meta.model
         # Récupère la liste des noms de champs relatifs au modèle
         field_names = {field.name for field in model._meta.get_fields()}
-        # Récupère toutes les relations inversées du modèle
-        related_objects = {
-            related_object.get_accessor_name(): related_object
-            for related_object in model._meta.related_objects}
-        # Récupère tous les champs du serializer qui accueillent les données des relations inversées
-        related_objects = {
-            related_name: related_object for related_name, related_object in related_objects.items()
-            if related_name in self._declared_fields and related_name in validated_data and
-            (related_object.one_to_many or related_object.one_to_one)}
+        related_objects = {}
+        for related_object in model._meta.related_objects:
+            if not related_object.one_to_many and not related_object.one_to_one:
+                continue
+            accessor_name = related_object.get_accessor_name()
+            if accessor_name not in validated_data:
+                continue
+            try:
+                # Récupération du field_name associé (en cas de renommage du champ)
+                field_name, *junk = [
+                    name for name, field in self.fields.fields.items() if field.source == accessor_name]
+            except:
+                field_name = accessor_name
+            if any(name in self._declared_fields for name in [field_name, accessor_name]):
+                related_objects[(field_name, accessor_name)] = related_object
+
         # Récupère les données propres à chaque relation inversée tout en les supprimant des données du modèle courant
-        relations_data = {relation_name: validated_data.pop(relation_name) for relation_name in related_objects.keys()}
+        relations_data = {field_name: validated_data.pop(relation_name)
+                          for field_name, relation_name in related_objects.keys()}
         # Données externes au modèle
         donnees_externes = {key: value for key, value in validated_data.items() if key not in field_names}
         # Sauvegarde l'instance du modèle courant
         item = super().create(validated_data)
         # Traite les données des relations inversées
-        for relation_name, related_object in related_objects.items():
-            relation_data = relations_data.get(relation_name)
+        for (field_name, relation_name), related_object in related_objects.items():
+            relation_data = relations_data.get(field_name)
             if relation_data:
                 # Injecte dans chaque objet les données non relatives au modèle
                 for relation_item in ([relation_data] if isinstance(relation_data, dict) else relation_data):
@@ -151,11 +159,11 @@ class GenericFormSerializer(CommonModelSerializer):
                 if related_object.one_to_many:
                     for relation_item in relation_data:
                         relation_item[related_object.field.name] = item
-                    type(self._declared_fields.get(relation_name).child)(many=True).create(relation_data)
+                    type(self._declared_fields.get(field_name).child)(many=True).create(relation_data)
                 # Appel du create pour le serializer des one_to_one
                 elif related_object.one_to_one:
                     relation_data[related_object.field.name] = item
-                    type(self._declared_fields.get(relation_name))().create(relation_data)
+                    type(self._declared_fields.get(field_name))().create(relation_data)
         return item
 
 
