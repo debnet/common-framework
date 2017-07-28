@@ -132,18 +132,18 @@ class GenericFormSerializer(CommonModelSerializer):
             accessor_name = related_object.get_accessor_name()
             if accessor_name not in validated_data:
                 continue
-            try:
-                # Récupération du field_name associé (en cas de renommage du champ)
-                field_name, *junk = [
-                    name for name, field in self.fields.fields.items() if field.source == accessor_name]
-            except:
-                field_name = accessor_name
-            if any(name in self._declared_fields for name in [field_name, accessor_name]):
+            # Récupération du field_name associé (en cas de renommage du champ)
+            field_name = accessor_name
+            for name, field in self.fields.fields.items():
+                if field.source == accessor_name:
+                    field_name = name
+                    break
+            if field_name in self._declared_fields:
                 related_objects[(field_name, accessor_name)] = related_object
-
         # Récupère les données propres à chaque relation inversée tout en les supprimant des données du modèle courant
-        relations_data = {field_name: validated_data.pop(relation_name)
-                          for field_name, relation_name in related_objects.keys()}
+        relations_data = {
+            field_name: validated_data.pop(relation_name)
+            for field_name, relation_name in related_objects.keys()}
         # Données externes au modèle
         donnees_externes = {key: value for key, value in validated_data.items() if key not in field_names}
         # Sauvegarde l'instance du modèle courant
