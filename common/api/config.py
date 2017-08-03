@@ -42,9 +42,20 @@ try:
         payload = payload_handler(user)
         payload.update(
             user_id=user.pk,
-            email=user.email,
-            is_staff=user.is_staff,
-            is_superuser=user.is_superuser)
+            email=getattr(user, 'email', None),
+            is_staff=getattr(user, 'is_staff', None),
+            is_superuser=getattr(user, 'is_superuser', None))
         return payload
+
+    def jwt_response_payload_handler(token, user, request):
+        """
+        Token payload handler for JWT
+        """
+        from django.utils.timezone import now
+        if user and hasattr(user, 'last_login'):
+            user.last_login = now()
+            user.save(update_fields=['last_login'])
+        return {'token': token}
+
 except ImportError:
     pass
