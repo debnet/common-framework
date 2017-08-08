@@ -147,7 +147,7 @@ class GenericFormSerializer(CommonModelSerializer):
         # Données externes au modèle
         donnees_externes = {key: value for key, value in validated_data.items() if key not in field_names}
         # Sauvegarde l'instance du modèle courant
-        item = super().create(validated_data)
+        item = self.create_object(validated_data)
         # Traite les données des relations inversées
         for (field_name, relation_name), related_object in related_objects.items():
             relation_data = relations_data.get(field_name)
@@ -165,6 +165,15 @@ class GenericFormSerializer(CommonModelSerializer):
                     relation_data[related_object.field.name] = item
                     type(self._declared_fields.get(field_name))().create(relation_data)
         return item
+
+    def create_object(self, validated_data):
+        """
+        Fonction permettant de créer les objets à la validation du formulaire
+        (cette fonction est à surcharger pour induire des comportements de créations d'objets spécifiques)
+        :param validated_data: Données validées
+        :return: Instance
+        """
+        return super().create(validated_data)
 
 
 # Modèle utilisateur courant
