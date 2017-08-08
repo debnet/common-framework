@@ -76,7 +76,6 @@ class CreateIndexUnaccent(Operation):
         # Vérification que la fonction "f_unaccent" est bien créée
         cursor.execute("SELECT COUNT(proname) FROM pg_proc WHERE proname = 'f_unaccent';")
         if not cursor.fetchall()[0][0]:
-            logger.warning(_("Fonction 'f_unaccent' créée sur la base de données."))
             CreateFunctionUnaccent().database_forwards(app_label, schema_editor, from_state, to_state)
 
         # Template de la requête de création d'index

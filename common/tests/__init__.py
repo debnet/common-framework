@@ -1,4 +1,6 @@
 # coding: utf-8
+import inspect
+import sys
 from datetime import timedelta
 from functools import wraps
 
@@ -76,7 +78,7 @@ def raise_exception(error_type, code):
 
 
 def create_api_test_class(
-        model, serializer=None, data=None,
+        model, serializer=None, data=None, module=True,
         test_list=True, test_get=True, test_post=True, test_put=True, test_delete=True,
         test_options=True, test_order_by=True, test_filter=True,
         test_metadatas=True, test_simple=True, test_silent=True):
@@ -85,6 +87,7 @@ def create_api_test_class(
     :param model: Modèle
     :param serializer: Serializer spécifique à utiliser, si absent un serializer associé au modèle sera généré
     :param data: liste de dictionnaires contenant les valeurs des attributs à positionner obligatoirement pour ce modèle
+    :param module: Ajoute la classe de test dans le module appelant
     :param test_list: Test de la liste
     :param test_get: Test du GET
     :param test_post: Test du POST
@@ -102,8 +105,15 @@ def create_api_test_class(
     object_name = model._meta.object_name
     model_name = model._meta.model_name
 
-    test_class = type('{}{}AutoTest'.format(app_label.capitalize(), object_name), (APITestCase, ), {})
+    class_name = '{}{}AutoTest'.format(app_label.capitalize(), object_name)
+    test_class = type(class_name, (APITestCase, ), {})
     test_class.recipes_data = data
+
+    # Modification du module de la classe à partir de l'appelant
+    if module:
+        module_name = inspect.getmodule(inspect.stack()[1][0]).__name__
+        setattr(sys.modules[module_name], class_name, test_class)
+        test_class.__module__ = module_name
 
     def _setUpClass(cls):
         """
