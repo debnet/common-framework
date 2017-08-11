@@ -14,7 +14,7 @@ from common.api.permissions import CurrentUserPermissions
 from common.api.serializers import UserSerializer
 from common.api.utils import create_api, disable_relation_fields
 from common.api.viewsets import UserViewSet
-from common.models import MODELS, GroupMetaData, UserMetaData
+from common.models import MODELS, MetaData, GroupMetaData, UserMetaData
 
 
 # Modèle utilisateur courant
@@ -51,6 +51,7 @@ METADATAS = {}
 
 # Configuration des serializers
 CONFIGS = {
+    MetaData: dict(depth=0),
     Group: dict(many_to_many=True, depth=1, permissions=[CurrentUserPermissions]),
     GroupMetaData: dict(permissions=[CurrentUserPermissions]),
     User: dict(many_to_many=True, depth=1, permissions=[CurrentUserPermissions]),

@@ -1,6 +1,6 @@
-Django==1.11.3
+Django==1.11.4
 Pillow==4.2.1
-celery==3.1.25
+celery==4.1
 coverage==4.4.1
 djangorestframework==3.6.3
 flake8==3.4.1

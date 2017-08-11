@@ -330,7 +330,7 @@ def create_model_serializer_and_viewset(
         prefetchs_metadatas += prefetch_metadatas(field.related_model, field.name)
 
     # Gestion des many-to-many
-    if many_to_many:
+    if many_to_many and depth > _level:
         for field in model._meta.many_to_many:
             # Vérification que le champ est bien inclu ou n'est pas exclu
             if not field_allowed(field.name):
@@ -353,7 +353,7 @@ def create_model_serializer_and_viewset(
         excludes_many_to_many_from_serializer(viewset.serializer_class)
 
     # Gestion des one-to-one
-    if one_to_one:
+    if one_to_one and depth > _level:
         for field in model._meta.related_objects:
             if not field.auto_created or not field.one_to_one:
                 continue
