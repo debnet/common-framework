@@ -32,7 +32,7 @@ enregistrée dans un référentiel global conjointement à son type. Il est donc
 ```python
 from common.models import Global
 
-entity = Global.entity('4b9abebd-8157-4e49-bcae-1a7e063a9f86')
+entity = Global.objects.entity('4b9abebd-8157-4e49-bcae-1a7e063a9f86')
 ```
 
 > Attention ! Les entités surchargent les méthodes de persistance par défaut de Django 
