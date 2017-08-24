@@ -87,7 +87,7 @@ class CustomHyperlinkedField:
         return str(obj.pk)
 
     def get_url(self, obj, view_name, request, format):
-        if hasattr(obj, 'pk') and obj.pk in (None, ''):
+        if not hasattr(obj, 'pk') or obj.pk in (None, ''):
             return None
 
         try:

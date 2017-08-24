@@ -22,7 +22,7 @@ class CommonModelViewSet(viewsets.ModelViewSet):
     def get_serializer_class(self):
         # Le serializer par défaut est utilisé en cas de modification/suppression
         default_serializer = getattr(self, 'default_serializer', None)
-        if default_serializer and self.action not in ['list', 'retrieve']:
+        if default_serializer and self.action not in ('list', 'retrieve', 'update', 'partial_update'):
             return default_serializer
 
         # Le serializer peut être substitué en fonction des paramètres d'appel de l'API
@@ -31,6 +31,8 @@ class CommonModelViewSet(viewsets.ModelViewSet):
 
             # Fonction utilitaire d'ajout de champ au serializer
             def add_field_to_serializer(fields, field_name):
+                if not field_name:
+                    return
                 field_name = field_name.strip()
                 source = field_name.replace('.', '__')
                 # Champ spécifique en cas d'énumération
@@ -49,6 +51,7 @@ class CommonModelViewSet(viewsets.ModelViewSet):
                     field_name = field.strip() + '_' + aggregate
                     source = field_name.replace('.', '__') if '.' in field else None
                     aggregations[field_name] = serializers.ReadOnlyField(source=source)
+
             # Ajoute les regroupements au serializer
             if 'group_by' in url_params or aggregations:
                 fields = {}
@@ -57,6 +60,7 @@ class CommonModelViewSet(viewsets.ModelViewSet):
                 fields.update(aggregations)
                 # Un serializer avec les données regroupées est créé à la volée
                 return type(default_serializer.__name__, (serializers.Serializer, ), fields)
+
             # Ajoute la restriction des champs au serializer
             elif 'fields' in url_params:
                 fields = {}
@@ -64,8 +68,15 @@ class CommonModelViewSet(viewsets.ModelViewSet):
                     add_field_to_serializer(fields, field)
                 # Un serializer avec restriction des champs est créé à la volée
                 return type(default_serializer.__name__, (serializers.Serializer, ), fields)
+
+            # Utilisation du serializer simplifié
             elif str_to_bool(url_params.get('simple')):
                 return getattr(self, 'simple_serializer', default_serializer)
+
+            # Utilisation du serializer par défaut en cas de mise à jour sans altération des données
+            elif self.action in ('update', 'partial_update'):
+                return default_serializer
+
         return super().get_serializer_class()
 
     def perform_create(self, serializer):
@@ -231,34 +242,35 @@ class CommonModelViewSet(viewsets.ModelViewSet):
                         options['filters_error'] = str(error)
                 return queryset
 
-            # Aggregations
-            try:
-                aggregations = {}
-                for aggregate, function in AGGREGATES.items():
-                    for field in url_params.get(aggregate, '').split(','):
-                        if not field:
-                            continue
-                        distinct = field.startswith(' ')
-                        field = field.strip().replace('.', '__')
-                        aggregations[field + '_' + aggregate] = function(field, distinct=distinct)
-                group_by = url_params.get('group_by', '').replace('.', '__').replace(' ', '')
-                if group_by:
-                    _queryset = queryset.values(*group_by.split(','))
-                    if aggregations:
-                        _queryset = _queryset.annotate(**aggregations)
-                    else:
-                        _queryset = _queryset.distinct()
-                    queryset = _queryset
-                    options['aggregates'] = True
-                elif aggregations:
-                    queryset = do_filter(queryset)  # Filtres éventuels
-                    return queryset.aggregate(**aggregations)
-            except Exception as error:
-                if not silent:
-                    raise ValidationError("aggregates: {}".format(error))
-                options['aggregates'] = False
-                if settings.DEBUG:
-                    options['aggregates_error'] = str(error)
+            # Aggregations (uniquement sur les listes)
+            if self.action == 'list':
+                try:
+                    aggregations = {}
+                    for aggregate, function in AGGREGATES.items():
+                        for field in url_params.get(aggregate, '').split(','):
+                            if not field:
+                                continue
+                            distinct = field.startswith(' ')
+                            field = field.strip().replace('.', '__')
+                            aggregations[field + '_' + aggregate] = function(field, distinct=distinct)
+                    group_by = url_params.get('group_by', '').replace('.', '__').replace(' ', '')
+                    if group_by:
+                        _queryset = queryset.values(*group_by.split(','))
+                        if aggregations:
+                            _queryset = _queryset.annotate(**aggregations)
+                        else:
+                            _queryset = _queryset.distinct()
+                        queryset = _queryset
+                        options['aggregates'] = True
+                    elif aggregations:
+                        queryset = do_filter(queryset)  # Filtres éventuels
+                        return queryset.aggregate(**aggregations)
+                except Exception as error:
+                    if not silent:
+                        raise ValidationError("aggregates: {}".format(error))
+                    options['aggregates'] = False
+                    if settings.DEBUG:
+                        options['aggregates_error'] = str(error)
 
             # Filtres
             queryset = do_filter(queryset)
