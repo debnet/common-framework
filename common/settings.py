@@ -14,11 +14,22 @@ class Settings:
     default = dict(
         IP_DETECTION=False,
         IGNORE_LOG=False,
+        IGNORE_GLOBAL=False,
         NOTIFY_CHANGES=False,
         NOTIFY_OPTIONS={},
         WEBSOCKET_ENABLED=False,
         WEBSOCKET_URL='',
         FRONTEND_SECRET_KEY='',
+        # LDAP
+        LDAP_ENABLE=False,
+        LDAP_LOGIN='',
+        LDAP_HOST='',
+        LDAP_BASE='',
+        LDAP_FILTER='',
+        LDAP_ATTRIBUTES=[],
+        LDAP_ADMIN_USERS=[],
+        LDAP_ADMIN_GROUPS=[],
+        LDAP_GROUP_PREFIX=''
     )
 
     def __getattr__(self, item):

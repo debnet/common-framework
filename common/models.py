@@ -166,11 +166,11 @@ class MetaData(models.Model):
     object_id = models.PositiveIntegerField(verbose_name=_("identifiant"))
     entity = GenericForeignKey()
 
-    key = models.CharField(max_length=100, db_index=True, verbose_name=_("clé"))
+    key = models.CharField(max_length=100, verbose_name=_("clé"))
     value = JsonField(blank=True, null=True, verbose_name=_("valeur"))
     creation_date = models.DateTimeField(auto_now_add=True, verbose_name=_("date de création"))
     modification_date = models.DateTimeField(auto_now=True, verbose_name=_("date de modification"))
-    deletion_date = models.DateTimeField(blank=True, null=True, db_index=True, verbose_name=_("date de suppression"))
+    deletion_date = models.DateTimeField(blank=True, null=True, verbose_name=_("date de suppression"))
     objects = MetaDataQuerySet.as_manager()
 
     def __str__(self):  # pragma: no cover
@@ -283,7 +283,7 @@ class MetaData(models.Model):
         verbose_name = _("métadonnée")
         verbose_name_plural = _("métadonnées")
         unique_together = ('content_type', 'object_id', 'key')
-        index_together = ('key', 'deletion_date')
+        index_together = ('content_type', 'object_id', 'key', 'deletion_date')
 
 
 class CommonQuerySet(models.QuerySet):
@@ -772,7 +772,7 @@ class History(HistoryCommon):
         editable=False,
         verbose_name=_("type d'entité"))
     object_id = models.PositiveIntegerField(editable=False, verbose_name=_("identifiant"))
-    object_uid = models.UUIDField(editable=False, db_index=True, verbose_name=_("UUID"))
+    object_uid = models.UUIDField(editable=False, verbose_name=_("UUID"))
     object_str = models.TextField(editable=False, verbose_name=_("entité"))
     reason = models.TextField(blank=True, null=True, editable=False, verbose_name=_("motif"))
     admin = models.BooleanField(default=False, editable=False, verbose_name=_("admin"))
@@ -847,7 +847,7 @@ class HistoryField(HistoryCommon):
     )
 
     history = models.ForeignKey('History', on_delete=models.CASCADE, editable=False, verbose_name=_("historique"))
-    field_name = models.CharField(max_length=100, db_index=True, editable=False, verbose_name=_("nom du champ"))
+    field_name = models.CharField(max_length=100, editable=False, verbose_name=_("nom du champ"))
     old_value = models.TextField(blank=True, null=True, editable=False, verbose_name=_("ancienne valeur"))
     new_value = models.TextField(blank=True, null=True, editable=False, verbose_name=_("nouvelle valeur"))
     status_m2m = models.CharField(
@@ -1046,6 +1046,7 @@ class Entity(CommonModel):
 
     # Propriétés liées à l'historisation
     _ignore_log = False
+    _ignore_global = False
     _current_user = None
     _reason = None
     _from_admin = False
@@ -1500,7 +1501,8 @@ def post_save_receiver(sender, instance, created, raw, *args, **kwargs):
     if isinstance(instance, Entity):
         # Ajoute le point d'entrée global de l'entité
         if created and not instance._meta.pk.remote_field:
-            Global.objects.create(entity=instance, object_uid=instance.uuid)
+            if not settings.IGNORE_GLOBAL and not instance._ignore_global:
+                Global.objects.create(entity=instance, object_uid=instance.uuid)
         # Sauvegarde l'historique de modification
         if raw:
             instance._ignore_log = True

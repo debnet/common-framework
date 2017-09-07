@@ -1,4 +1,4 @@
-Django==1.11.4
+Django==1.11.5
 Pillow==4.2.1
 celery==4.1
 coverage==4.4.1
@@ -10,5 +10,5 @@ python-dateutil==2.6.1
 pip==9.0.1
 pytz==2017.2
 requests==2.18.4
-setuptools==36.2.4
+setuptools==36.4.0
 wheel==0.29.0
