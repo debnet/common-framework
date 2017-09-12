@@ -483,7 +483,7 @@ class CommonModel(models.Model):
                     data[field.name] = []
                 else:
                     value = field.value_from_object(self)
-                    related = field.rel.to
+                    related = field.related_model
                     # Identifiants
                     if not no_ids:
                         data[field.name + '_ids'] = [v.pk for v in value]

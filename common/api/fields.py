@@ -92,7 +92,7 @@ class CustomHyperlinkedField:
 
         try:
             # Récupération du modèle de la clé étrangère via le modèle du Serializer parent
-            model = self.parent.Meta.model._meta.get_field(self.field_name).rel.to
+            model = self.parent.Meta.model._meta.get_field(self.field_name).related_model
         except:
             # Récupération du modèle lié au QuerySet
             model = getattr(getattr(self, 'queryset', None), 'model', None) or type(obj)
