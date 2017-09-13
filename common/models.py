@@ -1502,7 +1502,7 @@ def post_save_receiver(sender, instance, created, raw, *args, **kwargs):
         # Ajoute le point d'entrée global de l'entité
         if created and not instance._meta.pk.remote_field:
             if not settings.IGNORE_GLOBAL and not instance._ignore_global:
-                Global.objects.create(entity=instance, object_uid=instance.uuid)
+                Global.objects.create(content_type=instance.model_type, object_id=instance.pk, object_uid=instance.uuid)
         # Sauvegarde l'historique de modification
         if raw:
             instance._ignore_log = True
