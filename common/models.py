@@ -376,6 +376,16 @@ class CommonModel(models.Model):
             self.refresh_from_db()
         return count
 
+    def save(self, *args, _full_update=False, **kwargs):
+        """
+        Sauvegarde l'instance du modèle
+        """
+        if self.pk and not _full_update:
+            kwargs['update_fields'] = update_fields = set(kwargs.pop('update_fields', self.modified.keys()))
+            # Les champs de date avec auto_now=True ne sont modifiés que pendant la sauvegarde
+            update_fields.update([field.name for field in self._meta.fields if getattr(field, 'auto_now', None)])
+        return super().save(*args, **kwargs)
+
     def get_metadata(self, key=None, valid=True, raw=False):
         """
         Permet de récupérer une valeur de métadonnée à partir de sa clé
@@ -649,7 +659,7 @@ class CommonModel(models.Model):
         """
         Retourne l'ensemble des modifications effectuées sur l'entité
         """
-        return self.get_modified()
+        return self.get_modified(editables=True)
 
     @property
     def m2m_modified(self):
@@ -717,7 +727,7 @@ class HistoryCommon(CommonModel):
         self.data_size = 0
         if self.data is not None:
             self.data_size = len(str(self.data))
-        super().save(*args, **kwargs)
+        return super().save(*args, **kwargs)
 
     class Meta:
         abstract = True
@@ -1074,7 +1084,7 @@ class Entity(CommonModel):
         if force_insert:
             self.pk = self.id = None
             self.uuid = uuid.uuid4()
-        super().save(*args, **kwargs)
+        return super().save(*args, **kwargs)
 
     def delete(self, *args, _ignore_log=None, _current_user=None, _reason=None,
                _force_default=None, keep_parents=False, **kwargs):
@@ -1469,7 +1479,7 @@ def post_init_receiver(sender, instance, *args, **kwargs):
     """
     if isinstance(instance, CommonModel):
         # Copie des données de l'entité
-        instance._copy = instance.to_dict()
+        instance._copy = instance.to_dict(editables=True)
 
 
 @receiver(pre_save)
@@ -1515,7 +1525,7 @@ def post_save_receiver(sender, instance, created, raw, *args, **kwargs):
         status = History.CREATE if created else History.UPDATE
         run_notify_changes(instance, status)
         # Copie des données de l'entité
-        instance._copy = instance.to_dict()
+        instance._copy = instance.to_dict(editables=True)
 
 
 @app.task(ignore_result=True, name='common.log_save')
