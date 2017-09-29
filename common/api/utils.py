@@ -109,9 +109,9 @@ def to_model_serializer(model, **metadatas):
 
     def wrapper(serializer):
         for field in model._meta.fields:
-            if 'fields' in metadatas and field.name not in metadatas.get('fields'):
+            if 'fields' in metadatas and field.name not in metadatas.get('fields', []):
                 continue
-            if 'exclude' in metadatas and field.name in metadatas.get('exclude'):
+            if 'exclude' in metadatas and field.name in metadatas.get('exclude', []):
                 continue
 
             # Injection des identifiants de clés étrangères
@@ -647,7 +647,7 @@ def api_paginate(request, queryset, serializer, pagination=None, enable_options=
                 if excludes:
                     queryset = queryset.exclude(**excludes)
                 # Filtres génériques
-                others = url_params.get('filters', None)
+                others = url_params.get('filters', '')
                 if others:
                     queryset = queryset.filter(parse_filters(others))
                 if filters or excludes or others:
@@ -751,7 +751,7 @@ def api_paginate(request, queryset, serializer, pagination=None, enable_options=
         # Regroupements & aggregations
         if 'group_by' in url_params or aggregations:
             fields = {}
-            for field in url_params.get('fields').split(','):
+            for field in url_params.get('group_by', '').split(','):
                 add_field_to_serializer(fields, field)
             fields.update(aggregations)
             # Un serializer avec les données groupées est créé à la volée
@@ -759,7 +759,7 @@ def api_paginate(request, queryset, serializer, pagination=None, enable_options=
         # Restriction de champs
         elif 'fields' in url_params:
             fields = {}
-            for field in url_params.get('fields').split(','):
+            for field in url_params.get('fields', '').split(','):
                 add_field_to_serializer(fields, field)
             # Un serializer avec restriction des champs est créé à la volée
             serializer = type(serializer.__name__, (serializers.Serializer, ), fields)

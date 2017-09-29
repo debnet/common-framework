@@ -360,13 +360,13 @@ class UserViewSet(CommonModelViewSet):
                 data['groups'] = []
             elif not user.is_superuser:
                 groups = user.groups.all()
-                data['groups'] = list(set(groups) & set(data.get('groups')))
+                data['groups'] = list(set(groups) & set(data.get('groups', [])))
         if 'user_permissions' in data and data.get('user_permissions'):
             if not user:
                 data['user_permissions'] = []
             elif not user.is_superuser:
                 user_permissions = user.user_permissions.all()
-                data['user_permissions'] = list(set(user_permissions) & set(data.get('user_permissions')))
+                data['user_permissions'] = list(set(user_permissions) & set(data.get('user_permissions', [])))
 
     def perform_create(self, serializer):
         self.check_data(serializer.validated_data)
