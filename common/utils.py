@@ -80,7 +80,11 @@ def get_current_app():
         return CeleryFake()
 
 
-def parsedate(input_date, start_day=False, end_day=False, date_only=False, utc=False, **kwargs):
+# Regex de date au format DMY
+DMY_DATE_REGEX = re.compile(r'^(\d{2})[^\d]?(\d{2})[^\d]?(\d{2,4})([^\d]?(\d{2})[^\d]?(\d{2})[^\d]?(\d{2}))?$')
+
+
+def parsedate(input_date, start_day=False, end_day=False, date_only=False, utc=False, dmy=False, **kwargs):
     """
     Permet de parser une date quelconque (chaîne, date ou datetime) en un datetime standardisée avec time zone
     :param input_date: Date quelconque
@@ -88,6 +92,7 @@ def parsedate(input_date, start_day=False, end_day=False, date_only=False, utc=F
     :param end_day: Ajoute 23:59:59.999999 à une date sans heure (exclusif avec start_day)
     :param date_only: Retourne uniquement la date sans l'heure
     :param utc: Retourne la date uniquement en UTC
+    :param dmy: Essaye de parser une date au format DMY
     :return: Aware datetime ou date
     """
     _date = input_date
@@ -99,6 +104,12 @@ def parsedate(input_date, start_day=False, end_day=False, date_only=False, utc=F
         if not start_day and not end_day:
             start_day = True
     elif not isinstance(_date, datetime):
+        if dmy:
+            match = DMY_DATE_REGEX.match(_date)
+            if match:
+                date_format = '{0}/{1}/{2}' if date_only else '{0}/{1}/{2} {4}:{5}:{6}'
+                _date = date_format.format(*[(group or 0) for group in match.groups()])
+            kwargs['dayfirst'] = True
         try:
             from dateutil import parser
             _date = parser.parse(_date, **kwargs)
