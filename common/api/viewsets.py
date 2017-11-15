@@ -348,13 +348,12 @@ class UserViewSet(CommonModelViewSet):
     def check_data(self, data):
         # Assure que l'utilisateur ne s'octroie pas des droits qu'il ne peut pas avoir
         user = self.request.user
-        if not user:
-            if not user.is_staff and not user.is_superuser:
-                data['is_active'] = True
-            if not user.is_superuser:
-                data['is_staff'] = False
-            if not user.is_superuser:
-                data['is_superuser'] = False
+        if not user or (not user.is_staff and not user.is_superuser):
+            data['is_active'] = True
+        if not user or not user.is_staff:
+            data['is_staff'] = False
+        if not user or not user.is_superuser:
+            data['is_superuser'] = False
         if 'groups' in data and data.get('groups'):
             if not user:
                 data['groups'] = []

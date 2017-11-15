@@ -704,7 +704,7 @@ class CommonModel(models.Model):
         Représentation de l'instance sous forme de dictionnaire pour sérialisation JSON
         :return: dict
         """
-        data = self.to_dict(types=True)
+        data = self.to_dict(editables=True, types=True)
         data.update(_copy=self._copy, _copy_m2m=self._copy_m2m)
         return data
 
@@ -1544,7 +1544,7 @@ def log_save(instance, created):
         user = None
     # Vérification des changements entre les anciennes et nouvelles données
     old_data = instance._copy
-    new_data = instance.to_dict()
+    new_data = instance.to_dict(editables=True)
     diff = set(new_data.items()) ^ set(old_data.items())
     if not diff:
         return
@@ -1693,7 +1693,7 @@ def log_delete(instance):
     user = instance._current_user
     if user and not user.id:
         user = None
-    data = instance.to_dict()
+    data = instance.to_dict(editables=True)
     # Sauvegarde de l'historique de suppression
     history = History.objects.create(
         user=user,
@@ -1737,7 +1737,7 @@ def notify_changes(instance, status, status_m2m=None):
     diff_data_prev, diff_data_next = None, None
     if status in [History.UPDATE, History.RESTORE]:
         old_data = instance._copy.items()
-        new_data = instance.to_dict().items()
+        new_data = instance.to_dict(editables=True).items()
         if set(new_data) ^ set(old_data):
             diff_data_prev = dict(set(old_data) - set(new_data))
             diff_data_next = dict(set(new_data) - set(old_data))
