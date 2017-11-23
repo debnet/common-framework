@@ -159,11 +159,12 @@ class GenericFormSerializer(CommonModelSerializer):
                 if related_object.one_to_many:
                     for relation_item in relation_data:
                         relation_item[related_object.field.name] = item
-                    type(self._declared_fields.get(field_name).child)(many=True).create(relation_data)
+                    type(self._declared_fields.get(field_name).child)(context=self.context, many=True)\
+                        .create(relation_data)
                 # Appel du create pour le serializer des one_to_one
                 elif related_object.one_to_one:
                     relation_data[related_object.field.name] = item
-                    type(self._declared_fields.get(field_name))().create(relation_data)
+                    type(self._declared_fields.get(field_name))(context=self.context).create(relation_data)
         return item
 
     def create_object(self, validated_data):
