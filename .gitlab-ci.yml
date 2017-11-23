@@ -5,6 +5,6 @@ before_script:
 test:
   type: test
   script:
-    - flake8 --ignore=E501,E731,F405,F999 --exclude=src/* .
+    - flake8 --ignore=E501,E722,E731,F405,F999 --exclude=src/* .
     - coverage run setup.py test
     - coverage report --skip-covered --include=common/*
