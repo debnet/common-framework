@@ -3,6 +3,7 @@ from __future__ import unicode_literals
 
 from django.conf import settings
 from django.db import migrations, models
+import django.db.models.deletion
 
 import common.fields
 
@@ -22,7 +23,7 @@ class Migration(migrations.Migration):
                 ('id', models.AutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
                 ('object_id', models.PositiveIntegerField(verbose_name='identifiant', editable=False)),
                 ('object_uid', models.UUIDField(unique=True, verbose_name='UUID', editable=False)),
-                ('content_type', models.ForeignKey(to='contenttypes.ContentType', verbose_name="type d'entité", editable=False)),
+                ('content_type', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, to='contenttypes.ContentType', verbose_name="type d'entité", editable=False)),
             ],
             options={
                 'verbose_name_plural': 'globales',
@@ -34,7 +35,7 @@ class Migration(migrations.Migration):
             fields=[
                 ('id', models.AutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
                 ('data', common.fields.JsonField(null=True, verbose_name='données', blank=True)),
-                ('group', models.OneToOneField(related_name='metadatas', verbose_name='groupe', to='auth.Group')),
+                ('group', models.OneToOneField(on_delete=django.db.models.deletion.CASCADE, related_name='metadatas', verbose_name='groupe', to='auth.Group')),
             ],
             options={
                 'verbose_name_plural': 'métadonnées de groupes',
@@ -56,8 +57,8 @@ class Migration(migrations.Migration):
                 ('object_str', models.TextField(verbose_name='entité', editable=False)),
                 ('reason', models.TextField(null=True, editable=False, verbose_name='motif', blank=True)),
                 ('admin', models.BooleanField(default=False, editable=False, verbose_name='admin')),
-                ('content_type', models.ForeignKey(null=True, verbose_name="type d'entité", to='contenttypes.ContentType', blank=True, editable=False)),
-                ('user', models.ForeignKey(null=True, verbose_name='utilisateur', to=settings.AUTH_USER_MODEL, blank=True, editable=False)),
+                ('content_type', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, null=True, verbose_name="type d'entité", to='contenttypes.ContentType', blank=True, editable=False)),
+                ('user', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, null=True, verbose_name='utilisateur', to=settings.AUTH_USER_MODEL, blank=True, editable=False)),
             ],
             options={
                 'verbose_name_plural': 'historiques',
@@ -78,7 +79,7 @@ class Migration(migrations.Migration):
                 ('old_value', models.TextField(null=True, editable=False, verbose_name='ancienne valeur', blank=True)),
                 ('new_value', models.TextField(null=True, editable=False, verbose_name='nouvelle valeur', blank=True)),
                 ('status_m2m', models.CharField(null=True, max_length=1, verbose_name='statut M2M', editable=False, choices=[('C', 'Purge'), ('A', 'Ajout'), ('R', 'Suppression')], blank=True)),
-                ('history', models.ForeignKey(to='common.History', verbose_name='historique', editable=False)),
+                ('history', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, to='common.History', verbose_name='historique', editable=False)),
             ],
             options={
                 'verbose_name_plural': 'champs modifiés',
@@ -96,7 +97,7 @@ class Migration(migrations.Migration):
                 ('creation_date', models.DateTimeField(auto_now_add=True, verbose_name='date de création')),
                 ('modification_date', models.DateTimeField(auto_now=True, verbose_name='date de modification')),
                 ('deletion_date', models.DateTimeField(null=True, db_index=True, verbose_name='date de suppression', blank=True)),
-                ('content_type', models.ForeignKey(to='contenttypes.ContentType', verbose_name="type d'entité")),
+                ('content_type', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, to='contenttypes.ContentType', verbose_name="type d'entité")),
             ],
             options={
                 'verbose_name_plural': 'métadonnées',
@@ -108,7 +109,7 @@ class Migration(migrations.Migration):
             fields=[
                 ('id', models.AutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
                 ('data', common.fields.JsonField(null=True, verbose_name='données', blank=True)),
-                ('user', models.OneToOneField(related_name='metadatas', verbose_name='utilisateur', to=settings.AUTH_USER_MODEL)),
+                ('user', models.OneToOneField(on_delete=django.db.models.deletion.CASCADE, related_name='metadatas', verbose_name='utilisateur', to=settings.AUTH_USER_MODEL)),
             ],
             options={
                 'verbose_name_plural': "métadonnées d'utilisateurs",

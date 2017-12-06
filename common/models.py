@@ -162,7 +162,10 @@ class MetaData(models.Model):
     """
     Modèle de métadonnées associées aux entités
     """
-    content_type = models.ForeignKey(ContentType, on_delete=models.CASCADE, verbose_name=_("type d'entité"))
+    content_type = models.ForeignKey(
+        ContentType,
+        on_delete=models.CASCADE,
+        verbose_name=_("type d'entité"))
     object_id = models.PositiveIntegerField(verbose_name=_("identifiant"))
     entity = GenericForeignKey()
 
@@ -769,6 +772,7 @@ class History(HistoryCommon):
 
     user = models.ForeignKey(
         settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
         blank=True,
         null=True,
         editable=False,
@@ -856,7 +860,11 @@ class HistoryField(HistoryCommon):
         (REMOVE_M2M, _("Suppression")),
     )
 
-    history = models.ForeignKey('History', on_delete=models.CASCADE, editable=False, verbose_name=_("historique"))
+    history = models.ForeignKey(
+        'History',
+        on_delete=models.CASCADE,
+        editable=False,
+        verbose_name=_("historique"))
     field_name = models.CharField(max_length=100, editable=False, verbose_name=_("nom du champ"))
     old_value = models.TextField(blank=True, null=True, editable=False, verbose_name=_("ancienne valeur"))
     new_value = models.TextField(blank=True, null=True, editable=False, verbose_name=_("nouvelle valeur"))
@@ -1816,7 +1824,11 @@ class UserMetaData(CommonModel):
     """
     Métadonnées pour un utilisateur
     """
-    user = models.OneToOneField(settings.AUTH_USER_MODEL, verbose_name=_("utilisateur"), related_name='metadatas')
+    user = models.OneToOneField(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        verbose_name=_("utilisateur"),
+        related_name='metadatas')
     data = JsonField(blank=True, null=True, verbose_name=_("données"))
 
     @staticmethod
@@ -1863,7 +1875,11 @@ class GroupMetaData(CommonModel):
     """
     Métadonnées pour un groupe
     """
-    group = models.OneToOneField('auth.Group', verbose_name=_("groupe"), related_name='metadatas')
+    group = models.OneToOneField(
+        'auth.Group',
+        on_delete=models.CASCADE,
+        verbose_name=_("groupe"),
+        related_name='metadatas')
     data = JsonField(blank=True, null=True, verbose_name=_("données"))
 
     @staticmethod
@@ -1905,7 +1921,10 @@ class ServiceUsage(CommonModel):
     Utilisation et/ou restriction des APIs
     """
     name = models.CharField(max_length=200, verbose_name=_("nom"))
-    user = models.ForeignKey(settings.AUTH_USER_MODEL, verbose_name=_("utilisateur"))
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        verbose_name=_("utilisateur"))
     count = models.PositiveIntegerField(default=0, verbose_name=_("nombre"))
     limit = models.PositiveIntegerField(blank=True, null=True, verbose_name=_("limite"))
     address = models.CharField(max_length=40, verbose_name=_("adresse"))

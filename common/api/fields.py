@@ -105,7 +105,10 @@ class CustomHyperlinkedField:
 
         lookup_value = getattr(obj, self.lookup_field)
         kwargs = {self.lookup_url_kwarg: lookup_value}
-        return self.reverse(view_name, kwargs=kwargs, request=request, format=format)
+        try:
+            return self.reverse(view_name, kwargs=kwargs, request=request, format=format)
+        except:
+            return None
 
 
 class CustomHyperlinkedIdentityField(CustomHyperlinkedField, HyperlinkedIdentityField):

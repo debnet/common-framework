@@ -64,7 +64,7 @@ class CommonAdmin(admin.ModelAdmin):
     def metadata_url(self, obj):
         count = obj.metadatas.count()
         if count:
-            from django.core.urlresolvers import reverse
+            from django.urls import reverse
             type = ContentType.objects.get_for_model(obj)
             url = reverse('admin:common_metadata_changelist') + '?object_id={}&content_type={}'.format(obj.id, type.id)
             return format_html('<a href="{url}">{label}</a>', url=url, label=count)
@@ -226,7 +226,7 @@ class GlobalAdmin(admin.ModelAdmin):
 
     def entity_url(self, obj):
         try:
-            from django.core.urlresolvers import reverse
+            from django.urls import reverse
             pattern = 'admin:{app_label}_{model}_change'.format(
                 app_label=obj.content_type.app_label, model=obj.content_type.model)
             url = reverse(pattern, args=(obj.object_id, ))
@@ -264,7 +264,7 @@ class MetaDataAdmin(admin.ModelAdmin):
     search_fields = ('key', )
 
     def entity_url(self, obj):
-        from django.core.urlresolvers import reverse
+        from django.urls import reverse
         pattern = 'admin:{app_label}_{model}_change'.format(
             app_label=obj.content_type.app_label, model=obj.content_type.model)
         url = reverse(pattern, args=(obj.object_id, ))
@@ -349,7 +349,7 @@ class HistoryAdmin(admin.ModelAdmin):
         object_str = html.escape(obj.object_str)
         if obj.status != History.DELETE:
             try:
-                from django.core.urlresolvers import reverse
+                from django.urls import reverse
                 pattern = 'admin:{app_label}_{model}_change'.format(
                     app_label=obj.content_type.app_label, model=obj.content_type.model)
                 url = reverse(pattern, args=(obj.object_id, ))
@@ -362,7 +362,7 @@ class HistoryAdmin(admin.ModelAdmin):
 
     def show_fields_url(self, obj):
         if obj.status not in [History.CREATE, History.DELETE] or (obj.entity and obj.entity._meta.many_to_many):
-            from django.core.urlresolvers import reverse
+            from django.urls import reverse
             pattern = 'admin:{app_label}_{model}_changelist'.format(
                 app_label=HistoryField._meta.app_label, model=HistoryField._meta.model_name)
             url = reverse(pattern) + '?history={}'.format(obj.id)
@@ -413,7 +413,7 @@ class HistoryFieldAdmin(admin.ModelAdmin):
     field.short_description = _("Champ")
 
     def history_url(self, obj):
-        from django.core.urlresolvers import reverse
+        from django.urls import reverse
         pattern = 'admin:{app_label}_{model}_changelist'.format(
             app_label=History._meta.app_label, model=History._meta.model_name)
         url = reverse(pattern) + '?id={}'.format(obj.history_id)
