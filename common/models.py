@@ -321,7 +321,7 @@ class CommonModel(models.Model):
     """
     Modèle commun
     """
-    metadatas = GenericRelation(MetaData)
+    metadata = GenericRelation(MetaData)
     objects = CommonQuerySet.as_manager()
 
     # Propriétés liées à l'historisation et au type de modèle
@@ -397,7 +397,7 @@ class CommonModel(models.Model):
         :param raw: Retourner les entités à la place des valeurs ?
         :return: Valeur ou entité
         """
-        return MetaData.get(self, key=key, valid=valid, raw=raw, queryset=self.metadatas)
+        return MetaData.get(self, key=key, valid=valid, raw=raw, queryset=self.metadata)
 
     def set_metadata(self, key, value, date=None):
         """
@@ -407,7 +407,7 @@ class CommonModel(models.Model):
         :param date: Date de péremption de la métadonnée
         :return: Vrai en cas de succès, faux sinon
         """
-        return MetaData.set(self, key=key, value=value, date=date, queryset=self.metadatas)
+        return MetaData.set(self, key=key, value=value, date=date, queryset=self.metadata)
 
     def add_metadata(self, key, value, allow_duplicate=True):
         """
@@ -418,7 +418,7 @@ class CommonModel(models.Model):
         :param allow_duplicate: Autorise l'ajout de doublons dans les listes de valeur (par défaut)
         :return: Métadonnée
         """
-        return MetaData.add(self, key=key, value=value, allow_duplicate=allow_duplicate, queryset=self.metadatas)
+        return MetaData.add(self, key=key, value=value, allow_duplicate=allow_duplicate, queryset=self.metadata)
 
     def del_metadata(self, key=None, logic=False, date=None):
         """
@@ -428,10 +428,10 @@ class CommonModel(models.Model):
         :param date: Date de péremption de la métadonnée
         :return: Vrai en cas de succès, faux sinon
         """
-        return MetaData.remove(self, key=key, logic=logic, date=date, queryset=self.metadatas)
+        return MetaData.remove(self, key=key, logic=logic, date=date, queryset=self.metadata)
 
     def to_dict(self, includes=None, excludes=None,
-                editables=False, uids=False, metadatas=False, names=False, types=False,
+                editables=False, uids=False, metadata=False, names=False, types=False,
                 display=False, fks=False, m2m=False, no_ids=False, functions=None, extra=None, raw=False, **kwargs):
         """
         Retourne la représentation d'une entité sous forme de dictionnaire
@@ -439,7 +439,7 @@ class CommonModel(models.Model):
         :param excludes: Attributs à exclure
         :param editables: Inclure les valeurs des attributs non éditables ?
         :param uids: Inclure les identifiants uniques de toutes les entités liées ?
-        :param metadatas: Inclure les métadonnées ?
+        :param metadata: Inclure les métadonnées ?
         :param names: Inclure les informations textuelles du modèle ?
         :param types: Inclure le type d'entité ?
         :param display: Inclure le libellé de l'attribut s'il existe ?
@@ -453,7 +453,7 @@ class CommonModel(models.Model):
         :param raw: Ne pas chercher à retourner des valeurs serialisables ?
         :return: Dictionnaire
         """
-        keywords = dict(editables=editables, uids=uids, metadatas=metadatas,
+        keywords = dict(editables=editables, uids=uids, metadata=metadata,
                         names=names, types=types, display=display, fks=fks, m2m=m2m, no_ids=no_ids)
         keywords.update(kwargs)
         from django.db.models.fields.related import ManyToManyField
@@ -554,8 +554,8 @@ class CommonModel(models.Model):
                 else:
                     data[field.name] = value
         # Gestion des métadonnées
-        if metadatas:
-            data['metadatas'] = self.get_metadata()
+        if metadata:
+            data['metadata'] = self.get_metadata()
         # Appel de fonctions internes à l'entité
         if functions:
             for key, func_name, func_args, func_kwargs in functions:
@@ -591,9 +591,10 @@ class CommonModel(models.Model):
                     data[field] = item
         return data
 
-    def m2m_to_dict(self):
+    def m2m_to_dict(self, raw=False):
         """
         Retourne toutes les relations de type ManyToMany classées par attribut
+        :param raw:
         :return: Dictionnaire
         """
         data = {}
@@ -601,8 +602,11 @@ class CommonModel(models.Model):
             return data
         meta = self._meta
         for field in meta.many_to_many:
-            value = field.value_from_object(self)
-            data[field.name] = tuple(value.values_list('pk', flat=True))
+            if raw:
+                value = field.value_from_object(self)
+                data[field.name] = value
+            else:
+                data[field.name] = getattr(self, field.name).values_list('pk', flat=True)
         return data
 
     def related_to_dict(self, includes=None, excludes=None, valid=True, date=None, **kwargs):
@@ -1129,7 +1133,7 @@ class Entity(CommonModel):
     def __init__(self, *args, **kwargs):
         if not self.__class__._init:
             for field in self._meta.concrete_fields + self._meta.many_to_many:
-                if not field.remote_field or field.remote_field.model is Global:
+                if not field.remote_field or field.related_model is Global:
                     continue
                 if isinstance(field, models.ForeignKey):
                     suffix = '_uid'
@@ -1152,7 +1156,7 @@ class Entity(CommonModel):
         field = self._meta.get_field(fk_field)
         unique = Global.objects.select_related().get(object_uid=value)
         model_from = unique.content_type.model_class()
-        model_to = field.remote_field.model
+        model_to = field.related_model
         assert model_from == model_to, _("Unexpected model '{}' used instead of expected model '{}'.").format(
             model_from._meta.verbose_name_raw, model_to._meta.verbose_name_raw
         )
@@ -1170,7 +1174,7 @@ class Entity(CommonModel):
         assert uniques.values_list('content_type', flat=True).distinct(
         ).count() == 1, _("Multiple model types are found in values.")
         model_from = uniques.first().content_type.model_class()
-        model_to = field.remote_field.model
+        model_to = field.related_model
         assert model_from == model_to, _("Unexpected model '{}' used instead of expected model '{}'.").format(
             model_from._meta.verbose_name_raw, model_to._meta.verbose_name_raw
         )
@@ -1293,7 +1297,7 @@ class PerishableEntity(Entity):
         super().save(_ignore_log=self._ignore_log, _current_user=self._current_user, _reason=self._reason,
                      _force_default=self._force_default, force_insert=force_insert, force_update=force_update, **kwargs)
         if not self._force_default and previous:
-            for metadata in previous.metadatas.all():
+            for metadata in previous.metadata.all():
                 metadata.pk = metadata.id = None
                 metadata.entity = self
                 metadata.save(force_insert=True)
@@ -1828,12 +1832,12 @@ class UserMetaData(CommonModel):
         settings.AUTH_USER_MODEL,
         on_delete=models.CASCADE,
         verbose_name=_("utilisateur"),
-        related_name='metadatas')
+        related_name='metadata')
     data = JsonField(blank=True, null=True, verbose_name=_("données"))
 
     @staticmethod
     def set(user, **data):
-        meta = user.metadatas
+        meta = user.metadata
         meta.data.update(**data)
         meta.save()
         return meta.data
@@ -1842,23 +1846,23 @@ class UserMetaData(CommonModel):
     def get(user, key=None, groups=True):
         if groups:
             data = {}
-            for group in user.groups.select_related('metadatas').all():
-                merge_dict(data, group.metadatas.data or {})
-            merge_dict(data, user.metadatas.data or {})
+            for group in user.groups.select_related('metadata').all():
+                merge_dict(data, group.metadata.data or {})
+            merge_dict(data, user.metadata.data or {})
         else:
-            data = user.metadatas.data
+            data = user.metadata.data
         return data.get(key) if key else data
 
     @staticmethod
     def remove(user, key):
-        meta = user.metadatas
+        meta = user.metadata
         meta.data.pop(key, None)
         meta.save()
         return meta.data
 
     @staticmethod
     def merge(user, *idict, **data):
-        meta = user.metadatas
+        meta = user.metadata
         merge_dict(meta.data, *idict, **data)
         meta.save()
         return meta.data
@@ -1879,31 +1883,31 @@ class GroupMetaData(CommonModel):
         'auth.Group',
         on_delete=models.CASCADE,
         verbose_name=_("groupe"),
-        related_name='metadatas')
+        related_name='metadata')
     data = JsonField(blank=True, null=True, verbose_name=_("données"))
 
     @staticmethod
     def set(group, **data):
-        meta = group.metadatas
+        meta = group.metadata
         meta.data.update(**data)
         meta.save()
         return meta.data
 
     @staticmethod
     def get(group, key=None):
-        meta = group.metadatas
+        meta = group.metadata
         return meta.data.get(key) if key else meta.data
 
     @staticmethod
     def remove(group, key):
-        meta = group.metadatas
+        meta = group.metadata
         meta.data.pop(key, None)
         meta.save()
         return meta.data
 
     @staticmethod
     def merge(group, *idict, **data):
-        meta = group.metadatas
+        meta = group.metadata
         merge_dict(meta.data, *idict, **data)
         meta.save()
         return meta.data

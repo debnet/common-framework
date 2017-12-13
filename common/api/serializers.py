@@ -4,7 +4,7 @@ from operator import itemgetter
 from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.contrib.auth.models import Group, Permission
-from django.core.exceptions import ValidationError as ModelValidationError
+from django.core.exceptions import ValidationError as ModelValidationError, FieldDoesNotExist
 from rest_framework import serializers
 from rest_framework.exceptions import ValidationError as ApiValidationError
 from rest_framework.fields import empty
@@ -27,14 +27,14 @@ class CommonModelSerializer(serializers.HyperlinkedModelSerializer if HYPERLINKE
     id = serializers.PrimaryKeyRelatedField(read_only=True)
     serializer_url_field = CustomHyperlinkedIdentityField
     serializer_related_field = CustomHyperlinkedRelatedField if HYPERLINKED else PrimaryKeyRelatedField
-    metadatas = serializers.SerializerMethodField(read_only=True)
+    metadata = serializers.SerializerMethodField(read_only=True)
 
-    def get_metadatas(self, instance):
+    def get_metadata(self, instance):
         request = self.context.get('request', None)
         meta = request and getattr(request, 'query_params', None) and request.query_params.get('meta', False)
-        if meta and hasattr(instance, 'metadatas'):
-            return instance.metadatas.data if hasattr(instance.metadatas, 'data') \
-                else {meta.key: meta.value for meta in instance.metadatas.all()}
+        if meta and hasattr(instance, 'metadata'):
+            return instance.metadata.data if hasattr(instance.metadata, 'data') \
+                else {meta.key: meta.value for meta in instance.metadata.all()}
         return None
 
     def create(self, validated_data):
@@ -59,11 +59,21 @@ class CommonModelSerializer(serializers.HyperlinkedModelSerializer if HYPERLINKE
         :param validated_data: Données validées
         :return: Instance mise à jour
         """
+        m2m_data = {}
         for attr, value in validated_data.items():
+            try:
+                field = instance._meta.get_field(attr)
+                if field.many_to_many:
+                    m2m_data[attr] = value
+                    continue
+            except FieldDoesNotExist:
+                continue
             setattr(instance, attr, value)
         try:
             instance.full_clean()
             instance.save()
+            for attr, value in m2m_data.items():
+                getattr(instance, attr).set(value)
         except ModelValidationError as error:
             raise ApiValidationError(error.messages)
         return instance
@@ -237,5 +247,5 @@ class UserInfosSerializer(CommonModelSerializer):
                 permissions[permission.id] = permission_serializer_class(permission).data
         return sorted(permissions.values(), key=itemgetter('id'))
 
-    def get_metadatas(self, user):
+    def get_metadata(self, user):
         return user.get_metadata()

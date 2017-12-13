@@ -605,7 +605,7 @@ def get_choices_fields(*included_apps):
     return tuple(choices_by_application())
 
 
-def prefetch_metadatas(model, lookup=None, name=None):
+def prefetch_metadata(model, lookup=None, name=None):
     """
     Permet de récupérer les métadonnées valides d'un modèle
     (principalement utilisé dans la récursivité de `get_prefetch()`)
@@ -624,7 +624,7 @@ def prefetch_metadatas(model, lookup=None, name=None):
 
 
 def get_prefetchs(parent, depth=1, height=1, foreign_keys=False, one_to_one=True, one_to_many=False, many_to_many=False,
-                  metadatas=False, excludes=None, null=False, _model=None, _prefetch='', _level=1):
+                  metadata=False, excludes=None, null=False, _model=None, _prefetch='', _level=1):
     """
     Permet de récupérer récursivement tous les prefetch related d'un modèle
     :param parent: Modèle parent
@@ -634,7 +634,7 @@ def get_prefetchs(parent, depth=1, height=1, foreign_keys=False, one_to_one=True
     :param one_to_one: Récupère les relations de type one-to-one ?
     :param one_to_many: Récupère les relations de type one-to-many ? (peut-être très coûteux selon les données)
     :param many_to_many: Récupère les relations de type many-to-many ?
-    :param metadatas: Récupère uniquement les prefetchs des métadonnées ?
+    :param metadata: Récupère uniquement les prefetchs des métadonnées ?
     :param excludes: Champs ou types à exclure
     :param null: Remonter par les clés étrangères nulles ?
     :param _model: Modèle courant (pour la récursivité, nul par défaut)
@@ -643,7 +643,7 @@ def get_prefetchs(parent, depth=1, height=1, foreign_keys=False, one_to_one=True
     :return: Liste des prefetch related associés
     """
     excludes = excludes or []
-    results = prefetch_metadatas(parent) if metadatas and not _model else []
+    results = prefetch_metadata(parent) if metadata and not _model else []
     if _level > depth:
         return results
     model = _model or parent
@@ -661,7 +661,7 @@ def get_prefetchs(parent, depth=1, height=1, foreign_keys=False, one_to_one=True
                     one_to_one=one_to_one,
                     one_to_many=one_to_many,
                     many_to_many=many_to_many,
-                    metadatas=metadatas,
+                    metadata=metadata,
                     excludes=excludes,
                     _model=field.related_model,
                     _prefetch=recursive_prefetch,
@@ -676,8 +676,8 @@ def get_prefetchs(parent, depth=1, height=1, foreign_keys=False, one_to_one=True
                         null=null,
                         height=height):
                     results.append('__'.join((recursive_prefetch, related)))
-            if metadatas:
-                results.extend(prefetch_metadatas(parent, lookup=recursive_prefetch))
+            if metadata:
+                results.extend(prefetch_metadata(parent, lookup=recursive_prefetch))
             elif not prefetchs:
                 results.append(recursive_prefetch)
     return results
@@ -710,11 +710,11 @@ def get_related(model, dest=None, excludes=None, foreign_keys=True, one_to_one=F
     if foreign_keys:
         for field in model._meta.fields:
             if not isinstance(field, (ForeignKey, OneToOneField)) or field.name in excludes \
-                    or (field.remote_field and field.remote_field.model in excludes) or (not null and field.null):
+                    or (field.remote_field and field.related_model in excludes) or (not null and field.null):
                 continue
             related_path = '__'.join((_related, field.name)) if _related else field.name
             results += get_related(
-                field.remote_field.model, dest=dest, excludes=excludes, height=height, null=null,
+                field.related_model, dest=dest, excludes=excludes, height=height, null=null,
                 _related=related_path, _models=models, _level=_level + 1)
     # Relations de type one-to-one
     if one_to_one:
@@ -794,7 +794,7 @@ def get_field_by_path(model, path):
     field_name, *inner_path = path.replace('__', '.').split('.')
     field = model._meta.get_field(field_name)
     if inner_path:
-        return get_field_by_path(field.remote_field.model, '.'.join(inner_path))
+        return get_field_by_path(field.related_model, '.'.join(inner_path))
     return field
 
 

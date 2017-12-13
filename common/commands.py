@@ -61,11 +61,11 @@ class ImportExcelCommand(BaseCommand):
                     pass
                 # Analyse le type de champ (FK ou M2M)
                 f = obj._meta.get_field(field)
-                if f.remote_field and f.remote_field.model and field not in actions:
-                    related_class = f.remote_field.model
+                if f.remote_field and f.related_model and field not in actions:
+                    related_class = f.related_model
                     rel_model_name = related_class._meta.model_name
                     models = results if rel_model_name == model_name else self.models[
-                        f.remote_field.model._meta.model_name]
+                        f.related_model._meta.model_name]
                     if hasattr(f.remote_field, 'through'):
                         m2ms[field] = [models[code.strip()] for code in value.split(',')]
                         continue

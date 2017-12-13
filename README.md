@@ -135,7 +135,7 @@ des raisons de performances (en fonction du volume de données).
 Elles sont représentées sous forme d'un modèle Django ``common.models.MetaData``.
 
 ```python
-Personne.objects.filter(metadatas__key='cle', metadatas__value='valeur').first()
+Personne.objects.filter(metadata__key='cle', metadata__value='valeur').first()
 MetaData.objects.search(key='cle', value='valeur', type=Personne)
 ```
 

@@ -11,7 +11,7 @@ from rest_framework.relations import PrimaryKeyRelatedField
 from rest_framework.response import Response
 
 from common.api.fields import ChoiceDisplayField, ReadOnlyObjectField
-from common.utils import get_field_by_path, get_prefetchs, get_related, parsedate, prefetch_metadatas, str_to_bool
+from common.utils import get_field_by_path, get_prefetchs, get_related, parsedate, prefetch_metadata, str_to_bool
 
 
 # URLs dans les serializers
@@ -97,11 +97,11 @@ def parse_filters(filters):
     return q
 
 
-def to_model_serializer(model, **metadatas):
+def to_model_serializer(model, **metadata):
     """
     Décorateur permettant d'associer un modèle à une définition de serializer
     :param model: Modèle
-    :param metadatas: Metadonnées du serializer
+    :param metadata: Metadonnées du serializer
     :return: Serializer
     """
     from common.api.fields import JsonField as ApiJsonField
@@ -109,16 +109,16 @@ def to_model_serializer(model, **metadatas):
 
     def wrapper(serializer):
         for field in model._meta.fields:
-            if 'fields' in metadatas and field.name not in metadatas.get('fields', []):
+            if 'fields' in metadata and field.name not in metadata.get('fields', []):
                 continue
-            if 'exclude' in metadatas and field.name in metadatas.get('exclude', []):
+            if 'exclude' in metadata and field.name in metadata.get('exclude', []):
                 continue
 
             # Injection des identifiants de clés étrangères
             if HYPERLINKED and field.related_model:
                 serializer._declared_fields[field.name + '_id'] = serializers.ReadOnlyField()
-                if 'fields' in metadatas and 'exclude' not in metadatas:
-                    metadatas['fields'] = list(metadatas.get('fields', [])) + [field.name + '_id']
+                if 'fields' in metadata and 'exclude' not in metadata:
+                    metadata['fields'] = list(metadata.get('fields', [])) + [field.name + '_id']
 
             # Injection des valeurs humaines pour les champs ayant une liste de choix
             if field.choices:
@@ -126,8 +126,8 @@ def to_model_serializer(model, **metadatas):
                 source_field_name = 'get_{}'.format(serializer_field_name)
                 serializer._declared_fields[serializer_field_name] = serializers.CharField(
                     source=source_field_name, label=field.verbose_name or field.name, read_only=True)
-                if 'fields' in metadatas and 'exclude' not in metadatas:
-                    metadatas['fields'] = list(metadatas.get('fields', [])) + [serializer_field_name]
+                if 'fields' in metadata and 'exclude' not in metadata:
+                    metadata['fields'] = list(metadata.get('fields', [])) + [serializer_field_name]
 
             # Injection des données des champs de type JSON
             if isinstance(field, ModelJsonField):
@@ -136,15 +136,15 @@ def to_model_serializer(model, **metadatas):
                     required=not field.blank, allow_null=field.null, read_only=not field.editable)
 
         # Mise à jour des métadonnées du serializer
-        if 'fields' not in metadatas and 'exclude' not in metadatas:
-            metadatas.update(fields='__all__')
-        metadatas.update(model=model)
-        serializer.Meta = type('Meta', (), metadatas)
+        if 'fields' not in metadata and 'exclude' not in metadata:
+            metadata.update(fields='__all__')
+        metadata.update(model=model)
+        serializer.Meta = type('Meta', (), metadata)
         return serializer
     return wrapper
 
 
-def to_model_viewset(model, serializer, permissions=None, queryset=None, bases=None, **metadatas):
+def to_model_viewset(model, serializer, permissions=None, queryset=None, bases=None, **metadata):
     """
     Décorateur permettant d'associer un modèle et un serializer à une définition de viewset
     :param model: Modèle
@@ -152,7 +152,7 @@ def to_model_viewset(model, serializer, permissions=None, queryset=None, bases=N
     :param permissions: Permissions spécifiques
     :param queryset: Surcharge du queryset par défaut pour le viewset
     :param bases: Classes dont devra hériter le serializer par défaut
-    :param metadatas: Metadonnées du serializer
+    :param metadata: Metadonnées du serializer
     :return: ViewSet
     """
     from common.api.permissions import CommonModelPermissions
@@ -161,9 +161,9 @@ def to_model_viewset(model, serializer, permissions=None, queryset=None, bases=N
         viewset.queryset = queryset or model.objects.all()
         viewset.model = model
         viewset.serializer_class = serializer
-        viewset.simple_serializer = create_model_serializer(model, bases=bases, **metadatas)
+        viewset.simple_serializer = create_model_serializer(model, bases=bases, **metadata)
         excludes_many_to_many_from_serializer(viewset.simple_serializer)
-        viewset.default_serializer = create_model_serializer(model, bases=bases, hyperlinked=False, **metadatas)
+        viewset.default_serializer = create_model_serializer(model, bases=bases, hyperlinked=False, **metadata)
         viewset.permission_classes = permissions or [CommonModelPermissions]
         return viewset
     return wrapper
@@ -273,20 +273,20 @@ def create_model_serializer_and_viewset(
 
     # Métadonnées du serializer
     exclude_related = exclude_related if isinstance(exclude_related, dict) else {model: exclude_related or []}
-    metadatas = (metas or {}).get(model, {})
-    metadatas.update(options)
-    metadatas['extra_kwargs'] = metadatas.get('extra_kwargs', {})
+    metadata = (metas or {}).get(model, {})
+    metadata.update(options)
+    metadata['extra_kwargs'] = metadata.get('extra_kwargs', {})
 
     # Vérifie qu'un nom de champ donné est inclu ou exclu
     def field_allowed(field_name):
-        return field_name in metadatas.get('fields', []) or (
-            field_name not in metadatas.get('exclude', []) and
+        return field_name in metadata.get('fields', []) or (
+            field_name not in metadata.get('exclude', []) and
             field_name not in exclude_related.get(model, []))
 
     # Création du serializer et du viewset
-    serializer = to_model_serializer(model, **metadatas)(
+    serializer = to_model_serializer(model, **metadata)(
         type(object_name + 'Serializer', _serializer_base, _serializer_data))
-    viewset = to_model_viewset(model, serializer, permissions, bases=_bases, **metadatas)(
+    viewset = to_model_viewset(model, serializer, permissions, bases=_bases, **metadata)(
         type(object_name + 'ViewSet', _viewset_base, _viewset_data))
 
     # Surcharge du queryset par défaut dans le viewset
@@ -296,7 +296,7 @@ def create_model_serializer_and_viewset(
     # Gestion des clés étrangères
     relateds = []
     prefetchs = []
-    prefetchs_metadatas = []  # Prefetch pour récupérer les métadonnées à chaque niveau
+    prefetchs_metadata = []  # Prefetch pour récupérer les métadonnées à chaque niveau
     excludes = []
 
     for field in model._meta.fields:
@@ -327,7 +327,7 @@ def create_model_serializer_and_viewset(
             if field.remote_field and not field.primary_key and field.related_model is _origin:
                 serializer.Meta.extra_kwargs[field.name] = dict(required=False, allow_null=True)
         # Prefetch des métadonnées
-        prefetchs_metadatas += prefetch_metadatas(field.related_model, field.name)
+        prefetchs_metadata += prefetch_metadata(field.related_model, field.name)
 
     # Gestion des many-to-many
     if many_to_many and depth > _level:
@@ -347,7 +347,7 @@ def create_model_serializer_and_viewset(
             serializer._declared_fields[field.name] = m2m_serializer(many=True, read_only=True)
             prefetchs.append(field.name)
             # Prefetch des métadonnées
-            prefetchs_metadatas += prefetch_metadatas(field.related_model, field.name)
+            prefetchs_metadata += prefetch_metadata(field.related_model, field.name)
     else:
         # Exclusion du champ many-to-many du serializer
         excludes_many_to_many_from_serializer(viewset.serializer_class)
@@ -408,7 +408,7 @@ def create_model_serializer_and_viewset(
         many_to_many=many_to_many,
         null=null_fks)
     prefetchs += get_prefetchs(model, **arguments)
-    prefetchs_metadatas += get_prefetchs(model, metadatas=True, **arguments)
+    prefetchs_metadata += get_prefetchs(model, metadata=True, **arguments)
 
     # Injection des clés étrangères dans le queryset du viewset
     if relateds:
@@ -416,7 +416,7 @@ def create_model_serializer_and_viewset(
     # Injection des many-to-many et des relations inversées dans le queryset du viewset
     if prefetchs:
         viewset.queryset = viewset.queryset.prefetch_related(*prefetchs)
-    viewset.metadatas = prefetchs_metadatas
+    viewset.metadata = prefetchs_metadata
     return serializer, viewset
 
 
@@ -789,7 +789,7 @@ def api_paginate(request, queryset, serializer, pagination=None, enable_options=
 
 def create_api(*models, default_config=None, router=None, all_serializers=None, all_viewsets=None,
                all_bases_serializers=None, all_bases_viewsets=None, all_data_serializers=None, all_data_viewsets=None,
-               all_querysets=None, all_metadatas=None, all_configs=None):
+               all_querysets=None, all_metadata=None, all_configs=None):
     """
     Crée les APIs REST standard pour les modèles donnés
     :param models: Liste des modèles
@@ -799,7 +799,7 @@ def create_api(*models, default_config=None, router=None, all_serializers=None, 
     :param all_viewsets: Tous les viewsets créés jusqu'à présent
     :param all_bases_serializers: Toutes les bases de serializers créées jusqu'à présent
     :param all_bases_viewsets: Toutes les bases de viewsets créées jusqu'à présent
-    :param all_metadatas: Toutes les métadonnées créées jusqu'à présent
+    :param all_metadata: Toutes les métadonnées créées jusqu'à présent
     :param all_data_serializers: Toutes les données de serializers créées jusqu'à présent
     :param all_data_viewsets: Toutes les données de viewsets créées jusqu'à présent
     :param all_querysets: Toutes les requêtes créées jusqu'à présent
@@ -814,7 +814,7 @@ def create_api(*models, default_config=None, router=None, all_serializers=None, 
         SERIALIZERS, VIEWSETS,
         SERIALIZERS_BASE, VIEWSETS_BASE,
         SERIALIZERS_DATA, VIEWSETS_DATA,
-        QUERYSETS, METADATAS, CONFIGS, DEFAULT_CONFIG)
+        QUERYSETS, METADATA, CONFIGS, DEFAULT_CONFIG)
     all_serializers = all_serializers or SERIALIZERS
     all_viewsets = all_viewsets or VIEWSETS
     all_bases_serializers = all_bases_serializers or SERIALIZERS_BASE
@@ -822,7 +822,7 @@ def create_api(*models, default_config=None, router=None, all_serializers=None, 
     all_data_serializers = all_data_serializers or SERIALIZERS_DATA
     all_data_viewsets = all_data_viewsets or VIEWSETS_DATA
     all_querysets = all_querysets or QUERYSETS
-    all_metadatas = all_metadatas or METADATAS
+    all_metadata = all_metadata or METADATA
     all_configs = all_configs or CONFIGS
     default_config = default_config or DEFAULT_CONFIG
 
@@ -833,7 +833,7 @@ def create_api(*models, default_config=None, router=None, all_serializers=None, 
         serializers[model], viewsets[model] = create_model_serializer_and_viewset(
             model, serializer_base=all_bases_serializers, viewset_base=all_bases_viewsets,
             serializer_data=all_data_serializers, viewset_data=all_data_viewsets,
-            queryset=all_querysets.get(model, None), metas=all_metadatas,
+            queryset=all_querysets.get(model, None), metas=all_metadata,
             **all_configs.get(model, default_config or {}))
 
     # Création des routes par défaut
@@ -849,16 +849,16 @@ def create_api(*models, default_config=None, router=None, all_serializers=None, 
     return router, serializers, viewsets
 
 
-def disable_relation_fields(*models, all_metadatas=None):
+def disable_relation_fields(*models, all_metadata=None):
     """
     Remplace la liste de choix par un simple champ de saisie pour toutes les relations des modèles donnés
     (Permet d'améliorer significativement les performances lors de l'affichage du formulaire dans les APIs)
     :param models: Liste des modèles
-    :param all_metadatas: Toutes les métadonnées créées jusqu'à présent
+    :param all_metadata: Toutes les métadonnées créées jusqu'à présent
     :return: Rien
     """
-    from common.api.base import METADATAS
-    all_metadatas = all_metadatas or METADATAS
+    from common.api.base import METADATA
+    all_metadata = all_metadata or METADATA
 
     for model in models:
         if not model:
@@ -868,8 +868,8 @@ def disable_relation_fields(*models, all_metadatas=None):
             if field.concrete and not field.auto_created and field.related_model:
                 metas[field.name] = dict(style={'base_template': 'input.html', 'placeholder': str(field.verbose_name)})
         if metas:
-            metadatas = all_metadatas[model] = all_metadatas.get(model, {})
-            extra_kwargs = metadatas['extra_kwargs'] = metadatas.get('extra_kwargs', {})
+            metadata = all_metadata[model] = all_metadata.get(model, {})
+            extra_kwargs = metadata['extra_kwargs'] = metadata.get('extra_kwargs', {})
             for key, value in metas.items():
                 extra_kwargs[key] = extra_kwargs.get(key, {})
                 extra_kwargs[key].update(value)

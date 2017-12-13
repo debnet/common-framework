@@ -124,6 +124,12 @@ class JsonField(models.Field):
     """
     JsonField is a generic TextField that neatly serializes/unserializes JSON objects seamlessly.
     """
+    empty_strings_allowed = False
+    description = _("A JSON object")
+    default_error_messages = {
+        'invalid': _("Value must be a valid JSON")
+    }
+    _default_hint = ('dict', '{}')
 
     def __init__(self, *args, **kwargs):
         null = kwargs.get('null', False)
@@ -192,6 +198,8 @@ class JsonField(models.Field):
         name, path, args, kwargs = super().deconstruct()
         if self.default == '{}':
             del kwargs['default']
+        if self.encoder is not None:
+            kwargs['encoder'] = self.encoder
         return name, path, args, kwargs
 
     def validate(self, value, model_instance):
@@ -381,6 +389,16 @@ class JsonInAll(JsonArrayLookup):
     """
     lookup_name = 'all'
     lookup_operator = '?&'
+
+
+@JsonField.register_lookup
+class JsonOverlap(JsonArrayLookup):
+    """
+    Recherche les éléments dans au moins une valeur est présente dans la liste fournie en paramètre
+    Uniquement pour PostgreSQL
+    """
+    lookup_name = 'overlap'
+    lookup_operator = '&&'
 
 
 class JsonDictLookup(Lookup):

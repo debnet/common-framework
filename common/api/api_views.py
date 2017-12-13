@@ -57,9 +57,9 @@ def user_infos(request, user_id=None):
     user_id = user_id or request.user.pk
     user = get_object_or_404(
         get_user_model().objects.prefetch_related(
-            'metadatas',
+            'metadata',
             'user_permissions',
-            'groups__metadatas',
+            'groups__metadata',
             'groups__permissions'
         ),
         pk=user_id)

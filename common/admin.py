@@ -62,7 +62,7 @@ class CommonAdmin(admin.ModelAdmin):
         return view_perm
 
     def metadata_url(self, obj):
-        count = obj.metadatas.count()
+        count = obj.metadata.count()
         if count:
             from django.urls import reverse
             type = ContentType.objects.get_for_model(obj)
@@ -80,7 +80,7 @@ class CommonAdmin(admin.ModelAdmin):
     def get_queryset(self, request):
         if not issubclass(self.model, CommonModel):
             return super().get_queryset(request)
-        return super().get_queryset(request).prefetch_related('metadatas')
+        return super().get_queryset(request).prefetch_related('metadata')
 
 
 class EntityAdmin(CommonAdmin):

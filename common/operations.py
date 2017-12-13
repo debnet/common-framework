@@ -97,7 +97,7 @@ class CreateIndexUnaccent(Operation):
 
         for fields in self.fields:
             # Création du nom de l'index
-            index_name = schema_editor._create_index_name(model, fields, suffix='_unaccent')
+            index_name = schema_editor._create_index_name(model._meta.db_table, fields, suffix='_unaccent')
 
             # Ajout de la classe d'opérateur pour la méthode BTREE
             fields_btree = ", ".join(
@@ -132,7 +132,7 @@ class CreateIndexUnaccent(Operation):
 
         for fields in self.fields:
             # Création du nom de l'index
-            index_name = schema_editor._create_index_name(model, fields, suffix='_unaccent')
+            index_name = schema_editor._create_index_name(model._meta.db_table, fields, suffix='_unaccent')
 
             # Suppression des index de la base de données
             schema_editor.execute(query.format(index_name=index_name, method='gin'))

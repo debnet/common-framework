@@ -46,8 +46,8 @@ VIEWSETS_DATA = {}
 # Surcharges du queryset du viewset principal
 QUERYSETS = {}
 
-# Métadonnees des serializers
-METADATAS = {}
+# Métadonnées des serializers
+METADATA = {}
 
 # Configuration des serializers
 CONFIGS = {

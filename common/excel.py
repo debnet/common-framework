@@ -67,7 +67,7 @@ class ImportExport(object):
         :return: Cache
         """
         cache = {}
-        metadatas = {}
+        metadata = {}
 
         workbook = load_workbook(filename=file, read_only=True, data_only=True)
         # Récupération de toutes les feuilles par nom
@@ -76,9 +76,9 @@ class ImportExport(object):
             worksheets[worksheet.title.lower()] = worksheet
 
         # Si elle existe, nous traitons la feuille des métadonnées
-        metadatas_sheet_name = str(METADATA_NAME)
-        if metadatas_sheet_name in worksheets:
-            worksheet = worksheets.get(metadatas_sheet_name)
+        metadata_sheet_name = str(METADATA_NAME)
+        if metadata_sheet_name in worksheets:
+            worksheet = worksheets.get(metadata_sheet_name)
             headers = {}
             title = True
             for row_number, row in enumerate(worksheet.iter_rows()):
@@ -97,8 +97,8 @@ class ImportExport(object):
                         continue
                     field = headers[col_number]
                     if field == 'code':
-                        if value not in metadatas:
-                            metadatas[value] = []
+                        if value not in metadata:
+                            metadata[value] = []
                         code_meta = value
                         continue
                     line.append(value)
@@ -106,7 +106,7 @@ class ImportExport(object):
                 if title:
                     title = False
                     continue
-                metadatas[code_meta].append(line)
+                metadata[code_meta].append(line)
 
         done = []
         for model in self.models:
@@ -120,7 +120,7 @@ class ImportExport(object):
             worksheet = worksheets.get(model_name)
             # Récupération des champs du modèle
             fields = {}
-            for field in chain(model._meta.fields, model._meta.many_to_many, model._meta.virtual_fields):
+            for field in chain(model._meta.fields, model._meta.many_to_many, model._meta.private_fields):
                 if field.auto_created or field in IGNORE_FIELDS:
                     continue
                 field.m2m = field in model._meta.many_to_many
@@ -131,7 +131,7 @@ class ImportExport(object):
             title = True
             for row_number, row in enumerate(worksheet.iter_rows()):
                 instance = model()
-                current_metadatas = {}
+                current_metadata = {}
                 delayed = False
                 m2m = {}
                 fks = {}
@@ -157,19 +157,19 @@ class ImportExport(object):
                     # Gestion des types spécifiques mal gérés par Excel
                     type = field.get_internal_type()
                     if field.m2m:
-                        if field.remote_field.model == model:
+                        if field.related_model == model:
                             delayed = True
                         value = [v.strip() for v in value.split(',')]
-                        m2m[field.name] = (field.remote_field.model, value)
+                        m2m[field.name] = (field.related_model, value)
                         has_data = True
                         continue
-                    elif field.rel is not None and field.rel.model is MetaData:
-                        current_metadatas = dict(metadatas.get(value, []))
+                    elif field.remote_field is not None and field.related_model is MetaData:
+                        current_metadata = dict(metadata.get(value, []))
                         continue
                     elif field.remote_field:
-                        if field.remote_field.model == model:
+                        if field.related_model == model:
                             delayed = True
-                        fks[field.name] = (field.remote_field.model, value)
+                        fks[field.name] = (field.related_model, value)
                         has_data = True
                         continue
                     elif field.choices:
@@ -205,10 +205,10 @@ class ImportExport(object):
                 if delayed:
                     self.delayed_models.append((instance, fks, m2m))
                     continue
-                self._save_instance(instance, metadatas=current_metadatas, cache=cache, fks=fks, m2m=m2m)
+                self._save_instance(instance, metadata=current_metadata, cache=cache, fks=fks, m2m=m2m)
             # Enregistrement différé
             for instance, fks, m2m in self.delayed_models:
-                self._save_instance(instance, metadatas=current_metadatas, cache=cache, fks=fks, m2m=m2m)
+                self._save_instance(instance, metadata=current_metadata, cache=cache, fks=fks, m2m=m2m)
             # Intégration terminée
             done.append(model)
         return cache
@@ -223,7 +223,7 @@ class ImportExport(object):
         workbook = Workbook()
         # Style des titres
         self.title_font = Font(bold=True)
-        self.metadatas = {}
+        self.metadata = {}
 
         # Feuille d'aide sur les données
         worksheet = workbook.active
@@ -273,7 +273,7 @@ class ImportExport(object):
             widths[column_letter] = len(str(cell.value)) + CELL_OFFSET
         # On construit la feuille des métadonnées ligne par ligne en bouclant sur notre dictionnaire de métadonnées
         row = 2
-        for id, liste_tuple_meta in self.metadatas.items():
+        for id, liste_tuple_meta in self.metadata.items():
             for key, value in liste_tuple_meta:
                 # La colonne 1 correspond au code
                 cell = worksheet.cell(row=row, column=1)
@@ -292,7 +292,7 @@ class ImportExport(object):
 
         workbook.save(file)
 
-    def _save_instance(self, instance, metadatas, cache, fks=None, m2m=None):
+    def _save_instance(self, instance, metadata, cache, fks=None, m2m=None):
         """
         Enregistre l'instance en base de données
         :param instance: Instance à sauvegarder
@@ -311,7 +311,7 @@ class ImportExport(object):
                 # On va chercher l'instance parent et l'enregistrer en amont
                 for index, (instance_parent, fks, m2m) in enumerate(self.delayed_models):
                     if instance_parent.code == value:
-                        self._save_instance(instance_parent, metadatas, cache=cache, fks=fks, m2m=m2m)
+                        self._save_instance(instance_parent, metadata, cache=cache, fks=fks, m2m=m2m)
                         self.delayed_models.pop(index)
                         break
                 else:
@@ -341,7 +341,7 @@ class ImportExport(object):
                 raise
         # Enregistrement des métadonnées (possible qu'après l'enregistrement en base)
         try:
-            for key, value in metadatas.items():
+            for key, value in metadata.items():
                 instance.set_metadata(key, value)
         except:
             logger.error(_("Impossible d'ajouter la métadata [{},{}] pour l'instance '[{}]'").format(
@@ -351,7 +351,7 @@ class ImportExport(object):
         try:
             for field_name, (related, values) in m2m.items():
                 m2ms = [cache.get(related, {}).get(value, related.objects.get(code=value)) for value in values]
-                setattr(instance, field_name, m2ms)
+                getattr(instance, field_name).set(m2ms)
         except:
             logger.error(_("Impossible de récupérer les valeurs de relation "
                            "correspondantes à [{}] pour le champ [{}] de [{}]").format(
@@ -372,7 +372,7 @@ class ImportExport(object):
         widths = {}
         # Titres
         fields = [(field.name, str(field.verbose_name),)
-                  for field in chain(meta.fields, meta.many_to_many, meta.virtual_fields)
+                  for field in chain(meta.fields, meta.many_to_many, meta.private_fields)
                   if not field.auto_created and field.name not in IGNORE_FIELDS]
         for column, (field_code, field_name) in enumerate(fields):
             cell = worksheet.cell(row=1, column=column + 1)
@@ -396,9 +396,9 @@ class ImportExport(object):
                 elif field.rel is not None and field.rel.model is MetaData:
                     if len(element.get_metadata()) > 0:
                         value = 'meta_{}_{}'.format(element._meta.model_name, row)
-                        self.metadatas[value] = []
+                        self.metadata[value] = []
                         for key_meta, value_meta in element.get_metadata().items():
-                            self.metadatas[value].append((key_meta, value_meta,))
+                            self.metadata[value].append((key_meta, value_meta,))
                     else:
                         continue
                 elif field.remote_field:

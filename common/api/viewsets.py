@@ -192,21 +192,21 @@ class CommonModelViewSet(viewsets.ModelViewSet):
                         raise ValidationError("fields: {}".format(error))
             else:
                 # Récupération des métadonnées
-                metadatas = str_to_bool(url_params.get('meta', False))
-                if metadatas and hasattr(self, 'metadatas'):
+                metadata = str_to_bool(url_params.get('meta', False))
+                if metadata and hasattr(self, 'metadata'):
                     # Permet d'éviter les conflits entre prefetch lookups identiques
                     viewset_lookups = [
                         prefetch if isinstance(prefetch, str) else prefetch.prefetch_through
                         for prefetch in queryset._prefetch_related_lookups]
-                    lookups_metadatas = []
-                    for lookup in self.metadatas or []:
+                    lookups_metadata = []
+                    for lookup in self.metadata or []:
                         if isinstance(lookup, str):
                             lookup = Prefetch(lookup)
                         if lookup.prefetch_through not in viewset_lookups:
-                            lookups_metadatas.append(lookup)
+                            lookups_metadata.append(lookup)
                         lookup.queryset = MetaData.objects.select_valid()
-                    if lookups_metadatas:
-                        queryset = queryset.prefetch_related(*lookups_metadatas)
+                    if lookups_metadata:
+                        queryset = queryset.prefetch_related(*lookups_metadata)
 
             # Filtres (dans une fonction pour être appelé par les aggregations sans group_by)
             def do_filter(queryset):

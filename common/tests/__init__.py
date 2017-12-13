@@ -81,7 +81,7 @@ def create_api_test_class(
         model, serializer=None, data=None, module=True,
         test_list=True, test_get=True, test_post=True, test_put=True, test_delete=True,
         test_options=True, test_order_by=True, test_filter=True,
-        test_metadatas=True, test_simple=True, test_silent=True):
+        test_metadata=True, test_simple=True, test_silent=True):
     """
     Permet d'obtenir la classe de test du modèle avec les méthodes de tests standard de l'api
     :param model: Modèle
@@ -96,7 +96,7 @@ def create_api_test_class(
     :param test_options: Test du OPTIONS
     :param test_order_by: Test des tris
     :param test_filter: Test des filtres
-    :param test_metadatas: Test des metadatas
+    :param test_metadata: Test des metadata
     :param test_simple: Test des réquêtes simplifiées
     :param test_silent: Test de la remontée d'erreur silencieuse
     :return: Classe de test
@@ -351,31 +351,31 @@ def create_api_test_class(
             self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
         test_class.test_api_filter_get = _test_api_filter_get
 
-    if test_metadatas and issubclass(model, CommonModel):
-        def _test_api_metadatas(self):
+    if test_metadata and issubclass(model, CommonModel):
+        def _test_api_metadata(self):
             """
-            Méthode de test des metadatas
+            Méthode de test des metadata
             """
             item = self.recipes[0].make()
             item.set_metadata('test_key', 'test_value')
-            # Test sans metadatas
+            # Test sans metadata
             url = reverse(self.url_detail_api, args=[item.id])
             response = self.client.get(url)
             self.assertIn(response.status_code, [status.HTTP_401_UNAUTHORIZED, status.HTTP_403_FORBIDDEN])
             self.client.force_authenticate(self.user_admin)
             response = self.client.get(url)
             self.assertEqual(response.status_code, status.HTTP_200_OK, response.data)
-            self.assertIsNone(response.data.get('metadatas'))
-            # Test avec metadatas
+            self.assertIsNone(response.data.get('metadata'))
+            # Test avec metadata
             url = reverse(self.url_detail_api, args=[item.id]) + '?meta=1'
             response = self.client.get(url)
             self.assertEqual(response.status_code, status.HTTP_200_OK, response.data)
-            metadatas = response.data.get('metadatas', {})
-            self.assertEqual(len(metadatas), 1)
-            key, value = next(iter(metadatas.items()))
+            metadata = response.data.get('metadata', {})
+            self.assertEqual(len(metadata), 1)
+            key, value = next(iter(metadata.items()))
             self.assertEqual(key, 'test_key')
             self.assertEqual(value, 'test_value')
-        test_class.test_api_metadatas = _test_api_metadatas
+        test_class.test_api_metadata = _test_api_metadata
 
     if test_simple:
         from django.db.models import ManyToOneRel
