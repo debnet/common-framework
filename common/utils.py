@@ -73,7 +73,7 @@ def get_current_app():
     :return: Application Celery ou mock
     """
     try:
-        assert getattr(settings, 'ENABLE_CELERY', True)
+        assert getattr(settings, 'CELERY_ENABLE', False)
         from celery import current_app
         return current_app
     except (AssertionError, ImportError):

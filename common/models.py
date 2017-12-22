@@ -606,7 +606,7 @@ class CommonModel(models.Model):
                 value = field.value_from_object(self)
                 data[field.name] = value
             else:
-                data[field.name] = getattr(self, field.name).values_list('pk', flat=True)
+                data[field.name] = list(getattr(self, field.name).values_list('pk', flat=True))
         return data
 
     def related_to_dict(self, includes=None, excludes=None, valid=True, date=None, **kwargs):
@@ -754,7 +754,7 @@ class CustomGenericForeignKey(GenericForeignKey):
             fk = value._get_pk_val()
         setattr(instance, self.ct_field, ct)
         setattr(instance, self.fk_field, fk)
-        setattr(instance, self.cache_attr, value)
+        self.set_cached_value(instance, value)
 
 
 class History(HistoryCommon):
@@ -826,7 +826,7 @@ class History(HistoryCommon):
                 if not entity:
                     self.restored = False
                     return self.restored
-                for field in self.historyfield_set.all():
+                for field in self.historyfield_set.filter(status_m2m__isnull=True):
                     setattr(entity, field.name, field.data)
             entity._from_admin = from_admin
             entity._restore = True
@@ -835,6 +835,9 @@ class History(HistoryCommon):
                 _ignore_log=ignore_log,
                 _reason=reason,
                 _force_default=force_default)
+            if not rollback:
+                for field in self.historyfield_set.filter(status_m2m__isnull=False):
+                    getattr(entity, field.name).set(field.data)
             self.restored = True
         except:
             self.restored = False
@@ -900,7 +903,10 @@ class HistoryField(HistoryCommon):
             if not entity:
                 self.restored = False
                 return self.restored
-            setattr(entity, self.field_name, self.data)
+            if self.status_m2m:
+                getattr(entity, self.field_name).set(self.data)
+            else:
+                setattr(entity, self.field_name, self.data)
             entity._from_admin = from_admin
             entity._restore = True
             entity.save(
@@ -1179,7 +1185,7 @@ class Entity(CommonModel):
             model_from._meta.verbose_name_raw, model_to._meta.verbose_name_raw
         )
         ids = uniques.values_list('object_id', flat=True)
-        setattr(self, m2m_field, ids)
+        getattr(self, m2m_field).set(ids)
 
     def __json__(self):
         """
