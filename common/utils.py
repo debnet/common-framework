@@ -22,7 +22,7 @@ from django.core.files import temp
 from django.core.files.storage import FileSystemStorage
 from django.core.files.uploadedfile import TemporaryUploadedFile
 from django.core.files.uploadhandler import TemporaryFileUploadHandler
-from django.db.models import ForeignKey, OneToOneField
+from django.db.models import ForeignKey, OneToOneField, FieldDoesNotExist
 from django.http import HttpResponse
 from django.shortcuts import render
 from django.utils.timezone import now
@@ -792,7 +792,10 @@ def get_field_by_path(model, path):
     :return: Champ
     """
     field_name, *inner_path = path.replace('__', '.').split('.')
-    field = model._meta.get_field(field_name)
+    try:
+        field = model._meta.get_field(field_name)
+    except FieldDoesNotExist:
+        return None
     if inner_path:
         return get_field_by_path(field.related_model, '.'.join(inner_path))
     return field
