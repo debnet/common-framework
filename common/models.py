@@ -34,7 +34,7 @@ except ImportError:
 
 from common.fields import JsonField, PickleField, json_encode
 from common.settings import settings
-from common.utils import get_current_app, merge_dict
+from common.utils import get_current_app, get_current_user, merge_dict
 
 
 # Logging
@@ -831,7 +831,7 @@ class History(HistoryCommon):
             entity._from_admin = from_admin
             entity._restore = True
             entity.save(
-                _current_user=current_user,
+                _current_user=current_user or get_current_user(),
                 _ignore_log=ignore_log,
                 _reason=reason,
                 _force_default=force_default)
@@ -910,7 +910,7 @@ class HistoryField(HistoryCommon):
             entity._from_admin = from_admin
             entity._restore = True
             entity.save(
-                _current_user=current_user,
+                _current_user=current_user or get_current_user(),
                 _ignore_log=ignore_log,
                 _reason=reason,
                 _force_default=force_default)
@@ -998,7 +998,7 @@ class EntityQuerySet(CommonQuerySet):
         del_query = self._clone()
         for element in del_query:
             element._ignore_log = _ignore_log or self._ignore_log
-            element._current_user = _current_user or self._current_user
+            element._current_user = _current_user or self._current_user or get_current_user()
             element._reason = _reason or self._reason
             element._from_admin = self._from_admin
 
@@ -1029,7 +1029,7 @@ class EntityQuerySet(CommonQuerySet):
             force_insert=True,
             using=self.db,
             _ignore_log=_ignore_log,
-            _current_user=_current_user,
+            _current_user=_current_user or get_current_user(),
             _reason=_reason)
         return obj
 
@@ -1096,7 +1096,7 @@ class Entity(CommonModel):
         if _force_default:
             return super().save(*args, **kwargs)
         self._ignore_log = _ignore_log or self._ignore_log
-        self._current_user = _current_user or self._current_user
+        self._current_user = _current_user or self._current_user or get_current_user()
         self._reason = _reason or self._reason
         self._force_default = _force_default or self._force_default
         if force_insert:
@@ -1119,7 +1119,7 @@ class Entity(CommonModel):
         assert self.pk is not None, _(
             "{} can't be deleted because it doesn't exists in database.").format(self._meta.object_name)
         self._ignore_log = _ignore_log or self._ignore_log
-        self._current_user = _current_user or self._current_user
+        self._current_user = _current_user or self._current_user or get_current_user()
         self._reason = _reason or self._reason
         self._force_default = _force_default or self._force_default
 
@@ -1287,7 +1287,7 @@ class PerishableEntity(Entity):
         """
         current_date = now()
         self._ignore_log = _ignore_log or self._ignore_log
-        self._current_user = _current_user or self._current_user
+        self._current_user = _current_user or self._current_user or get_current_user()
         self._reason = _reason or self._reason
         self._force_default = force_insert or force_update or _force_default or self._force_default
         self.start_date = self.start_date or current_date
@@ -1318,7 +1318,7 @@ class PerishableEntity(Entity):
         :param _force_default: Force le comportement par défaut ?
         """
         self._ignore_log = _ignore_log or self._ignore_log
-        self._current_user = _current_user or self._current_user
+        self._current_user = _current_user or self._current_user or get_current_user()
         self._reason = _reason or self._reason
         self._force_default = _force_default or self._force_default
         if self.pk and not self._force_default:

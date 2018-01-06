@@ -23,7 +23,7 @@ from django.core.files.storage import FileSystemStorage
 from django.core.files.uploadedfile import TemporaryUploadedFile
 from django.core.files.uploadhandler import TemporaryFileUploadHandler
 from django.db.models import ForeignKey, OneToOneField, FieldDoesNotExist
-from django.http import HttpResponse
+from django.http import HttpRequest, HttpResponse
 from django.shortcuts import render
 from django.utils.timezone import now
 from django.utils.translation import ugettext_lazy as _
@@ -1261,3 +1261,19 @@ def abort_sql(name, kill=False, using=None, timeout=None, state='active'):
             params.append(state)
         cursor.execute(query, params)
         return len(cursor.fetchall())
+
+
+def get_current_user():
+    """
+    Permet de rechercher dans la stack l'utilisateur actuellement connecté
+    :return: Utilisateur connecté
+    """
+    for frameinfo in inspect.stack():
+        frame = frameinfo.frame
+        if 'request' not in frame.f_locals:
+            continue
+        request = frame.f_locals['request']
+        if not isinstance(request, HttpRequest):
+            continue
+        return request.user
+    return None
