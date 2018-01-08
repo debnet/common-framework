@@ -41,7 +41,7 @@ setup(
     description='All-in-one framework for Django and Django REST Framework',
     author='Marc Debureaux',
     author_email='marc@debureaux.fr',
-    url='https://github.com/sa-cim/common-framework',
+    url='https://github.com/debnet/common-framework',
     package_dir={'common': 'common'},
     packages=get_packages('common'),
     package_data=get_package_data('common'),
