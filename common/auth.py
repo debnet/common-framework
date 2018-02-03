@@ -43,11 +43,8 @@ class LdapAuthenticationBackend(ModelBackend):
                     # Création de l'utilisateur en base de données
                     User = get_user_model()
                     username = username and username.lower()  # Nom d'utilisateur en minuscules par défaut
-                    try:
-                        user = User.objects.get(username=username)
-                        user.set_password(password)
-                    except User.DoesNotExist:
-                        user = User(username=username, password=password)
+                    user = User.objects.get_or_create(username=username)
+                    user.set_password(password)
 
                     # Méthode utilitaire pour tenter de remplir les champs par défaut de l'utilisateur
                     def set_value(obj, name, value):
