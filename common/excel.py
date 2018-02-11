@@ -405,7 +405,7 @@ class ImportExport(object):
                     if not value:
                         value = ''
                     else:
-                        value = value.code if hasattr(value, 'code') else value.id
+                        value = value.code if hasattr(value, 'code') else value.pk
                 elif field.choices:
                     value = getattr(element, 'get_{}_display'.format(field_code))()
                 elif field.get_internal_type() in ['DateField', 'DateTimeField']:

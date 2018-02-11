@@ -106,6 +106,6 @@ class ImportExcelCommand(BaseCommand):
                             for key, value in data.items() if key in keys)
             if code:
                 results[code] = obj
-            logger.info("[{}] {} (id: {})".format(model_name, obj, obj.id))
+            logger.info("[{}] {} (id: {})".format(model_name, obj, obj.pk))
         self.models[model_name] = results
         return results

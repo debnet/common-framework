@@ -63,7 +63,7 @@ DEFAULT_CONFIG = dict(depth=1)
 
 # Précise les filtres à appliquer sur les permissions spécifiques par utilisateur
 CurrentUserPermissions.filters.update({
-    User: lambda request: dict(id=request.user.id),
+    User: lambda request: dict(id=request.user.pk),
     Group: lambda request: dict(user=request.user),
     UserMetaData: lambda request: dict(user=request.user),
     GroupMetaData: lambda request: dict(group__user=request.user),

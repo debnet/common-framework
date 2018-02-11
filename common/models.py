@@ -34,8 +34,7 @@ except ImportError:
 
 from common.fields import JsonField, PickleField, json_encode
 from common.settings import settings
-from common.utils import get_current_app, get_current_user, merge_dict
-
+from common.utils import get_current_app, get_current_user, get_pk_field, merge_dict
 
 # Logging
 logger = logging.getLogger(__name__)
@@ -166,7 +165,7 @@ class MetaData(models.Model):
         ContentType,
         on_delete=models.CASCADE,
         verbose_name=_("type d'entité"))
-    object_id = models.PositiveIntegerField(verbose_name=_("identifiant"))
+    object_id = models.TextField(verbose_name=_("identifiant"))
     entity = GenericForeignKey()
 
     key = models.CharField(max_length=100, verbose_name=_("clé"))
@@ -379,11 +378,11 @@ class CommonModel(models.Model):
             self.refresh_from_db()
         return count
 
-    def save(self, *args, _full_update=False, **kwargs):
+    def save(self, *args, force_insert=True, _full_update=False, **kwargs):
         """
         Sauvegarde l'instance du modèle
         """
-        if self.pk and not _full_update:
+        if self.pk and not _full_update and not force_insert:
             kwargs['update_fields'] = update_fields = set(kwargs.pop('update_fields', self.modified.keys()))
             # Les champs de date avec auto_now=True ne sont modifiés que pendant la sauvegarde
             update_fields.update([field.name for field in self._meta.fields if getattr(field, 'auto_now', None)])
@@ -789,7 +788,7 @@ class History(HistoryCommon):
         null=True,
         editable=False,
         verbose_name=_("type d'entité"))
-    object_id = models.PositiveIntegerField(editable=False, verbose_name=_("identifiant"))
+    object_id = models.TextField(editable=False, verbose_name=_("identifiant"))
     object_uid = models.UUIDField(editable=False, verbose_name=_("UUID"))
     object_str = models.TextField(editable=False, verbose_name=_("entité"))
     reason = models.TextField(blank=True, null=True, editable=False, verbose_name=_("motif"))
@@ -953,7 +952,7 @@ class Global(models.Model):
         on_delete=models.CASCADE,
         editable=False,
         verbose_name=_("type d'entité"))
-    object_id = models.PositiveIntegerField(editable=False, verbose_name=_("identifiant"))
+    object_id = models.TextField(editable=False, verbose_name=_("identifiant"))
     object_uid = models.UUIDField(unique=True, editable=False, verbose_name=_("UUID"))
     entity = GenericForeignKey()
     objects = GlobalManager()
@@ -1558,7 +1557,7 @@ def log_save(instance, created):
     if settings.IGNORE_LOG or instance._ignore_log:
         return
     user = instance._current_user
-    if user and not user.id:
+    if user and not user.pk:
         user = None
     # Vérification des changements entre les anciennes et nouvelles données
     old_data = instance._copy
@@ -1571,7 +1570,7 @@ def log_save(instance, created):
         user=user,
         status=History.RESTORE if instance._restore else [History.UPDATE, History.CREATE][created],
         content_type=instance.model_type,
-        object_id=instance.id,
+        object_id=instance.pk,
         object_uid=instance.uuid,
         object_str=str(instance),
         reason=instance._reason,
@@ -1593,7 +1592,7 @@ def log_save(instance, created):
             new_value=str(new_value) if new_value is not None else None,
             data=old_value)
     logger.debug("Create/update log saved for entity {} #{} ({})".format(
-        instance._meta.object_name, instance.id, instance.uuid))
+        instance._meta.object_name, instance.pk, instance.uuid))
 
 
 COPY_M2M_ACTIONS = ['pre_clear', 'pre_add', 'pre_remove']
@@ -1641,7 +1640,7 @@ def log_m2m(instance, model, status_m2m):
     if settings.IGNORE_LOG or instance._ignore_log:
         return
     user = instance._current_user
-    if user and not user.id:
+    if user and not user.pk:
         user = None
     old_m2m = instance._copy_m2m
     new_m2m = instance.m2m_to_dict()
@@ -1659,7 +1658,7 @@ def log_m2m(instance, model, status_m2m):
                 user=user,
                 status=History.M2M,
                 content_type=instance.model_type,
-                object_id=instance.id,
+                object_id=instance.pk,
                 object_uid=instance.uuid,
                 object_str=str(instance),
                 reason=instance._reason,
@@ -1667,7 +1666,7 @@ def log_m2m(instance, model, status_m2m):
                 admin=instance._from_admin)
             instance._history = history
         # Sauvegarde la relation modifiée
-        labels = {e.id: str(e) for e in model.objects.filter(id__in=set(old_value + new_value))}
+        labels = {e.pk: str(e) for e in model.objects.filter(id__in=set(old_value + new_value))}
         field = HistoryField.objects.create(
             history=history,
             field_name=field,
@@ -1676,7 +1675,7 @@ def log_m2m(instance, model, status_m2m):
             data=old_value,
             status_m2m=status_m2m)
         logger.debug("Many-to-many log saved for field '{}' in entity {} #{} ({})".format(
-            field, instance._meta.object_name, instance.id, instance.uuid))
+            field, instance._meta.object_name, instance.pk, instance.uuid))
 
 
 @receiver(post_delete)
@@ -1709,7 +1708,7 @@ def log_delete(instance):
     if settings.IGNORE_LOG or instance._ignore_log:
         return
     user = instance._current_user
-    if user and not user.id:
+    if user and not user.pk:
         user = None
     data = instance.to_dict(editables=True)
     # Sauvegarde de l'historique de suppression
@@ -1717,7 +1716,7 @@ def log_delete(instance):
         user=user,
         status=History.DELETE,
         content_type=instance.model_type,
-        object_id=instance.id,
+        object_id=instance.pk,
         object_uid=instance.uuid,
         object_str=str(instance),
         reason=instance._reason,
@@ -1725,7 +1724,7 @@ def log_delete(instance):
         admin=instance._from_admin)
     instance._history = history
     logger.debug("Delete log saved for entity {} #{} ({})".format(
-        instance._meta.object_name, instance.id, instance.uuid))
+        instance._meta.object_name, instance.pk, instance.uuid))
 
 
 def run_notify_changes(instance, status, status_m2m=None):
@@ -1964,8 +1963,9 @@ def get_object_from_data(data, from_db=False):
     if '_content_type' in data:
         content_type = ContentType(**data.pop('_content_type'))
         model = content_type.model_class()
-        if from_db and 'id' in data:
-            return model.objects.filter(id=data['id']).first()
+        pk_field = get_pk_field(model).name
+        if from_db and pk_field in data:
+            return model.objects.filter(**{pk_field: data[pk_field]}).first()
     if model:
         instance = model()
         for key, value in data.items():

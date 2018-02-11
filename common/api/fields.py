@@ -3,7 +3,7 @@ from rest_framework import serializers
 from rest_framework.fields import ChoiceField, Field, ReadOnlyField
 from rest_framework.relations import HyperlinkedRelatedField, HyperlinkedIdentityField
 
-from common.utils import json_encode, recursive_get_urls
+from common.utils import json_encode, recursive_get_urls, get_pk_field
 
 
 class JsonField(Field):
@@ -72,7 +72,8 @@ class ReadOnlyObjectField(ReadOnlyField):
             if request is not None:
                 return request.build_absolute_uri(url)
             return url
-        return value.to_dict() if hasattr(value, 'to_dict') else getattr(value, 'id', value)
+        pk_field = get_pk_field(value).name
+        return value.to_dict() if hasattr(value, 'to_dict') else getattr(value, pk_field, value)
 
 
 class CustomHyperlinkedField:

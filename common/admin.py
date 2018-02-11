@@ -19,6 +19,7 @@ from common.forms import CommonInlineFormSet
 from common.models import (
     CommonModel, Entity, Global, GroupMetaData, History, HistoryField,
     MetaData, PerishableEntity, ServiceUsage, UserMetaData, Webhook)
+from common.utils import get_pk_field
 
 
 def delete_selected(modeladmin, request, queryset):
@@ -66,13 +67,14 @@ class CommonAdmin(admin.ModelAdmin):
         if count:
             from django.urls import reverse
             type = ContentType.objects.get_for_model(obj)
-            url = reverse('admin:common_metadata_changelist') + '?object_id={}&content_type={}'.format(obj.id, type.id)
+            url = reverse('admin:common_metadata_changelist') + '?object_id={}&content_type={}'.format(obj.pk, type.pk)
             return format_html('<a href="{url}">{label}</a>', url=url, label=count)
         return count
     metadata_url.short_description = _("méta")
 
     def get_list_display(self, request):
-        list_display = ('id', ) + tuple(super().get_list_display(request))
+        pk_field = get_pk_field(self.model).name
+        list_display = (pk_field, ) + tuple(super().get_list_display(request))
         if not issubclass(self.model, CommonModel):
             return list_display
         return list_display + ('metadata_url', )
@@ -294,7 +296,7 @@ def restore(modeladmin, request, queryset, rollback=False):
             else:
                 fail += 1
         except Exception as e:
-            errors.append((history.id, e))
+            errors.append((history.pk, e))
     if success > 0:
         messages.success(request, _("{} élément(s) ont été restaurés avec succès !").format(success))
     if fail > 0:
@@ -365,7 +367,7 @@ class HistoryAdmin(admin.ModelAdmin):
             from django.urls import reverse
             pattern = 'admin:{app_label}_{model}_changelist'.format(
                 app_label=HistoryField._meta.app_label, model=HistoryField._meta.model_name)
-            url = reverse(pattern) + '?history={}'.format(obj.id)
+            url = reverse(pattern) + '?history={}'.format(obj.pk)
             return format_html('<a href="{url}">{label}</a>', url=url, label=_("Consulter"))
         return ''
     show_fields_url.short_description = _("Champs modifiés")

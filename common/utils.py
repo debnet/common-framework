@@ -888,15 +888,15 @@ def recursive_get_urls(module=None, namespaces=None, attributes=None, model=None
             namespace = _namespace or getattr(pattern, 'namespace', None)
             if namespaces and namespace not in namespaces:
                 continue
-            url = (_current + pattern.regex.pattern.strip('^$').replace('\\', ''))
+            url = (_current + pattern.pattern.regex.pattern.strip('^$').replace('\\', ''))
             url = re.sub(REGEX_URL_PARAMS, r':\1:', url).replace('?', '')
-            url = url.replace('(.+)', ':id:')
-            if hasattr(pattern, 'name'):
-                key = '{}:{}'.format(namespace, pattern.name) if namespace else pattern.name
-                current_model = getattr(pattern.callback.cls, 'model', None)
+            url = url.replace('(.+)', ':pk:')
+            if getattr(pattern.pattern, 'name', None):
+                key = '{}:{}'.format(namespace, pattern.pattern.name) if namespace else pattern.name
+                current_model = getattr(getattr(pattern.callback, 'cls', None), 'model', None)
                 if not model or model is current_model:
                     yield key, url
-            elif hasattr(pattern, 'namespace') and pattern.urlconf_module:
+            elif getattr(pattern, 'namespace', None) and pattern.urlconf_module:
                 yield from recursive_get_urls(
                     pattern.urlconf_module, namespaces=namespaces, attributes=attributes, model=model,
                     _namespace=_namespace or pattern.namespace, _current=url)
@@ -1275,5 +1275,17 @@ def get_current_user():
         request = frame.f_locals['request']
         if not isinstance(request, HttpRequest):
             continue
+        if not hasattr(request, 'user'):
+            continue
         return request.user
     return None
+
+
+def get_pk_field(model):
+    """
+    Récupère le champ qui fait office de clé primaire d'un modèle
+    :param model: Modèle
+    :return: Champ
+    """
+    return model._meta.pk if not model._meta.parents else next(
+        parent._meta.pk for parent, field in model._meta.parents.items() if not parent._meta.parents)

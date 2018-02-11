@@ -9,11 +9,12 @@ from rest_framework import serializers
 from rest_framework.exceptions import ValidationError as ApiValidationError
 from rest_framework.fields import empty
 from rest_framework.relations import PrimaryKeyRelatedField
-from rest_framework.serializers import HyperlinkedModelSerializer
+from rest_framework.serializers import HyperlinkedModelSerializer, ALL_FIELDS
 from rest_framework.settings import api_settings
 
 from common.api.fields import CustomHyperlinkedIdentityField, CustomHyperlinkedRelatedField
 from common.api.utils import create_model_serializer, to_model_serializer
+from common.utils import get_pk_field
 
 
 # URLs dans les serializers
@@ -24,18 +25,34 @@ class CommonModelSerializer(serializers.HyperlinkedModelSerializer if HYPERLINKE
     """
     Définition commune de ModelSerializer pour l'API REST
     """
-    id = serializers.PrimaryKeyRelatedField(read_only=True)
+    metadata = serializers.SerializerMethodField(read_only=True)
+
     serializer_url_field = CustomHyperlinkedIdentityField
     serializer_related_field = CustomHyperlinkedRelatedField if HYPERLINKED else PrimaryKeyRelatedField
-    metadata = serializers.SerializerMethodField(read_only=True)
 
     def get_metadata(self, instance):
         request = self.context.get('request', None)
         meta = request and getattr(request, 'query_params', None) and request.query_params.get('meta', False)
         if meta and hasattr(instance, 'metadata'):
+            # Soit un QuerySet de MetaData soit un lien vers un modèle ayant un champ "data" (voir User/Group)
+            # TODO: la récupération des métadonnées ne fonctionne pas sur les modèles d'héritage concret (?)
             return instance.metadata.data if hasattr(instance.metadata, 'data') \
                 else {meta.key: meta.value for meta in instance.metadata.all()}
         return None
+
+    def __init__(self, *args, **kwargs):
+        """
+        Surcharge de l'initialisateur pour reprendre le nom de la clé primaire
+        """
+        if HYPERLINKED and self.Meta.model:
+            pk_field = get_pk_field(self.Meta.model)
+            pk_field_in_excludes = pk_field.name in getattr(self.Meta, 'exclude', [])
+            pk_field_in_fields = any(f in getattr(self.Meta, 'fields', [f]) for f in (pk_field.name, ALL_FIELDS))
+            if not pk_field_in_excludes and pk_field_in_fields and pk_field.name not in self._declared_fields:
+                field, options = self.build_standard_field(pk_field.name, pk_field)
+                self._declared_fields[pk_field.name] = field(**options)
+                self._declared_fields.move_to_end(pk_field.name, last=False)
+        super().__init__(*args, **kwargs)
 
     def create(self, validated_data):
         """

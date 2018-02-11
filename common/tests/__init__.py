@@ -15,7 +15,7 @@ from rest_framework.test import APITestCase, APIRequestFactory
 from model_mommy.recipe import Recipe
 from common.api.utils import create_model_serializer
 from common.models import CommonModel, Entity, PerishableEntity
-from common.utils import json_decode, json_encode
+from common.utils import json_decode, json_encode, get_pk_field
 
 
 # Modèle utilisateur courant
@@ -104,6 +104,7 @@ def create_api_test_class(
     app_label = model._meta.app_label
     object_name = model._meta.object_name
     model_name = model._meta.model_name
+    pk_field = get_pk_field(model).name
 
     class_name = '{}{}AutoTest'.format(app_label.capitalize(), object_name)
     test_class = type(class_name, (APITestCase, ), {})
@@ -179,13 +180,13 @@ def create_api_test_class(
             Méthode de test du détail d'un élément
             """
             item = self.recipes[0].make()
-            url = reverse(self.url_detail_api, args=[item.id])
+            url = reverse(self.url_detail_api, args=[item.pk])
             response = self.client.get(url)
             self.assertIn(response.status_code, [status.HTTP_401_UNAUTHORIZED, status.HTTP_403_FORBIDDEN])
             self.client.force_authenticate(self.user_admin)
             response = self.client.get(url)
             self.assertEqual(response.status_code, status.HTTP_200_OK, response.data)
-            self.assertEqual(response.data['id'], item.id)
+            self.assertEqual(response.data[pk_field], item.pk)
         test_class.test_api_detail = _test_api_detail
 
     if test_post:
@@ -201,19 +202,19 @@ def create_api_test_class(
             else:
                 item = self.recipes[0].make(make_m2m=True)
 
-            kwargs = dict(force_default=True) if issubclass(model, Entity) else {}
-            item.delete(**kwargs)
             request = APIRequestFactory().request()
             data_to_post = self.serializer(item, context=dict(request=request)).data
             if perissable:
                 data_to_post['start_date'] = None
+            kwargs = dict(force_default=True) if issubclass(model, Entity) else {}
+            item.delete(**kwargs)
             url = reverse(self.url_list_api)
             response = self.client.post(url, data_to_post)
             self.assertIn(response.status_code, [status.HTTP_401_UNAUTHORIZED, status.HTTP_403_FORBIDDEN])
             self.client.force_authenticate(self.user_admin)
             response = self.client.post(url, data_to_post)
             self.assertEqual(response.status_code, status.HTTP_201_CREATED, response.data)
-            self.assertIsNotNone(response.data['id'])
+            self.assertIsNotNone(response.data[pk_field])
             if perissable:
                 self.assertIsNotNone(response.data['start_date'])
         test_class.test_api_post = _test_api_post
@@ -227,7 +228,7 @@ def create_api_test_class(
             if issubclass(model, PerishableEntity):
                 mommy_make_args['start_date'] = now()
             item = self.recipes[0].make(**mommy_make_args)
-            url = reverse(self.url_detail_api, args=[item.id])
+            url = reverse(self.url_detail_api, args=[item.pk])
             request = APIRequestFactory().request()
             data_to_put = self.serializer(item, context=dict(request=request)).data
             response = self.client.put(url, data_to_put)
@@ -239,13 +240,13 @@ def create_api_test_class(
             # qu'une nouvelle entité est créée à la bonne date (pour l'historisation)
             if issubclass(model, PerishableEntity):
                 # ancienne entité périmée => possède une end_date
-                old_item = model.objects.get(pk=item.id)
+                old_item = model.objects.get(pk=item.pk)
                 self.assertIsNotNone(old_item.end_date)
                 # L'entité retournée doit être une nouvelle entité sans end_date
-                self.assertNotEqual(response.data['id'], item.id)
+                self.assertNotEqual(response.data[pk_field], item.pk)
                 self.assertIsNone(response.data['end_date'])
             else:
-                self.assertEqual(response.data['id'], item.id)
+                self.assertEqual(response.data[pk_field], item.pk)
         test_class.test_api_put = _test_api_put
 
     if test_delete:
@@ -254,13 +255,13 @@ def create_api_test_class(
             Méthode de test de suppression d'un élément
             """
             item = self.recipes[0].make()
-            url = reverse(self.url_detail_api, args=[item.id])
+            url = reverse(self.url_detail_api, args=[item.pk])
             response = self.client.delete(url)
             self.assertIn(response.status_code, [status.HTTP_401_UNAUTHORIZED, status.HTTP_403_FORBIDDEN])
             self.client.force_authenticate(self.user_admin)
             response = self.client.delete(url)
             self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT, response.data)
-            get_item = model.objects.filter(pk=item.id).first()
+            get_item = model.objects.filter(pk=item.pk).first()
             if issubclass(model, PerishableEntity):
                 self.assertIsNotNone(get_item.end_date)
             else:
@@ -290,19 +291,19 @@ def create_api_test_class(
                     item.make()
             else:
                 self.recipes[0].make(_quantity=2)
-            url = reverse(self.url_list_api) + '?order_by=-id'
+            url = reverse(self.url_list_api) + '?order_by=-' + pk_field
             response = self.client.get(url)
             self.assertIn(response.status_code, [status.HTTP_401_UNAUTHORIZED, status.HTTP_403_FORBIDDEN])
             self.client.force_authenticate(self.user_admin)
             response = self.client.get(url)
             item1 = response.data['results'][0]
             item2 = response.data['results'][1]
-            self.assertGreater(item1['id'], item2['id'])
-            url = reverse(self.url_list_api) + '?order_by=id'
+            self.assertGreater(item1[pk_field], item2[pk_field])
+            url = reverse(self.url_list_api) + '?order_by=' + pk_field
             response = self.client.get(url)
             item1 = response.data['results'][0]
             item2 = response.data['results'][1]
-            self.assertLess(item1['id'], item2['id'])
+            self.assertLess(item1[pk_field], item2[pk_field])
         test_class.test_api_order_by = _test_api_order_by
 
     if test_filter:
@@ -311,26 +312,26 @@ def create_api_test_class(
             Méthode de test du filtre lors d'un get list
             """
             recipes = self.recipes
-            items_id = []
+            items_ids = []
             for item in recipes:
                 instance = item.make()
-                items_id.append(str(instance.id))
+                items_ids.append(str(instance.pk))
             # Test avec résultat
-            url = reverse(self.url_list_api) + '?id__in={}'.format(','.join(items_id[:2]))
+            url = reverse(self.url_list_api) + '?{}__in={}'.format(pk_field, ','.join(items_ids[:2]))
             response = self.client.get(url)
             self.assertIn(response.status_code, [status.HTTP_401_UNAUTHORIZED, status.HTTP_403_FORBIDDEN])
             self.client.force_authenticate(self.user_admin)
             response = self.client.get(url)
             self.assertEqual(response.status_code, status.HTTP_200_OK, response.data)
-            self.assertEqual(response.data['count'], min(len(items_id), 2))
-            self.assertTrue(all(i.get('id', None) in items_id for i in response.get('results', [])))
+            self.assertEqual(response.data['count'], min(len(items_ids), 2))
+            self.assertTrue(all(i.get(pk_field, None) in items_ids for i in response.get('results', [])))
             options = response.data.get('options', {})
             self.assertTrue(options.get('filters', False))
             # Test sans résultat
-            url = reverse(self.url_list_api) + '?id=-1'
+            url = reverse(self.url_list_api) + '?' + pk_field + '=0'
             response = self.client.get(url)
             self.assertEqual(response.status_code, status.HTTP_200_OK, response.data)
-            self.assertEqual(response.data['count'], min(len(items_id), 0))
+            self.assertEqual(response.data['count'], min(len(items_ids), 0))
         test_class.test_api_filter_list = _test_api_filter_list
 
         def _test_api_filter_get(self):
@@ -338,15 +339,15 @@ def create_api_test_class(
             Méthode de test du filtre lors d'un get unitaire
             """
             item = self.recipes[0].make()
-            url = reverse(self.url_detail_api, args=[item.id]) + '?id={}'.format(item.id)
+            url = reverse(self.url_detail_api, args=[item.pk]) + '?{}={}'.format(pk_field, item.pk)
             response = self.client.get(url)
             self.assertIn(response.status_code, [status.HTTP_401_UNAUTHORIZED, status.HTTP_403_FORBIDDEN])
             self.client.force_authenticate(self.user_admin)
             response = self.client.get(url)
             self.assertEqual(response.status_code, status.HTTP_200_OK, response.data)
-            self.assertEqual(response.data.get('id', None), item.id)
+            self.assertEqual(response.data.get(pk_field, None), item.pk)
             # Test sans résultat
-            url = reverse(self.url_detail_api, args=[item.id]) + '?id=-1'
+            url = reverse(self.url_detail_api, args=[item.pk]) + '?' + pk_field + '=0'
             response = self.client.get(url)
             self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
         test_class.test_api_filter_get = _test_api_filter_get
@@ -359,7 +360,7 @@ def create_api_test_class(
             item = self.recipes[0].make()
             item.set_metadata('test_key', 'test_value')
             # Test sans metadata
-            url = reverse(self.url_detail_api, args=[item.id])
+            url = reverse(self.url_detail_api, args=[item.pk])
             response = self.client.get(url)
             self.assertIn(response.status_code, [status.HTTP_401_UNAUTHORIZED, status.HTTP_403_FORBIDDEN])
             self.client.force_authenticate(self.user_admin)
@@ -367,7 +368,7 @@ def create_api_test_class(
             self.assertEqual(response.status_code, status.HTTP_200_OK, response.data)
             self.assertIsNone(response.data.get('metadata'))
             # Test avec metadata
-            url = reverse(self.url_detail_api, args=[item.id]) + '?meta=1'
+            url = reverse(self.url_detail_api, args=[item.pk]) + '?meta=1'
             response = self.client.get(url)
             self.assertEqual(response.status_code, status.HTTP_200_OK, response.data)
             metadata = response.data.get('metadata', {})
@@ -389,7 +390,7 @@ def create_api_test_class(
             item = recipe.make()
             # Récupération submodels sans le simple
             self.client.force_authenticate(self.user_admin)
-            url = reverse(self.url_detail_api, args=[item.id])
+            url = reverse(self.url_detail_api, args=[item.pk])
             response = self.client.get(url)
             list_submodels = []
             unique_submodels = []
@@ -402,7 +403,7 @@ def create_api_test_class(
                     elif (field.one_to_one or isinstance(field, ForeignKey)) and isinstance(field_name, dict):
                         unique_submodels.append(field_name)
             # On vérifie qu'ils ne soient plus remontés avec le simple
-            url = reverse(self.url_detail_api, args=[item.id]) + "?simple=1"
+            url = reverse(self.url_detail_api, args=[item.pk]) + "?simple=1"
             response = self.client.get(url)
             self.assertEqual(response.status_code, status.HTTP_200_OK)
             self.assertTrue(all(field not in response.data for field in list_submodels))
@@ -422,11 +423,11 @@ def create_api_test_class(
                 item.make()
             # Test sans le silent
             self.client.force_authenticate(self.user_admin)
-            url = reverse(self.url_list_api) + '?champ_inexistant=test'
+            url = reverse(self.url_list_api) + '?test_field_does_not_exist=test'
             response = self.client.get(url)
             self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
             # Test avec le silent
-            url = reverse(self.url_list_api) + '?champ_inexistant=test&silent=1'
+            url = reverse(self.url_list_api) + '?test_field_does_not_exist=test&silent=1'
             response = self.client.get(url)
             self.assertEqual(response.status_code, status.HTTP_200_OK, response.data)
             self.assertEqual(response.data['count'], items_count + nb_recipes)
