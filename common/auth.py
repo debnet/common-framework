@@ -43,7 +43,7 @@ class LdapAuthenticationBackend(ModelBackend):
                     # Création de l'utilisateur en base de données
                     User = get_user_model()
                     username = username and username.lower()  # Nom d'utilisateur en minuscules par défaut
-                    user = User.objects.get_or_create(username=username)
+                    user, created = User.objects.get_or_create(username=username)
                     user.set_password(password)
 
                     # Méthode utilitaire pour tenter de remplir les champs par défaut de l'utilisateur
