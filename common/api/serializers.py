@@ -37,7 +37,7 @@ class CommonModelSerializer(serializers.HyperlinkedModelSerializer if HYPERLINKE
             # Soit un QuerySet de MetaData soit un lien vers un modèle ayant un champ "data" (voir User/Group)
             # TODO: la récupération des métadonnées ne fonctionne pas sur les modèles d'héritage concret (?)
             return instance.metadata.data if hasattr(instance.metadata, 'data') \
-                else {meta.key: meta.value for meta in instance.metadata.all()}
+                else {meta.key: meta.value for meta in instance.metadata.all() if meta.valid}
         return None
 
     def __init__(self, *args, **kwargs):

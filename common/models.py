@@ -178,6 +178,13 @@ class MetaData(models.Model):
     def __str__(self):  # pragma: no cover
         return _("{key}: {value}").format(key=self.key, value=self.value)
 
+    @property
+    def valid(self):
+        """
+        Validité dans le temps de la métadonnée
+        """
+        return not self.deletion_date or now() < self.deletion_date
+
     @staticmethod
     def get(instance, key=None, valid=True, raw=False, queryset=None):
         """
