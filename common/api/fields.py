@@ -1,4 +1,5 @@
 # coding: utf-8
+from django.db import models
 from rest_framework import serializers
 from rest_framework.fields import ChoiceField, Field, ReadOnlyField
 from rest_framework.relations import HyperlinkedRelatedField, HyperlinkedIdentityField
@@ -66,12 +67,18 @@ class ReadOnlyObjectField(ReadOnlyField):
     """
 
     def to_representation(self, value):
+        url = None
         if getattr(value, 'url', None):
             url = value.url
+        elif isinstance(value, dict) and 'url' in value:
+            url = value.get('url')
+        if url:
             request = self.context.get('request', None)
             if request is not None:
                 return request.build_absolute_uri(url)
             return url
+        if not isinstance(value, models.Model):
+            return value
         pk_field = get_pk_field(value).name
         return value.to_dict() if hasattr(value, 'to_dict') else getattr(value, pk_field, value)
 
