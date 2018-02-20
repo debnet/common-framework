@@ -78,7 +78,7 @@ def raise_exception(error_type, code):
 
 
 def create_api_test_class(
-        model, serializer=None, data=None, module=True,
+        model, serializer=None, data=None, module=True, namespace=None,
         test_list=True, test_get=True, test_post=True, test_put=True, test_delete=True,
         test_options=True, test_order_by=True, test_filter=True, test_fields=True,
         test_metadata=True, test_simple=True, test_silent=True):
@@ -88,6 +88,7 @@ def create_api_test_class(
     :param serializer: Serializer spécifique à utiliser, si absent un serializer associé au modèle sera généré
     :param data: liste de dictionnaires contenant les valeurs des attributs à positionner obligatoirement pour ce modèle
     :param module: Ajoute la classe de test dans le module appelant
+    :param namespace: Namespace des URLs d'API
     :param test_list: Test de la liste
     :param test_get: Test du GET
     :param test_post: Test du POST
@@ -124,9 +125,13 @@ def create_api_test_class(
         super(APITestCase, cls).setUpClass()
         cls.user_admin = User.objects.filter(username='admin').first()
         if not cls.user_admin:
-            cls.user_admin = User.objects.create_superuser('admin', 'admin@sa-cim.fr', 'admin')
-        cls.url_list_api = '{}-api:{}-list'.format(app_label, model_name)
-        cls.url_detail_api = '{}-api:{}-detail'.format(app_label, model_name)
+            cls.user_admin = User.objects.create_superuser('admin', 'admin@test.fr', 'admin')
+        if not namespace:
+            cls.url_list_api = '{}-list'.format(model_name)
+            cls.url_detail_api = '{}-detail'.format(model_name)
+        else:
+            cls.url_list_api = '{}:{}-list'.format(namespace, model_name)
+            cls.url_detail_api = '{}:{}-detail'.format(namespace, model_name)
         cls.serializer = serializer or create_model_serializer(model, hyperlinked=False)
     test_class.setUpClass = classmethod(_setUpClass)
 

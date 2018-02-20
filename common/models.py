@@ -47,18 +47,18 @@ ENTITY_FIELDS = ('uuid', 'creation_date', 'modification_date', )
 PERISHABLE_FIELDS = ENTITY_FIELDS + ('start_date', 'end_date', )
 
 
-def to_boolean(libelle_champ, ordre_tri=None):
+def to_boolean(label_field, sort_order=None):
     """
     Transforme une méthode en attribut booléen
-    :param libelle_champ: Libellé du champ affiché par l'administration
-    :param ordre_tri: Champ utilisé pour trier cette donnée (facultatif)
+    :param label_field: Libellé du champ affiché par l'administration
+    :param sort_order: Champ utilisé pour trier cette donnée (facultatif)
     :return: Wrapper
     """
     def wrapper(boolean_field):
         boolean_field.boolean = True
-        boolean_field.short_description = libelle_champ
-        if ordre_tri:
-            boolean_field.admin_order_field = ordre_tri
+        boolean_field.short_description = label_field
+        if sort_order:
+            boolean_field.admin_order_field = sort_order
         return boolean_field
     return wrapper
 
@@ -1232,17 +1232,17 @@ class BaseEntity(Entity):
         help_text=_(
             "Le code doit être unique à la création, il permet d'identifier plus facilement les données.<br/>"
             "Il ne doit contenir que des caractères alphanumériques et des underscores ainsi qu'aucun espace."))
-    libelle = models.TextField(blank=True, null=True, verbose_name=_("libellé"))
+    label = models.TextField(blank=True, null=True, verbose_name=_("label"))
 
     def __str__(self):
-        return self.libelle or self.code
+        return self.label or self.code
 
     def related_label(self):  # pragma: no cover
         return str(self)
 
     @staticmethod
     def autocomplete_search_fields():  # pragma: no cover
-        return 'code__icontains', 'libelle__icontains',
+        return 'code__icontains', 'label__icontains',
 
     class Meta:
         abstract = True
