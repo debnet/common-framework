@@ -28,6 +28,7 @@ from django.shortcuts import render
 from django.utils.timezone import now
 from django.utils.translation import ugettext_lazy as _
 from django.views.decorators.csrf import csrf_exempt, csrf_protect
+from rest_framework.renderers import JSONRenderer
 from rest_framework.utils.encoders import JSONEncoder
 
 
@@ -1216,12 +1217,23 @@ def short_identifier():
     return ''.join(reversed(digits))
 
 
-# Encoder spécifique pour les valeurs nulles
 class JsonEncoder(JSONEncoder):
+    """
+    Encodeur JSON spécifique
+    """
+    encoding = {}  # type : callable
+
     def default(self, obj):
+        for type, func in self.encoding.items():
+            if isinstance(obj, type):
+                return func(obj)
         if obj is null:
             return None
         return super().default(obj)
+
+
+# Surcharge de l'encodeur JSON de DRF
+JSONRenderer.encoder_class = JsonEncoder
 
 
 # JSON serialization

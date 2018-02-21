@@ -36,12 +36,12 @@ from common.fields import JsonField, PickleField, json_encode
 from common.settings import settings
 from common.utils import get_current_app, get_current_user, get_pk_field, merge_dict
 
+
 # Logging
 logger = logging.getLogger(__name__)
 
 # Celery
 app = get_current_app()
-
 
 ENTITY_FIELDS = ('uuid', 'creation_date', 'modification_date', )
 PERISHABLE_FIELDS = ENTITY_FIELDS + ('start_date', 'end_date', )
