@@ -1,8 +1,9 @@
 # coding: utf-8
 from django import forms
 from django.forms.formsets import BaseFormSet, formset_factory
-from django.forms.models import _get_foreign_key as get_foreign_key
-from django.forms.models import BaseInlineFormSet, BaseModelFormSet, ModelForm, modelformset_factory
+from django.forms.models import (
+    BaseInlineFormSet, BaseModelFormSet, ModelForm,
+    modelform_factory, modelformset_factory, _get_foreign_key)
 from django.utils.translation import ugettext_lazy as _
 
 from common.models import Entity, PerishableEntity
@@ -10,6 +11,10 @@ from common.utils import json_decode, json_encode
 
 
 class CommonForm(object):
+    """
+    Formulaire de base pour la gestion des inlines et des entités
+    """
+
     _ignore_log = False
     _current_user = None
     _reason = None
@@ -21,32 +26,47 @@ class CommonForm(object):
         self.inlines = []
         super().__init__(*args, **kwargs)
 
-    def init_inlines(self, data=None, files=None, context=None, **kwargs):
+    def construct_inlines(self, data=None, files=None, context=None, **kwargs):
         if not hasattr(self, '_inlines'):
             return
-        for formset in self:
-            formset.inlines = []
-            for inline in self._inlines:
-                inline = inline(
-                    data,
-                    files,
-                    instance=formset.instance,
-                    prefix=formset.prefix,
-                    context=context,
-                    **kwargs)
-                formset.inlines.append(inline)
-                self.inlines.append(inline)
+        for inline in self._inlines:
+            inline = inline(
+                data, files,
+                instance=getattr(inline, 'instance', None),
+                prefix=getattr(inline, 'prefix', inline.model._meta.model_name),
+                context=context,
+                **kwargs)
+            self.inlines.append(inline)
 
 
 class CommonBaseFormSet(CommonForm):
+    """
+    Sous-formulaire de base
+    """
 
     def _construct_form(self, i, **kwargs):
         if self.context:
             kwargs.update(self.context)
         return super()._construct_form(i, **kwargs)
 
+    def construct_inlines(self, data=None, files=None, context=None, **kwargs):
+        if not hasattr(self, '_inlines'):
+            return
+        for formset in self:
+            for inline in self._inlines:
+                inline = inline(
+                    data, files,
+                    instance=getattr(inline, 'instance', None),
+                    prefix=getattr(inline, 'prefix', inline.model._meta.model_name),
+                    context=context,
+                    **kwargs)
+                formset.inlines.append(inline)
+
 
 class CommonFormSet(BaseFormSet, CommonBaseFormSet):
+    """
+    Sous-formulaire de base non relié à un modèle
+    """
 
     def __init__(self, data=None, files=None, context=None, *args, **kwargs):
         self.context = context
@@ -54,12 +74,15 @@ class CommonFormSet(BaseFormSet, CommonBaseFormSet):
 
 
 class CommonModelForm(CommonForm, ModelForm):
+    """
+    Formulaire de base relié à un modèle
+    """
 
     def __init__(self, data=None, files=None, context=None, inline_context=None, inline_kwargs=None, *args, **kwargs):
         inline_kwargs = inline_kwargs or {}
         self.context = context
         super().__init__(data, files, *args, **kwargs)
-        self.init_inlines(data, files, inline_context, **inline_kwargs)
+        self.construct_inlines(data, files, inline_context, **inline_kwargs)
 
     def save(self, commit=True, _ignore_log=None, _current_user=None, _reason=None, _force_default=None):
         """
@@ -92,6 +115,9 @@ class CommonModelForm(CommonForm, ModelForm):
 
 
 class CommonBaseModelFormSet(CommonBaseFormSet):
+    """
+    Sous-formulaire de base relié à un modèle
+    """
 
     def save(self, commit=True, _ignore_log=None, _current_user=None, _reason=None, _force_default=None):
         """
@@ -127,12 +153,15 @@ class CommonBaseModelFormSet(CommonBaseFormSet):
 
 
 class CommonModelFormSet(CommonBaseModelFormSet, BaseModelFormSet):
+    """
+    Formulaire générique relié à un modèle
+    """
 
     def __init__(self, data=None, files=None, context=None, inline_context=None, inline_kwargs=None, *args, **kwargs):
         inline_kwargs = inline_kwargs or {}
         self.context = context
         super().__init__(data, files, *args, **kwargs)
-        self.init_inlines(data, files, inline_context, **inline_kwargs)
+        self.construct_inlines(data, files, inline_context, **inline_kwargs)
 
     def is_valid(self):
         valid = super().is_valid()
@@ -152,6 +181,9 @@ class CommonModelFormSet(CommonBaseModelFormSet, BaseModelFormSet):
 
 
 class CommonInlineFormSet(CommonBaseModelFormSet, BaseInlineFormSet):
+    """
+    Sous-formulaire générique relié à un modèle
+    """
 
     def __init__(self, data=None, files=None, context=None, *args, **kwargs):
         self.context = context
@@ -160,51 +192,56 @@ class CommonInlineFormSet(CommonBaseModelFormSet, BaseInlineFormSet):
             self.queryset = self.queryset.select_valid()
 
 
-def get_formset(form, formset=CommonFormSet, **kwargs):
-    return formset_factory(form, formset=formset, **kwargs)
+def get_formset(form, formset=None, **kwargs):
+    """
+    Raccourci de `formset_factory` avec la surcharge des formulaires
+    """
+    return formset_factory(form, formset=formset or CommonFormSet, **kwargs)
 
 
-def get_model_formset(model, form=CommonModelForm, formset=CommonModelFormSet, **kwargs):
-    return modelformset_factory(model, form=form, formset=formset, **kwargs)
+def get_model_formset(model, form=None, formset=None, **kwargs):
+    """
+    Raccourci de `modelformset_factory` avec la surcharge des formulaires
+    """
+    return modelformset_factory(model, form=form or CommonModelForm, formset=formset or CommonModelFormSet, **kwargs)
 
 
-def get_inline_formset(base_model=None, base_form=None,
-                       inline_models=None, inline_forms=None, inline_kwargs=None, formset=True, **kwargs):
-    inline_models = inline_models if inline_models is list else [inline_models]
-    inline_forms = inline_forms if inline_forms is list else [inline_forms]
-    inline_kwargs = inline_kwargs if inline_kwargs is list else [inline_kwargs]
-    base_kwargs = {
-        'formfield_callback': None,
-        'extra': 1,
-        'can_delete': True,
-        'can_order': False,
-        'fields': None,
-        'exclude': None,
-        'max_num': None,
-        'widgets': None,
-        'validate_max': False,
-        'localized_fields': None,
-        'labels': None,
-        'help_texts': None,
-        'error_messages': None,
-    }
+def get_model_form(
+        base_model=None, base_form=None, inline_models=None, inline_forms=None, inline_options=None,
+        common_options=None, formset=False, **kwargs):
+    """
+    Permet de construire d'un coup un formulaire de modèle et ses sous-formulaires éventuels
+    Les listes `inline_models`, `inline_forms` et `inline_kwargs` doivent être de même taille et dans le même ordre
+    :param base_model: Modèle de base (obligatoire)
+    :param base_form: Formulaire pour le modèle de base (facultatif)
+    :param inline_models: Sous-modèles à relier (obligatoire)
+    :param inline_forms: Sous-formulaires pour chaque sous-modèle (facultatif)
+    :param inline_options: Paramètres de chaque sous-formulaire (facultatif)
+    :param formset: En faire un ensemble de formulaires ?
+    :param kwargs: Paramètres optionnels utilisés uniquement pour le formulaire principal
+    :return: Formulaire principal et ses sous-formulaires
+    """
+    from itertools import zip_longest
+    common_options = common_options or {}
+    inline_models, inline_forms, inline_options = inline_models or [], inline_forms or [], inline_options or []
     inlines = []
-    fks = []
-    for inline_model, inline_form, inline_args in zip(inline_models, inline_forms, inline_kwargs):
-        fk = get_foreign_key(base_model, inline_model)
-        fks.append(fk)
-        ikwargs = base_kwargs.copy()
+    for model, form, options in zip_longest(inline_models, inline_forms, inline_options, fillvalue=None):
+        if not model:
+            continue
+        options = options or {}
+        options.update(common_options)
+        fk = _get_foreign_key(base_model, model)
         if fk.unique:
-            ikwargs['max_num'] = 1
-        if all(inline_kwargs):
-            ikwargs.update(inline_args)
-        inline = get_model_formset(inline_model, form=inline_form, formset=CommonInlineFormSet, **ikwargs)
+            options['max_num'] = 1
+        inline = get_model_formset(model, form=form, formset=CommonInlineFormSet, **options)
         inline.fk = fk
         inlines.append(inline)
     if formset:
         formset = get_model_formset(base_model, form=base_form, **kwargs)
         formset._inlines = inlines
         return formset
+    elif not base_form:
+        base_form = modelform_factory(base_model, form=CommonModelForm, **kwargs)
     base_form._inlines = inlines
     return base_form
 
