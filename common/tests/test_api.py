@@ -8,4 +8,4 @@ RECIPES = {}
 
 # Tests automatisées pour tous les modèles liés à une API REST
 for model in [MetaData, Webhook]:
-    create_api_test_class(model, data=RECIPES.get(model, None))
+    create_api_test_class(model, namespace='common-api', data=RECIPES.get(model, None))

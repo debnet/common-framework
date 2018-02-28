@@ -264,12 +264,16 @@ relatif à Django et dans ``common.api.utils`` pour tout ce qui est relatif à D
 * ``sort_dict`` : permet de trier un dictionnaire par ses clés
 * ``null`` : objet nul absolu retournant toujours une valeur nulle sans erreur
 * ``to_object`` : permet de convertir un dictionnaire ou un objet Python
+* ``get_size`` : permet de récupérer la taille en mémoire d'un objet Python quelconque
 * ``file_is_text`` : permet de vérifier qu'un fichier est au format texte
+* ``process_file`` : permet de s'assurer qu'un fichier est bien complet et décompresse les éventuelles archives
 * ``base64_encode`` : permet d'encoder une chaîne de caractères en base 64
 * ``base64_decode`` : permet de décoder une chaîne de caractères en base 64
 * ``short_identifier`` : permet de générer un identifiant "unique" court
 * ``json_encode`` : permet de sérialiser un objet Python en JSON
 * ``json_decode`` : permet de désérialiser une chaîne de caractères JSON en objet Python
+* ``get_current_user`` : permet de récupérer l'utilisateur actuellement connecté dans la pile d'exécution
+* ``get_pk_field`` : permet de récupérer le champ de clé primaire d'un modèle en héritage concret
 
 ##### Autres (``common.admin``)
 
@@ -294,7 +298,7 @@ formulaires possèdent une interface de base, préfixée généralement ``Base``
 * ``CommonModelForm`` : classe de base pour représenter les formulaires issus d'entités
 * ``CommonModelFormSet`` : classe de base pour représenter les ensembles de formulaires issus d'entités
 * ``JsonField`` : champ de formulaire pour représenter les données JSON
-* ``get_inline_formset`` : fonction permettant de créer un formulaire d'entité avec des imbrications
+* ``get_model_form`` : fonction permettant de créer un formulaire d'entité avec des imbrications
 
 # Django REST Framework
 
@@ -306,7 +310,8 @@ formulaires possèdent une interface de base, préfixée généralement ``Base``
 * ``perishable_view`` : permet de gérer les données périssables d'une vue à travers l'URL
 * ``api_view_with_serializer`` : décorateur permettant de créer une vue assujettie à un sérialiseur
 * ``create_model_serializer`` : permet de créer un sérialiseur de modèle
-* ``paginate`` : permet d'ajouter une pagination sur le résultat d'une requête pour une vue
+* ``auto_view`` : décorateur permettant de créer une vue à partir d'un QuerySet
+* ``api_paginate`` : permet d'ajouter une pagination sur le résultat d'une requête pour une vue
 * ``create_api`` : permet de créer les APIs standards (RESTful) pour un ou plusieurs modèles
 * ``disable_relation_fields`` : permet de désactiver les listes déroulantes pour les relations des APIs
 
@@ -318,7 +323,9 @@ formulaires possèdent une interface de base, préfixée généralement ``Base``
 ##### Champs (``common.api.fields``)
 
 * ``JsonField`` : champ permettant la gestion des données JSON
-* ``CustomHyperlinkedIdentityField`` : champ permettant de gérer les liens vers d'autres APIs en permettant de croiser
+* ``AsymetricRelatedField`` : champ permettant l'affichage de l'ensemble des données des entités de clés étrangères
+mais accepte néanmoins un simple identifiant à la création/modification
+* ``CustomHyperlinkedField`` : champ permettant de gérer les liens vers d'autres APIs en permettant de croiser
 les différents namespaces (utilisé par défaut par les utilitaires)
 
 ##### Pagination (``common.api.pagination``)

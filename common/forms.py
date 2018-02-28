@@ -29,14 +29,14 @@ class CommonForm(object):
     def construct_inlines(self, data=None, files=None, context=None, **kwargs):
         if not hasattr(self, '_inlines'):
             return
+        self.inlines = []
         for inline in self._inlines:
-            inline = inline(
-                data, files,
-                instance=getattr(inline, 'instance', None),
-                prefix=getattr(inline, 'prefix', inline.model._meta.model_name),
-                context=context,
-                **kwargs)
+            meta = getattr(getattr(inline, 'model', None), '_meta', None)
+            instance = getattr(self, 'instance', None)
+            prefix = getattr(inline, 'prefix', getattr(meta, 'model_name', None))
+            inline = inline(data, files, instance=instance, prefix=prefix, context=context, **kwargs)
             self.inlines.append(inline)
+        return self.inlines
 
 
 class CommonBaseFormSet(CommonForm):
@@ -50,20 +50,11 @@ class CommonBaseFormSet(CommonForm):
         return super()._construct_form(i, **kwargs)
 
     def construct_inlines(self, data=None, files=None, context=None, **kwargs):
-        if not hasattr(self, '_inlines'):
-            return
         for formset in self:
-            for inline in self._inlines:
-                inline = inline(
-                    data, files,
-                    instance=getattr(inline, 'instance', None),
-                    prefix=getattr(inline, 'prefix', inline.model._meta.model_name),
-                    context=context,
-                    **kwargs)
-                formset.inlines.append(inline)
+            formset.construct_inlines(data=data, files=files, context=context, **kwargs)
 
 
-class CommonFormSet(BaseFormSet, CommonBaseFormSet):
+class CommonFormSet(CommonBaseFormSet, BaseFormSet):
     """
     Sous-formulaire de base non relié à un modèle
     """
@@ -81,6 +72,8 @@ class CommonModelForm(CommonForm, ModelForm):
     def __init__(self, data=None, files=None, context=None, inline_context=None, inline_kwargs=None, *args, **kwargs):
         inline_kwargs = inline_kwargs or {}
         self.context = context
+        self.model = self._meta.model
+        self.meta = self.model._meta
         super().__init__(data, files, *args, **kwargs)
         self.construct_inlines(data, files, inline_context, **inline_kwargs)
 
@@ -97,7 +90,17 @@ class CommonModelForm(CommonForm, ModelForm):
             self.instance._current_user = _current_user or self.instance._current_user
             self.instance._reason = _reason or self.instance._reason
             self.instance._force_default = _force_default or self.instance._force_default
-        return super().save(commit=commit)
+        instance = super().save(commit=commit)
+        for inline in self.inlines:
+            inline.instance = instance
+            inline.save(commit=commit, _ignore_log=self._ignore_log, _current_user=self._current_user,
+                        _reason=self._reason, _force_default=self._force_default)
+        return instance
+
+    def clean(self):
+        for inline in self.inlines:
+            inline.clean()
+        return super().clean()
 
     def is_valid(self):
         valid = super().is_valid()
@@ -141,10 +144,12 @@ class CommonBaseModelFormSet(CommonBaseFormSet):
             if hasattr(self, 'fk'):
                 pk_value = getattr(self.instance, self.fk.remote_field.field_name)
                 setattr(instance, self.fk.get_attname(), getattr(pk_value, 'pk', pk_value))
-        super().save(commit=commit)
+        instance = super().save(commit=commit)
         for inline in self.inlines:
+            inline.instance = instance
             inline.save(commit=commit, _ignore_log=self._ignore_log, _current_user=self._current_user,
                         _reason=self._reason, _force_default=self._force_default)
+        return instance
 
     def clean(self):
         for inline in self.inlines:
@@ -160,6 +165,7 @@ class CommonModelFormSet(CommonBaseModelFormSet, BaseModelFormSet):
     def __init__(self, data=None, files=None, context=None, inline_context=None, inline_kwargs=None, *args, **kwargs):
         inline_kwargs = inline_kwargs or {}
         self.context = context
+        self.meta = self.model._meta
         super().__init__(data, files, *args, **kwargs)
         self.construct_inlines(data, files, inline_context, **inline_kwargs)
 
@@ -187,6 +193,7 @@ class CommonInlineFormSet(CommonBaseModelFormSet, BaseInlineFormSet):
 
     def __init__(self, data=None, files=None, context=None, *args, **kwargs):
         self.context = context
+        self.meta = self.model._meta
         super().__init__(data, files, *args, **kwargs)
         if issubclass(self.model, PerishableEntity) and not self._from_admin:
             self.queryset = self.queryset.select_valid()
