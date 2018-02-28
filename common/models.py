@@ -11,7 +11,6 @@ from django.contrib.contenttypes.models import ContentType
 from django.core import serializers
 from django.core.cache import cache
 from django.core.exceptions import ValidationError
-from django.core.validators import RegexValidator
 from django.db import models
 from django.db.models import Q, query
 from django.db.models.deletion import Collector
@@ -1215,34 +1214,6 @@ class Entity(CommonModel):
         if reference:
             return reference.entity
         return None
-
-    class Meta:
-        abstract = True
-
-
-class BaseEntity(Entity):
-    """
-    Entité de base, hérité de tous les modèles ayant besoin d'un code et d'un libellé
-    """
-    code = models.CharField(
-        max_length=100,
-        unique=True,
-        validators=[RegexValidator(r'^([A-Za-z_][0-9A-Za-z_]*)$')],
-        verbose_name=_("code"),
-        help_text=_(
-            "Le code doit être unique à la création, il permet d'identifier plus facilement les données.<br/>"
-            "Il ne doit contenir que des caractères alphanumériques et des underscores ainsi qu'aucun espace."))
-    label = models.TextField(blank=True, null=True, verbose_name=_("label"))
-
-    def __str__(self):
-        return self.label or self.code
-
-    def related_label(self):  # pragma: no cover
-        return str(self)
-
-    @staticmethod
-    def autocomplete_search_fields():  # pragma: no cover
-        return 'code__icontains', 'label__icontains',
 
     class Meta:
         abstract = True
