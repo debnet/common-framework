@@ -1,5 +1,4 @@
 # coding: utf-8
-from django.conf import settings
 from django.contrib import admin, messages
 from django.contrib.admin import options
 from django.contrib.admin.actions import delete_selected as django_delete_selected
@@ -7,12 +6,6 @@ from django.contrib.contenttypes.models import ContentType
 from django.db import models
 from django.utils.html import format_html
 from django.utils.translation import ugettext_lazy as _
-
-try:
-    import grappelli
-    assert 'grappelli' in settings.INSTALLED_APPS
-except (AssertionError, ImportError):
-    grappelli = False
 
 from common.fields import JsonField, PickleField
 from common.forms import CommonInlineFormSet
@@ -518,27 +511,28 @@ def create_admin(*args, **kwargs):
             continue
         admin_superclass = PerishableEntityAdmin if issubclass(model, PerishableEntity) else \
             EntityAdmin if issubclass(model, Entity) else CommonAdmin
-        fk_fields = [
+        fk_fields = tuple(
             field.name for field in model._meta.get_fields()
-            if isinstance(field, (models.ForeignKey, models.OneToOneField))]
-        m2m_fields = [
+            if isinstance(field, (models.ForeignKey, models.OneToOneField)))
+        m2m_fields = tuple(
             field.name for field in model._meta.get_fields()
-            if isinstance(field, models.ManyToManyField)]
+            if isinstance(field, models.ManyToManyField))
         properties = dict(
-            list_display=[
+            list_display=tuple(
                 field.name for field in model._meta.concrete_fields
                 if not field.primary_key and field.editable and not isinstance(field, (
-                    models.TextField, JsonField, PickleField))],
-            list_filter=[
+                    models.TextField, JsonField, PickleField))),
+            list_filter=tuple(
                 field.name for field in model._meta.get_fields()
                 if getattr(field, 'choices', None) or isinstance(field, (
-                    models.BooleanField, models.NullBooleanField, models.DateField, models.DateTimeField))],
-            search_fields=[
+                    models.BooleanField, models.NullBooleanField, models.DateField, models.DateTimeField))),
+            search_fields=tuple(
                 field.name for field in model._meta.get_fields()
-                if isinstance(field, (models.CharField, models.TextField))],
-            filter_horizontal=m2m_fields if not grappelli else [],
-            autocomplete_lookup_fields=dict(fk=fk_fields, m2m=m2m_fields),
-            raw_id_fields=(fk_fields + m2m_fields) if grappelli else [])
+                if not getattr(field, 'choices', None) and isinstance(field, (
+                    models.CharField, models.TextField))),
+            filter_horizontal=m2m_fields,
+            autocomplete_fields=dict(fk=fk_fields, m2m=m2m_fields),
+            list_select_related=fk_fields)
         properties.update(**kwargs)
         model_admins.append(admin.register(model)(
             type('{}GenericAdmin'.format(model._meta.object_name), (admin_superclass, ), properties)))

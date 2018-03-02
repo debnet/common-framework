@@ -201,9 +201,10 @@ class MetaData(models.Model):
         if valid:
             queryset = queryset.filter(Q(deletion_date=None) | Q(deletion_date__gte=now()))
         if key:
-            metadata = queryset.filter(key=key).first()
+            only = ('key', 'value', 'deletion_date') if raw else ('value', )
+            metadata = queryset.filter(key=key).only(*only).first()
             return metadata if raw or not metadata else metadata.value
-        queryset = queryset.order_by('key')
+        queryset = queryset.only('key', 'value').order_by('key')
         return queryset if raw else {m.key: m.value for m in queryset}
 
     @staticmethod
@@ -221,9 +222,10 @@ class MetaData(models.Model):
         content_type = get_content_type(instance.__class__)
         try:
             queryset = queryset or MetaData.objects.filter(content_type=content_type, object_id=instance.pk)
-            metadata = queryset.get(key=key)
+            metadata = queryset.only('value', 'deletion_date').get(key=key)
             metadata.deletion_date = date
             metadata.value = value
+            metadata.save(update_fields=('value', 'deletion_date'))
         except MetaData.DoesNotExist:
             metadata = MetaData(
                 content_type=content_type,
@@ -231,7 +233,7 @@ class MetaData(models.Model):
                 key=key,
                 value=value,
                 deletion_date=date)
-        metadata.save()
+            metadata.save()
         return metadata
 
     @staticmethod
@@ -259,9 +261,10 @@ class MetaData(models.Model):
                 metadata.value = values if allow_duplicate else set(values)
             else:
                 metadata.value += value
-            metadata.save()
+            metadata.save(update_fields=('value', ))
             return metadata
-        return MetaData.set(key=key, value=key, queryset=queryset)
+        value = value if isinstance(value, (list, tuple, set, frozenset, dict)) else [value]
+        return MetaData.set(instance, key=key, value=value, queryset=queryset)
 
     @staticmethod
     def remove(instance, key=None, logic=False, date=None, queryset=None):
@@ -281,9 +284,9 @@ class MetaData(models.Model):
             queryset = queryset.filter(key=key)
         if logic:
             date = date or now()
-            for metadata in queryset.all():
+            for metadata in queryset.only('deletion_date').all():
                 metadata.deletion_date = date
-                metadata.save()
+                metadata.save(update_fields=('deletion_date', ))
         else:
             queryset.all().delete()
 
@@ -291,7 +294,10 @@ class MetaData(models.Model):
         verbose_name = _("métadonnée")
         verbose_name_plural = _("métadonnées")
         unique_together = ('content_type', 'object_id', 'key')
-        index_together = ('content_type', 'object_id', 'key', 'deletion_date')
+        index_together = (
+            ('content_type', 'object_id'),
+            ('content_type', 'object_id', 'deletion_date'),
+            ('content_type', 'object_id', 'deletion_date', 'key'))
 
 
 class CommonQuerySet(models.QuerySet):
