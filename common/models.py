@@ -528,7 +528,25 @@ class CommonModel(models.Model):
                 value = field.value_from_object(self)
                 if field.primary_key and no_ids:
                     continue
-                if value is None:
+                # Gestion des clés étrangères
+                if isinstance(field, (models.ForeignKey, models.OneToOneField)):
+                    # Identifiant
+                    if not no_ids:
+                        data[field.attname] = value
+                    if fks or uids:
+                        fk = getattr(self, field.name, None)
+                        # Données
+                        if fks and fk:
+                            if isinstance(fk, CommonModel):
+                                data[field.name] = fk.to_dict(**keywords)
+                            else:
+                                data[field.name] = model_to_dict(fk)
+                                data[field.name].pop('_state', None)  # Non serialisable
+                        # GUID (uniquement entité)
+                        if uids and isinstance(fk, Entity):
+                            data[field.name + '_uid'] = fk.uuid
+                # Gestion des valeurs nulles (hors clés étrangères)
+                elif value is None:
                     data[field.name] = None
                 # Cas spécifique du champ JSON
                 elif isinstance(field, JsonField):
@@ -542,23 +560,6 @@ class CommonModel(models.Model):
                 # Cas spécifique pour les listes
                 elif isinstance(value, (list, set, tuple)):
                     data[field.name] = value if raw else ','.join(value)
-                # Gestion des clés étrangères
-                elif isinstance(field, (models.ForeignKey, models.OneToOneField)):
-                    # Identifiant
-                    if not no_ids:
-                        data[field.name + '_id'] = value
-                    if fks or uids:
-                        fk = getattr(self, field.name, None)
-                        # Données
-                        if fks and fk:
-                            if isinstance(fk, CommonModel):
-                                data[field.name] = fk.to_dict(**keywords)
-                            else:
-                                data[field.name] = model_to_dict(fk)
-                                data[field.name].pop('_state', None)  # Non serialisable
-                        # GUID (uniquement entité)
-                        if uids and isinstance(fk, Entity):
-                            data[field.name + '_uid'] = fk.uuid
                 elif display and hasattr(self, 'get_{}_display'.format(field.name)):
                     data[field.name + '_display'] = getattr(self, 'get_{}_display'.format(field.name))()
                     data[field.name] = value
