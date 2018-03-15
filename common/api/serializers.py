@@ -223,8 +223,8 @@ class UserSerializer(serializers.ModelSerializer):
             user = User.objects.create_superuser(**validated_data)
         else:
             user = User.objects.create_user(**validated_data)
-        user.groups = groups
-        user.permissions = permissions
+        user.groups.set(groups)
+        user.permissions.set(permissions)
         return user
 
     def update(self, instance, validated_data):
@@ -236,8 +236,8 @@ class UserSerializer(serializers.ModelSerializer):
         if password:
             instance.set_password(password)
         instance.save()
-        instance.groups = groups
-        instance.permissions = permissions
+        instance.groups.set(groups)
+        instance.permissions.set(permissions)
         return instance
 
 
