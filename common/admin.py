@@ -2,6 +2,7 @@
 from django.contrib import admin, messages
 from django.contrib.admin import options
 from django.contrib.admin.actions import delete_selected as django_delete_selected
+from django.contrib.admin.sites import all_sites
 from django.contrib.contenttypes.models import ContentType
 from django.db import models
 from django.utils.html import format_html
@@ -503,19 +504,26 @@ def create_admin(*args, **kwargs):
     Permet de créer une administration générique pour un ou plusieurs modèles
     :param args: Modèle(s)
     :param kwargs: Paramètres complémentaires ou surcharges
-    :return: Classe(s) d'administration
+    :return: Classe(s) d'administration par modèle
     """
-    model_admins = []
+    try:
+        import grappelli
+        from common import settings
+        assert 'grappelli' in settings.INSTALLED_APPS
+    except (AssertionError, ImportError):
+        grappelli = False
+
+    admins = {}
     for model in args:
         if not model:
             continue
         admin_superclass = PerishableEntityAdmin if issubclass(model, PerishableEntity) else \
             EntityAdmin if issubclass(model, Entity) else CommonAdmin
         fk_fields = tuple(
-            field.name for field in model._meta.get_fields()
+            field for field in model._meta.get_fields()
             if isinstance(field, (models.ForeignKey, models.OneToOneField)))
         m2m_fields = tuple(
-            field.name for field in model._meta.get_fields()
+            field for field in model._meta.get_fields()
             if isinstance(field, models.ManyToManyField))
         properties = dict(
             list_display=tuple(
@@ -530,10 +538,25 @@ def create_admin(*args, **kwargs):
                 field.name for field in model._meta.get_fields()
                 if not getattr(field, 'choices', None) and isinstance(field, (
                     models.CharField, models.TextField))),
-            filter_horizontal=m2m_fields,
-            autocomplete_fields=dict(fk=fk_fields, m2m=m2m_fields),
-            list_select_related=fk_fields)
+            filter_horizontal=tuple(m2m.name for m2m in m2m_fields),
+            list_select_related=tuple(fk.name for fk in fk_fields))
+        if grappelli:
+            fk_fields = tuple(field.name for field in fk_fields)
+            m2m_fields = tuple(field.name for field in m2m_fields)
+            properties.update(
+                autocomplete_lookup_fields=dict(fk=fk_fields, m2m=m2m_fields),
+                raw_id_fields=(fk_fields + m2m_fields))
+        else:
+            autocomplete_fields = []
+            for field in fk_fields + m2m_fields:
+                for site in all_sites:
+                    related_admin = site._registry.get(field.related_model, None)
+                    if related_admin and related_admin.search_fields:
+                        autocomplete_fields.append(field.name)
+                        break
+            if autocomplete_fields:
+                properties.update(autocomplete_fields=tuple(autocomplete_fields))
         properties.update(**kwargs)
-        model_admins.append(admin.register(model)(
-            type('{}GenericAdmin'.format(model._meta.object_name), (admin_superclass, ), properties)))
-    return model_admins[0] if len(model_admins) == 1 else model_admins
+        admins[model] = admin.register(model)(
+            type('{}GenericAdmin'.format(model._meta.object_name), (admin_superclass, ), properties))
+    return admins
