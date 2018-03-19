@@ -508,12 +508,12 @@ def create_admin(*args, **kwargs):
     """
     try:
         import grappelli
-        from common import settings
+        from django.conf import settings
         assert 'grappelli' in settings.INSTALLED_APPS
     except (AssertionError, ImportError):
         grappelli = False
 
-    admins = {}
+    admins = []
     for model in args:
         if not model:
             continue
@@ -557,6 +557,6 @@ def create_admin(*args, **kwargs):
             if autocomplete_fields:
                 properties.update(autocomplete_fields=tuple(autocomplete_fields))
         properties.update(**kwargs)
-        admins[model] = admin.register(model)(
-            type('{}GenericAdmin'.format(model._meta.object_name), (admin_superclass, ), properties))
-    return admins
+        admins.append(admin.register(model)(
+            type('{}GenericAdmin'.format(model._meta.object_name), (admin_superclass, ), properties)))
+    return next(iter(admins), None) if len(admins) < 2 else admins
