@@ -129,6 +129,10 @@ class CommonModelViewSet(viewsets.ModelViewSet):
             options = dict(aggregates=None, distinct=None, filters=None, order_by=None)
             self.url_params = url_params = self.request.query_params.dict()
 
+            # Fonction de récupération des données depuis les paramètres
+            def get(name):
+                return self.url_params.get(name, '').replace('.', '__').replace(' ', '')
+
             # Mots-clés réservés dans les URLs
             default_reserved_query_params = ['format'] + ([
                 self.paginator.page_query_param,
@@ -165,11 +169,11 @@ class CommonModelViewSet(viewsets.ModelViewSet):
                 options['raw_url'] = plain_url
 
             # Erreurs silencieuses
-            silent = str_to_bool(url_params.get('silent', None))
+            silent = str_to_bool(get('silent'))
 
             # Requête simplifiée et/ou extraction de champs spécifiques
-            fields = url_params.get('fields', '').replace('.', '__').replace(' ', '')
-            if str_to_bool(url_params.get('simple', None)) or fields:
+            fields = get('fields')
+            if str_to_bool(get('simple')) or fields:
                 # Supprime la récupération des relations
                 queryset = queryset.select_related(None).prefetch_related(None)
                 # Champs spécifiques
@@ -192,7 +196,7 @@ class CommonModelViewSet(viewsets.ModelViewSet):
                         raise ValidationError("fields: {}".format(error))
             else:
                 # Récupération des métadonnées
-                metadata = str_to_bool(url_params.get('meta', False))
+                metadata = str_to_bool(get('meta'))
                 if metadata and hasattr(self, 'metadata'):
                     # Permet d'éviter les conflits entre prefetch lookups identiques
                     viewset_lookups = [
@@ -217,13 +221,14 @@ class CommonModelViewSet(viewsets.ModelViewSet):
                         key = key.replace('.', '__')
                         if value.startswith('(') and value.endswith(')'):
                             value = F(value[1:-1])
-                        if key not in reserved_query_params:
-                            if key.startswith('-'):
-                                key = key[1:]
-                                excludes[key] = url_value(key, value)
-                            else:
-                                key = key.strip()
-                                filters[key] = url_value(key, value)
+                        if key in reserved_query_params:
+                            continue
+                        if key.startswith('-'):
+                            key = key[1:]
+                            excludes[key] = url_value(key, value)
+                        else:
+                            key = key.strip()
+                            filters[key] = url_value(key, value)
                     if filters:
                         queryset = queryset.filter(**filters)
                     if excludes:
@@ -253,7 +258,7 @@ class CommonModelViewSet(viewsets.ModelViewSet):
                             distinct = field.startswith(' ')
                             field = field.strip().replace('.', '__')
                             aggregations[field + '_' + aggregate] = function(field, distinct=distinct)
-                    group_by = url_params.get('group_by', '').replace('.', '__').replace(' ', '')
+                    group_by = get('group_by')
                     if group_by:
                         _queryset = queryset.values(*group_by.split(','))
                         if aggregations:
@@ -277,7 +282,7 @@ class CommonModelViewSet(viewsets.ModelViewSet):
 
             # Tris
             try:
-                order_by = url_params.get('order_by', '').replace('.', '__').replace(' ', '')
+                order_by = get('order_by')
                 if order_by:
                     _queryset = queryset.order_by(*order_by.split(','))
                     str(_queryset.query)  # Force SQL evaluation to retrieve exception
@@ -295,7 +300,7 @@ class CommonModelViewSet(viewsets.ModelViewSet):
             # Distinct
             distincts = []
             try:
-                distinct = url_params.get('distinct', '').replace('.', '__').replace(' ', '')
+                distinct = get('distinct')
                 if distinct:
                     distincts = distinct.split(',')
                     if str_to_bool(distinct) is not None:

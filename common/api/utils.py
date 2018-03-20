@@ -572,6 +572,10 @@ def api_paginate(request, queryset, serializer, pagination=None, enable_options=
     # Activation des options
     if enable_options:
 
+        # Fonction de récupération des données depuis les paramètres
+        def get(name):
+            return url_params.get(name, '').replace('.', '__').replace(' ', '')
+
         # Critères de recherche dans le cache
         cache_key = url_params.pop('cache', None)
         if cache_key:
@@ -600,10 +604,10 @@ def api_paginate(request, queryset, serializer, pagination=None, enable_options=
             options['raw_url'] = plain_url
 
         # Erreurs silencieuses
-        silent = str_to_bool(url_params.get('silent', None))
+        silent = str_to_bool(get('silent'))
 
         # Extraction de champs spécifiques
-        fields = url_params.get('fields', '').replace('.', '__').replace(' ', '')
+        fields = get('fields')
         if fields:
             # Supprime la récupération des relations
             queryset = queryset.select_related(None).prefetch_related(None)
@@ -635,13 +639,14 @@ def api_paginate(request, queryset, serializer, pagination=None, enable_options=
                     key = key.replace('.', '__')
                     if value.startswith('(') and value.endswith(')'):
                         value = F(value[1:-1])
-                    if key not in reserved_query_params:
-                        if key.startswith('-'):
-                            key = key[1:]
-                            excludes[key] = url_value(key, value)
-                        else:
-                            key = key.strip()
-                            filters[key] = url_value(key, value)
+                    if key in reserved_query_params:
+                        continue
+                    if key.startswith('-'):
+                        key = key[1:]
+                        excludes[key] = url_value(key, value)
+                    else:
+                        key = key.strip()
+                        filters[key] = url_value(key, value)
                 if filters:
                     queryset = queryset.filter(**filters)
                 if excludes:
@@ -670,7 +675,7 @@ def api_paginate(request, queryset, serializer, pagination=None, enable_options=
                     distinct = field.startswith(' ')
                     field = field.strip().replace('.', '__')
                     aggregations[field + '_' + aggregate] = function(field, distinct=distinct)
-            group_by = url_params.get('group_by', '').replace('.', '__').replace(' ', '')
+            group_by = get('group_by')
             if group_by:
                 _queryset = queryset.values(*group_by.split(','))
                 if aggregations:
@@ -694,7 +699,7 @@ def api_paginate(request, queryset, serializer, pagination=None, enable_options=
 
         # Tris
         try:
-            order_by = url_params.get('order_by', '').replace('.', '__').replace(' ', '')
+            order_by = get('order_by')
             if order_by:
                 temp_queryset = queryset.order_by(*order_by.split(','))
                 str(temp_queryset.query)  # Force SQL evaluation to retrieve exception
@@ -712,7 +717,7 @@ def api_paginate(request, queryset, serializer, pagination=None, enable_options=
         # Distinct
         distincts = []
         try:
-            distinct = url_params.get('distinct', '').replace('.', '__').replace(' ', '')
+            distinct = get('distinct')
             if distinct:
                 distincts = distinct.split(',')
                 if str_to_bool(distinct) is not None:
@@ -734,7 +739,7 @@ def api_paginate(request, queryset, serializer, pagination=None, enable_options=
             source = field_name.strip().replace('.', '__')
             # Champ spécifique en cas d'énumération
             choices = getattr(get_field_by_path(queryset.model, field_name), 'flatchoices', None)
-            if choices and str_to_bool(url_params.get('display')):
+            if choices and str_to_bool(get('display')):
                 fields[field_name + '_display'] = ChoiceDisplayField(choices=choices, source=source)
             # Champ spécifique pour l'affichage de la valeur
             fields[field_name] = ReadOnlyObjectField(source=source if '.' in field_name else None)
@@ -771,7 +776,7 @@ def api_paginate(request, queryset, serializer, pagination=None, enable_options=
         queryset = query_func(queryset, *func_args, **func_kwargs)
 
     # Uniquement si toutes les données sont demandées
-    all_data = str_to_bool(url_params.get('all', False))
+    all_data = str_to_bool(get('all'))
     if all_data:
         return Response(serializer(queryset, context=context, many=True).data)
 
@@ -782,7 +787,7 @@ def api_paginate(request, queryset, serializer, pagination=None, enable_options=
     # Force un tri sur la clé primaire en cas de pagination
     if hasattr(queryset, 'ordered') and not queryset.ordered:
         queryset = queryset.order_by(*(
-            getattr(queryset, '_fields', None) or distincts or [queryset.model._meta.pk.name]))
+            getattr(queryset, '_fields', None) or (enable_options and distincts) or [queryset.model._meta.pk.name]))
     serializer = serializer(paginator.paginate_queryset(queryset, request), context=context, many=True)
     return paginator.get_paginated_response(serializer.data)
 

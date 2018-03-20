@@ -99,7 +99,7 @@ def parsedate(input_date, start_day=False, end_day=False, date_only=False, utc=F
     _date = input_date
     if not _date:
         return None
-    if isinstance(_date, (date, datetime)):
+    if isinstance(_date, date) and not isinstance(_date, datetime):
         if date_only:
             return _date
         if not start_day and not end_day:
