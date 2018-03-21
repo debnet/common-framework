@@ -38,6 +38,13 @@ class CommonForm(object):
             self.inlines.append(inline)
         return self.inlines
 
+    @property
+    def media(self):
+        media = super().media
+        for inline in self.inlines:
+            media += inline.media
+        return media
+
 
 class CommonBaseFormSet(CommonForm):
     """
