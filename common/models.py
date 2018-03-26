@@ -560,11 +560,12 @@ class CommonModel(models.Model):
                 # Cas spécifique pour les listes
                 elif isinstance(value, (list, set, tuple)):
                     data[field.name] = value if raw else ','.join(value)
-                elif display and hasattr(self, 'get_{}_display'.format(field.name)):
-                    data[field.name + '_display'] = getattr(self, 'get_{}_display'.format(field.name))()
-                    data[field.name] = value
+                elif hasattr(self, 'get_{}_json'.format(field.name)):
+                    data[field.name] = getattr(self, 'get_{}_json'.format(field.name))()
                 else:
                     data[field.name] = value
+                if display and hasattr(self, 'get_{}_display'.format(field.name)):
+                    data[field.name + '_display'] = getattr(self, 'get_{}_display'.format(field.name))()
         # Gestion des métadonnées
         if metadata:
             data['metadata'] = self.get_metadata()
