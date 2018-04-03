@@ -1,4 +1,5 @@
 # coding: utf-8
+from django.http import QueryDict
 from django.template import Library
 from django.utils.formats import localize
 
@@ -6,47 +7,59 @@ from django.utils.formats import localize
 register = Library()
 
 
-@register.simple_tag(name='meta')
-def tag_meta(instance, key, default=''):
+@register.filter(name='meta')
+def filter_meta(instance, key):
     """
     Récupération d'une métadonnée sur une instance
-    :param instance: Instance
     :param key: Clé
-    :param default: Valeur par défaut
     :return: Valeur
     """
     if hasattr(instance, 'get_metadata'):
-        return localize(instance.get_metadata(key))
-    return localize(default)
+        return instance.get_metadata(key)
+    return None
 
 
-@register.simple_tag(name='parsedate')
-def tag_parsedate(value, **options):
+@register.filter(name='parsedate')
+def filter_parsedate(value, options=''):
     """
     Parse une date ou un datetime dans n'importe quel format
     :param value: Date ou datetime au format texte
+    :param options: Options de parsing (au format query string)
     :return: Date ou datetime
     """
     from common.utils import parsedate
-    return localize(parsedate(value, **options))
+    options = QueryDict(options)
+    return parsedate(value, **options)
 
 
-@register.simple_tag(name='get')
-def tag_get(value, key, default=''):
+@register.filter(name='get')
+def filter_get(value, key):
     """
     Permet de récupérer une valeur depuis un objet quelconque
     :param value: Objet
     :param key: Clé ou index
-    :param default: Valeur par défaut
     :return: Valeur
     """
-    if isinstance(value, dict):
-        result = value.get(key, default=default)
-    elif isinstance(value, (list, tuple)):
-        result = value[int(key)]
-    else:
-        result = getattr(value, key, default)
-    return localize(result)
+    try:
+        if isinstance(value, dict):
+            return value.get(key) or value.get(int(key))
+        elif isinstance(value, (list, tuple)):
+            return value[int(key)]
+        else:
+            return getattr(value, key, None)
+    except ValueError:
+        return None
+
+
+@register.filter(name='localize')
+def filter_localize(value, use_l10n=None):
+    """
+    Localise une valeur brute
+    :param value: Valeur
+    :param use_l10n: Force ou non la localisation
+    :return: Valeur localisée (si possible)
+    """
+    return localize(value, use_l10n=use_l10n) or value
 
 
 @register.simple_tag(name='query', takes_context=True)
