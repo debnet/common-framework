@@ -104,11 +104,6 @@ class CommonModelForm(CommonForm, ModelForm):
                         _reason=self._reason, _force_default=self._force_default)
         return instance
 
-    def clean(self):
-        for inline in self.inlines:
-            inline.clean()
-        return super().clean()
-
     def is_valid(self):
         valid = super().is_valid()
         for inline in self.inlines:
