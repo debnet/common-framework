@@ -4,7 +4,6 @@ import logging
 from django.apps import apps
 from django.core.management.base import BaseCommand
 from django.db import transaction
-from django.template.defaultfilters import pluralize
 from django.utils.translation import ugettext_lazy as _
 
 from common.models import Entity
@@ -44,4 +43,4 @@ class Command(BaseCommand):
                 count = model.objects.all().count()
                 model.objects.all().delete()
             model_name = str(model._meta.verbose_name) if count == 1 else str(model._meta.verbose_name_plural)
-            logger.info(_("{} {} supprimé{}.").format(count, model_name, pluralize(count)))
+            logger.info(_("{} {} supprimé(s).").format(count, model_name))

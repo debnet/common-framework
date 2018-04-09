@@ -16,8 +16,7 @@ def get_packages(package):
     """
     Return root package and all sub-packages.
     """
-    return [dirpath
-            for dirpath, dirnames, filenames in os.walk(package)
+    return [dirpath for dirpath, dirnames, filenames in os.walk(package)
             if os.path.exists(os.path.join(dirpath, '__init__.py'))]
 
 
@@ -50,8 +49,7 @@ setup(
         'Development Status :: 5 - Production/Stable',
         'Environment :: Web Environment',
         'Framework :: Django',
-        'Framework :: Django :: 1.10',
-        'Framework :: Django :: 1.11',
+        'Framework :: Django :: 2.0',
         'Intended Audience :: Developers',
         'License :: OSI Approved :: BSD License',
         'Operating System :: OS Independent',
@@ -59,7 +57,6 @@ setup(
         'Topic :: Software Development :: Libraries :: Python Modules',
         'Programming Language :: Python',
         'Programming Language :: Python :: 3',
-        'Programming Language :: Python :: 3.5',
         'Programming Language :: Python :: 3.6',
         'Topic :: Utilities'
     ],

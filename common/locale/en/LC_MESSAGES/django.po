@@ -1,0 +1,837 @@
+# SOME DESCRIPTIVE TITLE.
+# Copyright (C) YEAR THE PACKAGE'S COPYRIGHT HOLDER
+# This file is distributed under the same license as the PACKAGE package.
+# FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
+#
+#, fuzzy
+msgid ""
+msgstr ""
+"Project-Id-Version: PACKAGE VERSION\n"
+"Report-Msgid-Bugs-To: \n"
+"POT-Creation-Date: 2018-04-09 09:08+0000\n"
+"PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
+"Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
+"Language-Team: LANGUAGE <LL@li.org>\n"
+"Language: \n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2; plural=(n != 1);\n"
+
+#: common/admin.py:67
+msgid "méta"
+msgstr "meta"
+
+#: common/admin.py:111
+msgid "validité"
+msgstr "validity"
+
+#: common/admin.py:116
+msgid "Valides uniquement"
+msgstr "Only valid"
+
+#: common/admin.py:117
+msgid "Non valides uniquement"
+msgstr "Only invalid"
+
+#: common/admin.py:160 common/admin.py:191
+msgid "Dates d'effet"
+msgstr "Effective dates"
+
+#: common/admin.py:232 common/admin.py:268 common/admin.py:356
+msgid "Entité"
+msgstr "Entity"
+
+#: common/admin.py:295
+msgid "{} élément(s) ont été restaurés avec succès !"
+msgstr "{} item(s) have been successfully restored!"
+
+#: common/admin.py:299
+msgid ""
+"{} élément(s) n'ont pas pu être restaurés car leurs relations sont "
+"manquantes !"
+msgstr ""
+"{} item(s) could not be restored because their relationships are missing!"
+
+#: common/admin.py:301
+msgid "L'élément #{} n'a pu être restauré pour la raison suivante : {}"
+msgstr "The item #{} could not be restored because of: {}"
+
+#: common/admin.py:304
+msgid "Annuler les modifications"
+msgstr "Cancel modifications"
+
+#: common/admin.py:314
+msgid "Restaurer les données d'origine"
+msgstr "Restore original data"
+
+#: common/admin.py:365
+msgid "Consulter"
+msgstr "View"
+
+#: common/admin.py:367
+msgid "Champs modifiés"
+msgstr "Modified fields"
+
+#: common/admin.py:373
+msgid "Motif"
+msgstr "Reason"
+
+#: common/admin.py:409
+msgid "Champ"
+msgstr "Field"
+
+#: common/admin.py:418
+msgid "Historique"
+msgstr "History"
+
+#: common/admin.py:438
+msgid "Réseau"
+msgstr "Network"
+
+#: common/admin.py:441
+msgid "Authentification"
+msgstr "Authentication"
+
+#: common/admin.py:444
+msgid "Types"
+msgstr "Types"
+
+#: common/admin.py:460
+msgid "Actions"
+msgstr "Actions"
+
+#: common/api/api_views.py:77
+msgid ""
+"Nom d'utilisateur ou e-mail requis pour la réinitialisation de mot de passe."
+msgstr "Username or e-mail is required for password reinitialization."
+
+#: common/api/api_views.py:80 common/api/api_views.py:110
+msgid "Utilisateur non trouvé."
+msgstr "User not found."
+
+#: common/api/api_views.py:82
+msgid "Plusieurs utilisateurs correspondent à ces critères."
+msgstr "Multiple users meet these criteria."
+
+#: common/api/api_views.py:104
+msgid "Clé secrète invalide."
+msgstr "Invalid secret key."
+
+#: common/api/api_views.py:112
+msgid "Jeton invalide."
+msgstr "Invalid token."
+
+#: common/api/api_views.py:125
+msgid "Entité inconnue."
+msgstr "Unknown entity."
+
+#: common/api/input_serializers.py:22
+msgid "nom d'utilisateur"
+msgstr "username"
+
+#: common/api/input_serializers.py:23
+msgid "e-mail"
+msgstr "e-mail"
+
+#: common/api/input_serializers.py:30
+msgid "clé secrète"
+msgstr "secret key"
+
+#: common/api/input_serializers.py:31 common/models.py:167 common/models.py:805
+#: common/models.py:969
+msgid "identifiant"
+msgstr "id"
+
+#: common/api/input_serializers.py:32 common/models.py:1389
+msgid "token"
+msgstr "token"
+
+#: common/api/input_serializers.py:33
+msgid "mot de passe"
+msgstr "password"
+
+#: common/api/input_serializers.py:40 common/models.py:170
+msgid "clé"
+msgstr "key"
+
+#: common/api/input_serializers.py:41 common/models.py:171
+msgid "valeur"
+msgstr "value"
+
+#: common/api/input_serializers.py:42
+msgid "date péremption"
+msgstr "expiration date"
+
+#: common/apps.py:8
+msgid "Common Framework"
+msgstr "Common Framework"
+
+#: common/auth.py:80
+#, python-brace-format
+msgid "Utilisateur {username} non trouvé dans le répertoire LDAP."
+msgstr "User {username} not found in LDAP."
+
+#: common/auth.py:83
+#, python-brace-format
+msgid "Erreur lors de l'authentification LDAP : {erreur}"
+msgstr "LDAP authentication error: {erreur}"
+
+#: common/excel.py:21
+msgid "Identifiant"
+msgstr "ID"
+
+#: common/excel.py:22 common/excel.py:35 common/excel.py:42
+msgid "Nombre entier"
+msgstr "Integer"
+
+#: common/excel.py:23
+msgid "Données binaires"
+msgstr "Binary data"
+
+#: common/excel.py:24
+msgid "Booléen"
+msgstr "Boolean"
+
+#: common/excel.py:25
+msgid "Chaîne de caractères"
+msgstr "String"
+
+#: common/excel.py:26
+msgid "Nombres entiers séparés par des virgules"
+msgstr "Comma-separated integers"
+
+#: common/excel.py:27
+msgid "Date"
+msgstr "Date"
+
+#: common/excel.py:28
+msgid "Date & heure"
+msgstr "Datetime"
+
+#: common/excel.py:29
+msgid "Nombre décimal"
+msgstr "Decimal"
+
+#: common/excel.py:30
+msgid "E-mail"
+msgstr "E-mail"
+
+#: common/excel.py:31
+msgid "Fichier"
+msgstr "File"
+
+#: common/excel.py:32
+msgid "Chemin de fichier"
+msgstr "File path"
+
+#: common/excel.py:33
+msgid "Nombre flottant"
+msgstr "Float"
+
+#: common/excel.py:34
+msgid "Image"
+msgstr "Picture"
+
+#: common/excel.py:36
+msgid "Adresse IP"
+msgstr "IP address"
+
+#: common/excel.py:37
+msgid "Adresse IP générique"
+msgstr "Generic IP address"
+
+#: common/excel.py:38
+msgid "Booléen à 3 états"
+msgstr "3-state boolean"
+
+#: common/excel.py:39 common/excel.py:40
+msgid "Nombre entier positif"
+msgstr "Positive integer"
+
+#: common/excel.py:41
+msgid "Slug"
+msgstr "Slug"
+
+#: common/excel.py:43
+msgid "Texte"
+msgstr "Text"
+
+#: common/excel.py:44
+msgid "Heure"
+msgstr "Time"
+
+#: common/excel.py:45
+msgid "URL"
+msgstr "URL"
+
+#: common/excel.py:46 common/excel.py:48
+msgid "Référence"
+msgstr "Reference"
+
+#: common/excel.py:47
+msgid "Références multiples"
+msgstr "Multiple references"
+
+#: common/excel.py:53 common/models.py:295
+msgid "métadonnées"
+msgstr "metadata"
+
+#: common/excel.py:117
+#, python-brace-format
+msgid ""
+"La feuille correspondant au modèle '{model_name}' n'a pu être trouvée dans "
+"le fichier."
+msgstr "The sheet for model '{model_name}' was not found in file."
+
+#: common/excel.py:230
+msgid "Informations"
+msgstr "Informations"
+
+#: common/excel.py:231
+msgid "modèle"
+msgstr "model"
+
+#: common/excel.py:231
+msgid "champ"
+msgstr "field"
+
+#: common/excel.py:231
+msgid "type"
+msgstr "type"
+
+#: common/excel.py:231
+msgid "valeurs possibles"
+msgstr "possible values"
+
+#: common/excel.py:231
+msgid "description"
+msgstr "description"
+
+#: common/excel.py:318 common/excel.py:323
+msgid ""
+"Impossible de récupérer la valeur de clé étrangère correspondant à [{}] pour "
+"le champ [{}] de [{}]"
+msgstr "Unable to get the foreign key value from [{}] for field [{}] of [{}]"
+
+#: common/excel.py:347
+msgid "Impossible d'ajouter la métadata [{},{}] pour l'instance '[{}]'"
+msgstr "Unable to add metadata [{},{}] for instance '[{}]'"
+
+#: common/excel.py:356
+msgid ""
+"Impossible de récupérer les valeurs de relation correspondantes à [{}] pour "
+"le champ [{}] de [{}]"
+msgstr "Unable to get relationship's values from [{}] for field [{}] of [{}]"
+
+#: common/fields.py:128
+msgid "A JSON object"
+msgstr "A JSON object"
+
+#: common/fields.py:130
+msgid "Value must be a valid JSON"
+msgstr "Value must be a valid JSON"
+
+#: common/fields.py:345
+msgid "A string must be provided as argument"
+msgstr "A string must be provided as argument"
+
+#: common/fields.py:350 common/fields.py:370 common/fields.py:419
+#: common/fields.py:464
+#, python-brace-format
+msgid "The lookup '{lookup}' is only supported in PostgreSQL"
+msgstr "The lookup '{lookup}' is only supported in PostgreSQL"
+
+#: common/fields.py:364
+msgid "A list of strings must be provided as argument"
+msgstr "A list of strings must be provided as argument"
+
+#: common/fields.py:414
+msgid "A dictionary must be provided as argument"
+msgstr "A dictionary must be provided as argument"
+
+#: common/fields.py:456
+msgid "A boolean must be provided as argument"
+msgstr "A boolean must be provided as argument"
+
+#: common/fields.py:458
+msgid "Lookup argument must be a boolean"
+msgstr "Lookup argument must be a boolean"
+
+#: common/forms.py:264
+#, python-format
+msgid "'%(value)s' value must be valid JSON."
+msgstr "'%(value)s' value must be valid JSON."
+
+#: common/logger.py:57
+msgid "Le message n'est pas correctement formaté."
+msgstr "Le message n'est pas correctement formaté."
+
+#: common/management/commands/abort_sql.py:18
+#: common/management/commands/clear.py:21
+msgid "Nom de l'application"
+msgstr "Application name"
+
+#: common/management/commands/abort_sql.py:19
+msgid "Tue la connexion au lieu de l'annuler"
+msgstr "Kill the connection instead of canceling it"
+
+#: common/management/commands/abort_sql.py:20
+msgid "Nom de la base de donnée ciblée"
+msgstr "Targeted database name"
+
+#: common/management/commands/abort_sql.py:21
+msgid "Temps d'exécution maximal"
+msgstr "Maximum execution time"
+
+#: common/management/commands/abort_sql.py:25
+msgid "{} connexion(s) à la base de données interrompues(s)."
+msgstr "{} interrupted database connection(s)."
+
+#: common/management/commands/clear.py:46
+msgid "{} {} supprimé(s)."
+msgstr "{} {} deleted"
+
+#: common/middleware.py:145
+msgid ""
+"Le nombre maximal d'utilisations de ce service pour cet utilisateur a été "
+"atteint."
+msgstr ""
+"The maximum number of uses of this service for this user has been reached."
+
+#: common/models.py:166 common/models.py:804 common/models.py:968
+msgid "type d'entité"
+msgstr "entity type"
+
+#: common/models.py:172 common/models.py:1083
+msgid "date de création"
+msgstr "creation date"
+
+#: common/models.py:173 common/models.py:1084
+msgid "date de modification"
+msgstr "modification date"
+
+#: common/models.py:174
+msgid "date de suppression"
+msgstr "deletion date"
+
+#: common/models.py:178
+#, python-brace-format
+msgid "{key}: {value}"
+msgstr "{key}: {value}"
+
+#: common/models.py:198
+msgid "Unable to get metadata from an unsaved model instance."
+msgstr "Unable to get metadata from an unsaved model instance."
+
+#: common/models.py:221 common/models.py:250
+msgid "Unable to set metadata for an unsaved model instance."
+msgstr "Unable to set metadata for an unsaved model instance."
+
+#: common/models.py:280
+msgid "Unable to delete metadata from an unsaved model instance."
+msgstr "Unable to delete metadata from an unsaved model instance."
+
+#: common/models.py:294
+msgid "métadonnée"
+msgstr "metadata"
+
+#: common/models.py:385
+msgid "Unable to update an instance which have no unique fields."
+msgstr "Unable to update an instance which have no unique fields."
+
+#: common/models.py:739 common/models.py:1926
+msgid "date"
+msgstr "date"
+
+#: common/models.py:741
+msgid "dernière restauration"
+msgstr "last restore"
+
+#: common/models.py:742
+msgid "restauré"
+msgstr "restored"
+
+#: common/models.py:743 common/models.py:1827 common/models.py:1878
+msgid "données"
+msgstr "data"
+
+#: common/models.py:744
+msgid "taille données"
+msgstr "data size"
+
+#: common/models.py:783
+msgid "Création"
+msgstr "Creation"
+
+#: common/models.py:784
+msgid "Modification"
+msgstr "Modification"
+
+#: common/models.py:785 common/models.py:880
+msgid "Suppression"
+msgstr "Deletion"
+
+#: common/models.py:786
+msgid "Restauration"
+msgstr "Restore"
+
+#: common/models.py:787
+msgid "Many-to-many"
+msgstr "Many-to-many"
+
+#: common/models.py:796 common/models.py:1825 common/models.py:1922
+msgid "utilisateur"
+msgstr "user"
+
+#: common/models.py:797
+msgid "statut"
+msgstr "status"
+
+#: common/models.py:806 common/models.py:970 common/models.py:1082
+msgid "UUID"
+msgstr "UUID"
+
+#: common/models.py:807
+msgid "entité"
+msgstr "entity"
+
+#: common/models.py:808
+msgid "motif"
+msgstr "reason"
+
+#: common/models.py:809
+msgid "admin"
+msgstr "admin"
+
+#: common/models.py:813
+#, python-brace-format
+msgid "[{status}] {content_type} #{object_id}"
+msgstr "[{status}] {content_type} #{object_id}"
+
+#: common/models.py:864 common/models.py:887
+msgid "historique"
+msgstr "history"
+
+#: common/models.py:865
+msgid "historiques"
+msgstr "histories"
+
+#: common/models.py:878
+msgid "Purge"
+msgstr "Purge"
+
+#: common/models.py:879
+msgid "Ajout"
+msgstr "Add"
+
+#: common/models.py:888
+msgid "nom du champ"
+msgstr "field name"
+
+#: common/models.py:889
+msgid "ancienne valeur"
+msgstr "old value"
+
+#: common/models.py:890
+msgid "nouvelle valeur"
+msgstr "new value"
+
+#: common/models.py:897
+msgid "statut M2M"
+msgstr "M2M status"
+
+#: common/models.py:900
+#, python-brace-format
+msgid "[{entity}] ({field}) {old} ~ {new}"
+msgstr "[{entity}] ({field}) {old} ~ {new}"
+
+#: common/models.py:940
+msgid "champ modifié"
+msgstr "modified field"
+
+#: common/models.py:941
+msgid "champs modifiés"
+msgstr "modified fields"
+
+#: common/models.py:975
+#, python-brace-format
+msgid "({object_uid}) {content_type} #{object_id}"
+msgstr "({object_uid}) {content_type} #{object_id}"
+
+#: common/models.py:979
+msgid "globale"
+msgstr "global"
+
+#: common/models.py:980
+msgid "globales"
+msgstr "globals"
+
+#: common/models.py:1007
+msgid "Cannot use 'limit' or 'offset' with delete."
+msgstr "Cannot use 'limit' or 'offset' with delete."
+
+#: common/models.py:1009
+msgid "Cannot call delete() after .values() or .values_list()"
+msgstr "Cannot call delete() after .values() or .values_list()"
+
+#: common/models.py:1133
+msgid "{} can't be deleted because it doesn't exists in database."
+msgstr "{} can't be deleted because it doesn't exists in database."
+
+#: common/models.py:1179 common/models.py:1197
+msgid "Unexpected model '{}' used instead of expected model '{}'."
+msgstr "Unexpected model '{}' used instead of expected model '{}'."
+
+#: common/models.py:1194
+msgid "Multiple model types are found in values."
+msgstr "Multiple model types are found in values."
+
+#: common/models.py:1258
+msgid "date d'effet"
+msgstr "effective date"
+
+#: common/models.py:1259
+msgid "date de fin"
+msgstr "end date"
+
+#: common/models.py:1317
+msgid "La date de fin doit être ultérieure à la date d'effet."
+msgstr "End date must be subsequent to effective date."
+
+#: common/models.py:1319
+msgid "Valide"
+msgstr "Valid"
+
+#: common/models.py:1336
+msgid "JSON"
+msgstr "JSON"
+
+#: common/models.py:1337
+msgid "XML"
+msgstr "XML"
+
+#: common/models.py:1338
+msgid "YAML"
+msgstr "YAML"
+
+#: common/models.py:1345
+msgid "POST"
+msgstr "POST"
+
+#: common/models.py:1346
+msgid "PUT"
+msgstr "PUT"
+
+#: common/models.py:1347
+msgid "PATCH"
+msgstr "PATCH"
+
+#: common/models.py:1356
+msgid "Basic"
+msgstr "Basic"
+
+#: common/models.py:1357
+msgid "Digest"
+msgstr "Digest"
+
+#: common/models.py:1358
+msgid "Token"
+msgstr "Token"
+
+#: common/models.py:1359
+msgid "Bearer"
+msgstr "Bearer"
+
+#: common/models.py:1360
+msgid "JWT"
+msgstr "JWT"
+
+#: common/models.py:1383 common/models.py:1918
+msgid "nom"
+msgstr "name"
+
+#: common/models.py:1384
+msgid "url"
+msgstr "url"
+
+#: common/models.py:1385
+msgid "method"
+msgstr "méthode"
+
+#: common/models.py:1386
+msgid "format"
+msgstr "format"
+
+#: common/models.py:1388
+msgid "authentification"
+msgstr "authentication"
+
+#: common/models.py:1390
+msgid "délai d'attente"
+msgstr "waiting delay"
+
+#: common/models.py:1391
+msgid "tentatives"
+msgstr "retries"
+
+#: common/models.py:1392
+msgid "délai entre tentatives"
+msgstr "retry delay"
+
+#: common/models.py:1463
+msgid "types"
+msgstr "types"
+
+#: common/models.py:1464
+msgid "création"
+msgstr "creation"
+
+#: common/models.py:1465
+msgid "modification"
+msgstr "modification"
+
+#: common/models.py:1466
+msgid "suppression"
+msgstr "deletion"
+
+#: common/models.py:1467
+msgid "restauration"
+msgstr "restore"
+
+#: common/models.py:1468
+msgid "many-to-many"
+msgstr "many-to-many"
+
+#: common/models.py:1471
+msgid "webhook"
+msgstr "webhook"
+
+#: common/models.py:1472
+msgid "webhooks"
+msgstr "webhooks"
+
+#: common/models.py:1865
+msgid "métadonnées d'utilisateur"
+msgstr "user metadata"
+
+#: common/models.py:1866
+msgid "métadonnées d'utilisateurs"
+msgstr "user metadata"
+
+#: common/models.py:1876
+msgid "groupe"
+msgstr "group"
+
+#: common/models.py:1910
+msgid "métadonnées de groupe"
+msgstr "group metadata"
+
+#: common/models.py:1911
+msgid "métadonnées de groupes"
+msgstr "group metadata"
+
+#: common/models.py:1923
+msgid "nombre"
+msgstr "number"
+
+#: common/models.py:1924
+msgid "limite"
+msgstr "limit"
+
+#: common/models.py:1925
+msgid "adresse"
+msgstr "address"
+
+#: common/models.py:1929
+msgid "{} ({} : {})"
+msgstr "{} ({} : {})"
+
+#: common/models.py:1932
+msgid "utilisation de service"
+msgstr "service usage"
+
+#: common/models.py:1933
+msgid "utilisation des services"
+msgstr "service usages"
+
+#: common/operations.py:23 common/operations.py:43 common/operations.py:66
+#: common/operations.py:124
+msgid "L'opération ne peut s'exécuter que sur PostgreSQL."
+msgstr "This operation must be executed only on PostgreSQL."
+
+#: common/operations.py:30 common/operations.py:73
+msgid "L'extension 'unaccent' n'est pas installée sur la base de données."
+msgstr "'unaccent' extension is not installed on database."
+
+#: common/operations.py:94
+msgid ""
+"L'extension 'pg_trgm' n'est pas installée sur la base de données, l'index de "
+"type GIN ne sera donc pas créé et seul l'index de type BTREE sera créé."
+msgstr ""
+"'pg_trgm' is not installed on database, the GIN index cannot be created and "
+"only the BTREE index will be created."
+
+#: common/templates/common/cache.html:13
+msgid "Voir"
+msgstr "View"
+
+#: common/templates/common/cache.html:21
+msgid "Supprimer"
+msgstr "Delete"
+
+#: common/utils.py:152
+msgid "[{}] démarré..."
+msgstr "[{}] started..."
+
+#: common/utils.py:156
+msgid "[{}] en échec : {}"
+msgstr "[{}] failed: {}"
+
+#: common/utils.py:159
+msgid "[{}] terminé en {} !"
+msgstr "[{}] succeed in {}!"
+
+#: common/utils.py:199
+msgid "Erreur lors de la sauvegarde du fichier : {}"
+msgstr "Error while saving file: {}"
+
+#: common/utils.py:812
+msgid "vrai"
+msgstr "true"
+
+#: common/utils.py:812
+msgid "oui"
+msgstr "yes"
+
+#: common/utils.py:812
+msgid "o"
+msgstr "y"
+
+#: common/utils.py:812
+msgid "v"
+msgstr "t"
+
+#: common/utils.py:813
+msgid "faux"
+msgstr "false"
+
+#: common/utils.py:813
+msgid "non"
+msgstr "no"
+
+#: common/utils.py:813
+msgid "n"
+msgstr "n"
+
+#: common/utils.py:813
+msgid "f"
+msgstr "f"
+
+#: common/utils.py:1179
+msgid "Erreur lors du désarchivage : {}"
+msgstr "Error while unpacking: {}"
+
+#: common/utils.py:1263
+msgid "Cette fonction ne peut être utilisée que sur PostgreSQL."
+msgstr "This function only works on PostgreSQL."

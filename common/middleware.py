@@ -132,7 +132,7 @@ class ServiceUsageMiddleware:
                 request.resolver_match = getattr(request, 'resolver_match', None) or resolve(request.path)
             except Resolver404:
                 return response
-            if request.resolver_match and hasattr(request, 'user') and request.user.is_authenticated() and \
+            if request.resolver_match and hasattr(request, 'user') and request.user.is_authenticated and \
                     response.status_code in range(200, 300):
                 usage, created = ServiceUsage.objects.get_or_create(
                     name=getattr(request.resolver_match, 'view_name', request.resolver_match),
