@@ -450,13 +450,11 @@ def api_view_with_serializer(http_method_names=None, input_serializer=None, seri
     Décorateur permettant de créer une APIView à partir d'une fonction suivant la structure d'un serializer
     Elle remplace le décorateur @api_view fourni par défaut dans Django REST Framework
     :param http_method_names: Méthodes HTTP supportées
-    :param input_serializer: Serializer des données d'entrée (et de sortie si le serializer associé n'est pas fourni)
-    :param serializer: Serializer des données de sortie uniquement
+    :param input_serializer: Serializer des données d'entrée
+    :param serializer: Serializer des données de sortie
     :param validation: Exécuter la validation des données d'entrée ? (request contiendra alors "validated_data")
     :return: APIView
     """
-    serializer = serializer or input_serializer
-
     def decorator(func):
         @wraps(func)
         def inner_func(request, *args, **kwargs):
@@ -503,12 +501,14 @@ def api_view_with_serializer(http_method_names=None, input_serializer=None, seri
     return decorator
 
 
-def auto_view(http_method_names, serializer, many=False, custom_func=None,
-              query_func=None, func_args=None, func_kwargs=None):
+def auto_view(http_method_names, input_serializer=None, serializer=None, validation=True, many=False,
+              custom_func=None, query_func=None, func_args=None, func_kwargs=None):
     """
     Décorateur permettant de générer le corps d'une APIView à partir d'un QuerySet
     :param http_method_names: Méthodes HTTP supportées
-    :param serializer: Serializer
+    :param input_serializer: Serializer des données d'entrée
+    :param serializer: Serializer des données de sortie
+    :param validation: Exécuter la validation des données d'entrée ? (request contiendra alors "validated_data")
     :param many: Affichage de plusieurs éléments ou élément individuel (404 si élément non trouvé) ?
     :param custom_func: Fonction facultive de transformation du QuerySet
         fonction(request: Request, queryset: QuerySet) -> Union[QuerySet, Tuple[QuerySet, dict]]
@@ -531,15 +531,19 @@ def auto_view(http_method_names, serializer, many=False, custom_func=None,
                 queryset, context = queryset
             if custom_func:
                 queryset = custom_func(request, queryset)
-            if many:
+            queryset = query_func(queryset, *func_args, **func_kwargs)
+            if not queryset:
+                raise NotFound()
+            if many and serializer:
                 return api_paginate(
                     request, queryset, serializer, context=context,
                     query_func=query_func, func_args=func_args, func_kwargs=func_kwargs)
-            item = query_func(queryset, *func_args, **func_kwargs)
-            if not item:
-                raise NotFound()
-            return Response(serializer(item, context=dict(request=request, **context)).data)
-        return api_view_with_serializer(http_method_names, input_serializer=serializer)(wrapped)
+            if not serializer:
+                return Response(queryset)
+            return Response(serializer(queryset, context=dict(request=request, **context)).data)
+
+        return api_view_with_serializer(
+            http_method_names, input_serializer=input_serializer, serializer=serializer, validation=validation)(wrapped)
     return wrapper
 
 
