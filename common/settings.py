@@ -28,7 +28,9 @@ class Settings:
         LDAP_FILTER='',
         LDAP_ATTRIBUTES=[],
         LDAP_ADMIN_USERS=[],
+        LDAP_STAFF_USERS=[],
         LDAP_ADMIN_GROUPS=[],
+        LDAP_STAFF_GROUPS=[],
         LDAP_GROUP_PREFIX=''
     )
 

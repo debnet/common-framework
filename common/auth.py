@@ -60,9 +60,12 @@ class LdapAuthenticationBackend(ModelBackend):
 
                     # Vérification du statut de l'utilisateur
                     set_value(user, 'is_superuser', False)
+                    set_value(user, 'is_staff', False)
                     group_names = [group.split(',')[0].split('=')[1] for group in attributes['memberOf']]
                     if username in settings.LDAP_ADMIN_USERS or set(group_names) & set(settings.LDAP_ADMIN_GROUPS):
                         set_value(user, 'is_superuser', True)
+                        set_value(user, 'is_staff', True)
+                    if username in settings.LDAP_STAFF_USERS or set(group_names) & set(settings.LDAP_STAFF_GROUPS):
                         set_value(user, 'is_staff', True)
                     user.save()
 
