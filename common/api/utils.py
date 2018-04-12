@@ -531,13 +531,13 @@ def auto_view(http_method_names, input_serializer=None, serializer=None, validat
                 queryset, context = queryset
             if custom_func:
                 queryset = custom_func(request, queryset)
-            queryset = query_func(queryset, *func_args, **func_kwargs)
-            if not queryset:
-                raise NotFound()
             if many and serializer:
                 return api_paginate(
                     request, queryset, serializer, context=context,
                     query_func=query_func, func_args=func_args, func_kwargs=func_kwargs)
+            queryset = query_func(queryset, *func_args, **func_kwargs)
+            if not isinstance(queryset, QuerySet) and not queryset:
+                raise NotFound()
             if not serializer:
                 return Response(queryset)
             return Response(serializer(queryset, context=dict(request=request, **context)).data)
