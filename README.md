@@ -24,6 +24,7 @@ class Personne(Entity):
 Les modèles entités possèdent par défaut les champs suivants :
 * ``creation_date`` : date de création de l'entité
 * ``modification_date`` : date de dernière modification de l'entité
+* ``current_user`` : dernier utilisateur à l'origine de la création/modification
 * ``uuid`` : identifiant unique de l'entité
 
 L'identifiant unique permet de retrouver n'importe quelle entité depuis la base de données car chacune est

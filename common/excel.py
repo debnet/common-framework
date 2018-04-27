@@ -47,7 +47,7 @@ TYPES = {
     'ManyToManyField': _('Références multiples'),
     'OneToOneField': _('Référence'),
 }
-IGNORE_FIELDS = ('id', 'uuid', 'creation_date', 'modification_date', 'history', 'globals')
+IGNORE_FIELDS = ('id', 'uuid', 'creation_date', 'modification_date', 'current_user', 'history', 'globals')
 CELL_OFFSET = 3
 
 METADATA_NAME = _('métadonnées')

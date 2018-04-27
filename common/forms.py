@@ -7,7 +7,7 @@ from django.forms.models import (
 from django.utils.translation import ugettext_lazy as _
 
 from common.models import Entity, PerishableEntity
-from common.utils import json_decode, json_encode
+from common.utils import get_current_user, json_decode, json_encode
 
 
 class CommonForm(object):
@@ -100,8 +100,9 @@ class CommonModelForm(CommonForm, ModelForm):
         instance = super().save(commit=commit)
         for inline in self.inlines:
             inline.instance = instance
-            inline.save(commit=commit, _ignore_log=self._ignore_log, _current_user=self._current_user,
-                        _reason=self._reason, _force_default=self._force_default)
+            inline.save(
+                commit=commit, _ignore_log=self._ignore_log, _current_user=self._current_user,
+                _reason=self._reason, _force_default=self._force_default)
         return instance
 
     def is_valid(self):
@@ -133,7 +134,7 @@ class CommonBaseModelFormSet(CommonBaseFormSet):
         :param _force_default: Force la sauvegarde en place ?
         """
         self._ignore_log = _ignore_log or self._ignore_log
-        self._current_user = _current_user or self._current_user
+        self._current_user = _current_user or self._current_user or get_current_user()
         self._reason = _reason or self._reason
         self._force_default = _force_default or self._force_default
         for form in self.forms:

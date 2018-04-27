@@ -42,9 +42,6 @@ logger = logging.getLogger(__name__)
 # Celery
 app = get_current_app()
 
-ENTITY_FIELDS = ('uuid', 'creation_date', 'modification_date', )
-PERISHABLE_FIELDS = ENTITY_FIELDS + ('start_date', 'end_date', )
-
 
 def to_boolean(label_field, sort_order=None):
     """
@@ -99,7 +96,7 @@ class Serialized(object):
     def deserialize(self):
         data = serializers.deserialize(self.format, self.data)
         objects = [item.object for item in data]
-        return objects[0] if self.single else objects
+        return next(iter(objects), None) if self.single else objects
 
     def __str__(self):
         return self.data
@@ -1079,9 +1076,18 @@ class Entity(CommonModel):
     """
     Entité de base
     """
-    uuid = models.UUIDField(default=uuid.uuid4, editable=False, unique=True, verbose_name=_("UUID"))
-    creation_date = models.DateTimeField(auto_now_add=True, verbose_name=_("date de création"))
-    modification_date = models.DateTimeField(auto_now=True, verbose_name=_("date de modification"))
+    uuid = models.UUIDField(
+        default=uuid.uuid4, editable=False, unique=True,
+        verbose_name=_("UUID"))
+    creation_date = models.DateTimeField(
+        auto_now_add=True,
+        verbose_name=_("date de création"))
+    modification_date = models.DateTimeField(
+        auto_now=True,
+        verbose_name=_("date de modification"))
+    current_user = models.ForeignKey(
+        settings.AUTH_USER_MODEL, blank=True, null=True, editable=False, on_delete=models.SET_NULL, related_name='+',
+        verbose_name=_("utilisateur"))
     globals = GenericRelation(Global)
     objects = EntityQuerySet.as_manager()
 
@@ -1105,11 +1111,12 @@ class Entity(CommonModel):
         :param _current_user: Utilisateur à l'origine de la modification
         :param _reason: Raison de la modification
         :param _force_default: Force le comportement par défaut ?
+        :param force_insert: Force l'insertion même en cas de présence d'une PK ?
         """
         if _force_default:
             return super().save(*args, **kwargs)
         self._ignore_log = _ignore_log or self._ignore_log
-        self._current_user = _current_user or self._current_user or get_current_user()
+        self._current_user = self.current_user = _current_user or self._current_user or get_current_user()
         self._reason = _reason or self._reason
         self._force_default = _force_default or self._force_default
         if force_insert:
@@ -1132,7 +1139,7 @@ class Entity(CommonModel):
         assert self.pk is not None, _(
             "{} can't be deleted because it doesn't exists in database.").format(self._meta.object_name)
         self._ignore_log = _ignore_log or self._ignore_log
-        self._current_user = _current_user or self._current_user or get_current_user()
+        self._current_user = self.current_user = _current_user or self._current_user or get_current_user()
         self._reason = _reason or self._reason
         self._force_default = _force_default or self._force_default
 
@@ -1206,7 +1213,7 @@ class Entity(CommonModel):
         :return: dict
         """
         data = super().__json__()
-        data.update(_current_user=get_data_from_object(self._current_user),
+        data.update(_current_user=get_data_from_object(self._current_user or self.current_user),
                     _reason=self._reason, _from_admin=self._from_admin, _restore=self._restore,
                     _ignore_log=self._ignore_log, _force_default=self._force_default)
         return data
@@ -1272,7 +1279,7 @@ class PerishableEntity(Entity):
         """
         current_date = now()
         self._ignore_log = _ignore_log or self._ignore_log
-        self._current_user = _current_user or self._current_user or get_current_user()
+        self._current_user = self.current_user = _current_user or self._current_user or get_current_user()
         self._reason = _reason or self._reason
         self._force_default = force_insert or force_update or _force_default or self._force_default
         self.start_date = self.start_date or current_date
@@ -1303,7 +1310,7 @@ class PerishableEntity(Entity):
         :param _force_default: Force le comportement par défaut ?
         """
         self._ignore_log = _ignore_log or self._ignore_log
-        self._current_user = _current_user or self._current_user or get_current_user()
+        self._current_user = self.current_user = _current_user or self._current_user or get_current_user()
         self._reason = _reason or self._reason
         self._force_default = _force_default or self._force_default
         if self.pk and not self._force_default:

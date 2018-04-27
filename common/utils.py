@@ -247,13 +247,17 @@ def download_file(function):
         file = function(*args, **kwargs)
         if isinstance(file, DownloadFile):
             from wsgiref.util import FileWrapper
-            file_wrapper = FileWrapper(file.file)
-            filename, extension = os.path.splitext(file.name)
+            file, name, delete = file
+            if isinstance(file, str):
+                from django.core.files import File
+                file = File(open(file, 'rb'))
+            file_wrapper = FileWrapper(file)
+            filename, extension = os.path.splitext(name)
             response = HttpResponse(file_wrapper, content_type=mimetypes.types_map.get(extension))
-            response["Content-Disposition"] = "attachment; filename={0}".format(file.name)
-            file.file.close()
-            if file.delete:
-                os.unlink(file.file.name)
+            response["Content-Disposition"] = "attachment; filename={0}".format(name)
+            file.close()
+            if delete:
+                os.unlink(file.name)
             return response
         else:
             return file
