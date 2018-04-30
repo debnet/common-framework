@@ -3,8 +3,10 @@ import logging
 import re
 from itertools import chain
 
+from django.db.models.fields.files import FieldFile
+
 from common.models import MetaData
-from common.utils import decimal, parsedate, str_to_bool
+from common.utils import decimal, parsedate, str_to_bool, json_encode, patch_settings
 from django.core.exceptions import ValidationError
 from django.db import transaction
 from django.utils.translation import ugettext_lazy as _
@@ -27,6 +29,7 @@ TYPES = {
     'DateField': _('Date'),
     'DateTimeField': _('Date & heure'),
     'DecimalField': _('Nombre décimal'),
+    'DurationField': _("Durée"),
     'EmailField': _('E-mail'),
     'FileField': _('Fichier'),
     'FilePathField': _('Chemin de fichier'),
@@ -47,7 +50,7 @@ TYPES = {
     'ManyToManyField': _('Références multiples'),
     'OneToOneField': _('Référence'),
 }
-IGNORE_FIELDS = ('id', 'uuid', 'creation_date', 'modification_date', 'current_user', 'history', 'globals')
+IGNORE_FIELDS = ('uuid', 'creation_date', 'modification_date', 'current_user', 'history', 'globals')
 CELL_OFFSET = 3
 
 METADATA_NAME = _('métadonnées')
@@ -110,6 +113,7 @@ class ImportExport(object):
 
         done = []
         for model in self.models:
+            code_field = getattr(model, '_code_field', 'id')
             # Retrait des espaces et des caractères superflus
             model_name = re.sub(r'[^\w]+', ' ', str(model._meta.verbose_name).lower())
             # Récupération de la feuille correspondante au modèle
@@ -120,11 +124,11 @@ class ImportExport(object):
             worksheet = worksheets.get(model_name)
             # Récupération des champs du modèle
             fields = {}
-            for field in chain(model._meta.fields, model._meta.many_to_many, model._meta.private_fields):
-                if field.auto_created or field in IGNORE_FIELDS:
+            for field in chain(model._meta.fields, model._meta.many_to_many):
+                if field.name != code_field and (field.auto_created or field in IGNORE_FIELDS):
                     continue
                 field.m2m = field in model._meta.many_to_many
-                fields[field.verbose_name.lower()] = field
+                fields[str(field.verbose_name).lower()] = field
             # Parcours des lignes de la feuille
             self.delayed_models = []
             headers = {}
@@ -183,8 +187,8 @@ class ImportExport(object):
                         value = str_to_bool(value)
                     has_data = True
                     # Récupération des données existantes
-                    if field.name == 'code' and field.unique:
-                        existing = model.objects.filter(code=value)
+                    if field.name == code_field and field.unique:
+                        existing = model.objects.filter(**{code_field: value})
                         if existing.count() == 1:
                             instance = existing.first()
                     # Modification des propriétés du modèle
@@ -197,7 +201,7 @@ class ImportExport(object):
                 if not has_data:
                     continue
                 # Mise en cache de l'instance  courante
-                code = getattr(instance, 'code', id(instance))
+                code = getattr(instance, code_field, id(instance))
                 if model not in cache:
                     cache[model] = {}
                 cache[model][code] = instance
@@ -301,10 +305,11 @@ class ImportExport(object):
         :param m2m: Listes de relations de type many-to-many
         :return: Instance
         """
+        code_field = getattr(instance, '_code_field', 'id')
         # Enregistrement des clés étrangères
         try:
             for field_name, (related, value) in fks.items():
-                fk = cache.get(related, {}).get(value, related.objects.get(code=value))
+                fk = cache.get(related, {}).get(value, related.objects.get(**{code_field: value}))
                 setattr(instance, field_name, fk)
         except:
             if self.delayed_models:
@@ -326,10 +331,11 @@ class ImportExport(object):
                 raise
         # Tests de validation et enregistrement de l'instance
         try:
-            if not getattr(instance, 'code', None):
+            if not getattr(instance, code_field, None):
                 instance.validate_unique()
             instance.clean()
-            instance.save(_ignore_log=True, _force_default=True)
+            with patch_settings(IGNORE_LOG=True):
+                instance.save()
         except ValidationError as errors:
             for field, errors in errors.message_dict.items():
                 for error in errors:
@@ -350,12 +356,12 @@ class ImportExport(object):
         # Enregistrement des many-to-many sur l'instance (possible qu'après l'enregistrement en base)
         try:
             for field_name, (related, values) in m2m.items():
-                m2ms = [cache.get(related, {}).get(value, related.objects.get(code=value)) for value in values]
+                m2ms = [cache.get(related, {}).get(value, related.objects.get(**{code_field: value})) for value in values]
                 getattr(instance, field_name).set(m2ms)
         except:
             logger.error(_("Impossible de récupérer les valeurs de relation "
                            "correspondantes à [{}] pour le champ [{}] de [{}]").format(
-                ', '.join(values), field_name, instance._meta.verbose_name))
+                ', '.join(str(v) for v in values), field_name, instance._meta.verbose_name))
             raise
         self.log.info('{} : {}'.format(instance._meta.verbose_name.capitalize(), instance))
         return instance
@@ -368,12 +374,13 @@ class ImportExport(object):
         :return: Rien
         """
         meta = model._meta
+        code_field = getattr(model, '_code_field', 'id')
         worksheet = workbook.create_sheet(title=re.sub(r'[^\w]+', ' ', str(meta.verbose_name).capitalize()))
         widths = {}
         # Titres
         fields = [(field.name, str(field.verbose_name),)
-                  for field in chain(meta.fields, meta.many_to_many, meta.private_fields)
-                  if not field.auto_created and field.name not in IGNORE_FIELDS]
+                  for field in chain(meta.fields, meta.many_to_many)
+                  if field.name == code_field or not (field.auto_created or field.name in IGNORE_FIELDS)]
         for column, (field_code, field_name) in enumerate(fields):
             cell = worksheet.cell(row=1, column=column + 1)
             cell.value = field_name
@@ -381,9 +388,7 @@ class ImportExport(object):
             column_letter = get_column_letter(column + 1)
             widths[column_letter] = len(str(cell.value)) + CELL_OFFSET
         # Récupération des données
-        queryset = model.objects.select_related().all()
-        if hasattr(model, 'code'):
-            queryset = queryset.order_by('code')
+        queryset = model.objects.select_related().order_by(code_field)
         row = 2
         for element in queryset:
             for column, (field_code, field_name) in enumerate(fields):
@@ -392,8 +397,9 @@ class ImportExport(object):
                     continue
                 field = meta.get_field(field_code)
                 if field.many_to_many:
-                    value = ', '.join(value.values_list('code', flat=True))
-                elif field.rel is not None and field.rel.model is MetaData:
+                    m2m_code_field = getattr(field.related_model, '_code_field', 'id')
+                    value = ', '.join(str(v) for v in value.values_list(m2m_code_field, flat=True))
+                elif field.related_model is not None and field.related_model is MetaData:
                     if len(element.get_metadata()) > 0:
                         value = 'meta_{}_{}'.format(element._meta.model_name, row)
                         self.metadata[value] = []
@@ -405,13 +411,20 @@ class ImportExport(object):
                     if not value:
                         value = ''
                     else:
-                        value = value.code if hasattr(value, 'code') else value.pk
+                        value = getattr(value, code_field, value.id)
                 elif field.choices:
                     value = getattr(element, 'get_{}_display'.format(field_code))()
                 elif field.get_internal_type() in ['DateField', 'DateTimeField']:
                     value = parsedate(value).isoformat()
+                elif isinstance(value, FieldFile):
+                    value = value.name
+                elif isinstance(value, dict):
+                    value = json_encode(value)
                 cell = worksheet.cell(row=row, column=column + 1)
-                cell.value = value
+                try:
+                    cell.value = value
+                except:
+                    cell.value = str(value)
                 column_letter = get_column_letter(column + 1)
                 widths[column_letter] = max(widths[column_letter], len(str(value)) + CELL_OFFSET)
             row += 1
