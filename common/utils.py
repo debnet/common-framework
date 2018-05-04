@@ -232,7 +232,9 @@ def temporary_upload(folder=None):
 
 
 # Objet permettant de définir un fichier à télécharger
-# file : fichier, name : nom du fichier à télécharge, delete : supprimer le fichier après le téléchargement
+# file : fichier ou chemin du fichier,
+# name : nom du fichier à télécharger,
+# delete : supprimer le fichier après le téléchargement,
 DownloadFile = collections.namedtuple('DownloadFile', ['file', 'name', 'delete'])
 
 
@@ -255,6 +257,9 @@ def download_file(function):
             filename, extension = os.path.splitext(name)
             response = HttpResponse(file_wrapper, content_type=mimetypes.types_map.get(extension))
             response["Content-Disposition"] = "attachment; filename={0}".format(name)
+            mimetype, charset = mimetypes.guess_type(name)
+            if mimetype:
+                response["Content-Type"] = mimetype
             file.close()
             if delete:
                 os.unlink(file.name)
