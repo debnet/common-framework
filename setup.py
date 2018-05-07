@@ -35,9 +35,9 @@ def get_package_data(package):
 
 setup(
     name='common-framework',
-    zip_safe=False,
     version=get_version('common'),
     description='All-in-one framework for Django and Django REST Framework',
+    long_description=open('README.rst').read(),
     author='Marc Debureaux',
     author_email='marc@debureaux.fr',
     url='https://github.com/debnet/common-framework',
@@ -45,6 +45,8 @@ setup(
     packages=get_packages('common'),
     package_data=get_package_data('common'),
     test_suite='common.runtests.run_tests',
+    py_modules=['common'],
+    zip_safe=False,
     classifiers=[
         'Development Status :: 5 - Production/Stable',
         'Environment :: Web Environment',
