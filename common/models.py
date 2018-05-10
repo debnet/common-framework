@@ -391,7 +391,7 @@ class CommonModel(models.Model):
         """
         Sauvegarde l'instance du modèle
         """
-        if self.pk and not _full_update and not force_insert:
+        if not self._state.adding and not _full_update and not force_insert:
             kwargs['update_fields'] = update_fields = set(kwargs.pop('update_fields', self.modified.keys()))
             # Les champs de date avec auto_now=True ne sont modifiés que pendant la sauvegarde
             update_fields.update([field.name for field in self._meta.fields if getattr(field, 'auto_now', None)])
