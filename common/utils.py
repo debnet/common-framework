@@ -235,7 +235,11 @@ def temporary_upload(folder=None):
 # file : fichier ou chemin du fichier,
 # name : nom du fichier à télécharger,
 # delete : supprimer le fichier après le téléchargement,
-DownloadFile = collections.namedtuple('DownloadFile', ['file', 'name', 'delete'])
+# mimetype : type mime du fichier à télécharger,
+# charset : encodage du fichier à télécharger
+class DownloadFile(collections.namedtuple('DownloadFile', ['file', 'name', 'delete', 'mimetype', 'charset'])):
+    def __new__(cls, file, name, delete, mimetype=None, charset=None):
+        return super(DownloadFile, cls).__new__(cls, file, name, delete, mimetype, charset)
 
 
 def download_file(function):
@@ -249,17 +253,17 @@ def download_file(function):
         file = function(*args, **kwargs)
         if isinstance(file, DownloadFile):
             from wsgiref.util import FileWrapper
-            file, name, delete = file
+            file, name, delete, mimetype, charset = file
             if isinstance(file, str):
                 from django.core.files import File
                 file = File(open(file, 'rb'))
             file_wrapper = FileWrapper(file)
-            filename, extension = os.path.splitext(name)
-            response = HttpResponse(file_wrapper, content_type=mimetypes.types_map.get(extension))
+            if not mimetype:
+                mimetype, charset = mimetypes.guess_type(name)
+            mimetype, charset = mimetype or 'application/octet-stream', charset or settings.DEFAULT_CHARSET
+            response = HttpResponse(file_wrapper, content_type=mimetype, charset=charset)
             response["Content-Disposition"] = "attachment; filename={0}".format(name)
-            mimetype, charset = mimetypes.guess_type(name)
-            if mimetype:
-                response["Content-Type"] = mimetype
+            response["Content-Type"] = f'{mimetype}; charset={charset}'
             file.close()
             if delete:
                 os.unlink(file.name)
@@ -878,7 +882,6 @@ def recursive_get_urls(module=None, namespaces=None, attributes=None, model=None
     :param _current: Fragment d'URL courante pour la récursion
     :return: Générateur
     """
-    patterns = []
     namespaces = namespaces or []
     attributes = attributes or ['urlpatterns', 'api_urlpatterns']
 

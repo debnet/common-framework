@@ -2,7 +2,9 @@
 from collections import OrderedDict
 
 from django.contrib.auth import get_user_model
+from django.contrib.auth.password_validation import validate_password
 from django.contrib.auth.tokens import default_token_generator
+from django.core import exceptions
 from django.urls import NoReverseMatch, reverse
 from django.utils.translation import ugettext_lazy as _
 from django.views.decorators.csrf import csrf_exempt
@@ -110,6 +112,10 @@ def confirm_password(request):
         raise NotFound(_("Utilisateur non trouvé."))
     if not default_token_generator.check_token(user, token):
         raise PermissionDenied(_("Jeton invalide."))
+    try:
+        validate_password(password, user=user)
+    except exceptions.ValidationError as error:
+        raise ValidationError({'password': error.messages})
     user.set_password(password)
     user.save()
     return Response(status=status.HTTP_200_OK)

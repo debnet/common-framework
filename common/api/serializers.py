@@ -4,6 +4,7 @@ from operator import itemgetter
 from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.contrib.auth.models import Group, Permission
+from django.contrib.auth.password_validation import validate_password
 from django.core.exceptions import ValidationError as ModelValidationError, FieldDoesNotExist
 from rest_framework import serializers
 from rest_framework.exceptions import ValidationError as ApiValidationError
@@ -234,6 +235,10 @@ class UserSerializer(serializers.ModelSerializer):
         for attr, value in validated_data.items():
             setattr(instance, attr, value)
         if password:
+            try:
+                validate_password(password, user=instance)
+            except ModelValidationError as error:
+                raise ApiValidationError({'password': error.messages})
             instance.set_password(password)
         instance.save()
         instance.groups.set(groups)
