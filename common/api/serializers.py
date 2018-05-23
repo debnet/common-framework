@@ -220,6 +220,11 @@ class UserSerializer(serializers.ModelSerializer):
         groups = validated_data.pop('groups', [])
         permissions = validated_data.pop('user_permissions', [])
         is_superuser = validated_data.pop('is_superuser', False)
+        password = validated_data.get('password', None)
+        try:
+            validate_password(password)
+        except ModelValidationError as error:
+            raise ApiValidationError({'password': error.messages})
         if is_superuser:
             user = User.objects.create_superuser(**validated_data)
         else:
