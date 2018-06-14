@@ -212,8 +212,7 @@ def create_api_test_class(
             data_to_post = self.serializer(item, context=dict(request=request)).data
             if perissable:
                 data_to_post['start_date'] = None
-            kwargs = dict(force_default=True) if issubclass(model, Entity) else {}
-            item.delete(**kwargs)
+            item.delete(keep_parents=False, **(dict(_force_default=True) if issubclass(model, Entity) else {}))
             url = reverse(self.url_list_api)
             response = self.client.post(url, data_to_post)
             self.assertIn(response.status_code, [status.HTTP_401_UNAUTHORIZED, status.HTTP_403_FORBIDDEN])
@@ -245,10 +244,10 @@ def create_api_test_class(
             # Dans le cas des PerishableEntity, on vérifie que l'entité modifiée est en fait "périmée" et
             # qu'une nouvelle entité est créée à la bonne date (pour l'historisation)
             if issubclass(model, PerishableEntity):
-                # ancienne entité périmée => possède une end_date
+                # ancienne entité périmée => possède une date de fin
                 old_item = model.objects.get(pk=item.pk)
                 self.assertIsNotNone(old_item.end_date)
-                # L'entité retournée doit être une nouvelle entité sans end_date
+                # L'entité retournée doit être une nouvelle entité sans date de fin
                 self.assertNotEqual(response.data[pk_field], item.pk)
                 self.assertIsNone(response.data['end_date'])
             else:
@@ -302,14 +301,18 @@ def create_api_test_class(
             self.assertIn(response.status_code, [status.HTTP_401_UNAUTHORIZED, status.HTTP_403_FORBIDDEN])
             self.client.force_authenticate(self.user_admin)
             response = self.client.get(url)
-            item1 = response.data['results'][0]
-            item2 = response.data['results'][1]
-            self.assertGreater(item1[pk_field], item2[pk_field])
+            item1, item2 = response.data['results'][0], response.data['results'][1]
+            value1, value2 = item1[pk_field], item2[pk_field]
+            if isinstance(value1, str) or isinstance(value1, str):
+                value1, value2 = value1.lower(), value2.lower()
+            self.assertGreater(value1, value2)
             url = reverse(self.url_list_api) + '?order_by=' + pk_field
             response = self.client.get(url)
-            item1 = response.data['results'][0]
-            item2 = response.data['results'][1]
-            self.assertLess(item1[pk_field], item2[pk_field])
+            item1, item2 = response.data['results'][0], response.data['results'][1]
+            value1, value2 = item1[pk_field], item2[pk_field]
+            if isinstance(value1, str) or isinstance(value1, str):
+                value1, value2 = value1.lower(), value2.lower()
+            self.assertLess(value1, value2)
         test_class.test_api_order_by = _test_api_order_by
 
     if test_filter:

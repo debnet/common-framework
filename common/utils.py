@@ -1311,5 +1311,11 @@ def get_pk_field(model):
     :param model: Modèle
     :return: Champ
     """
-    return model._meta.pk if not model._meta.parents else next(
-        parent._meta.pk for parent, field in model._meta.parents.items() if not parent._meta.parents)
+    meta = model._meta
+    if meta.pk and not meta.parents:
+        return meta.pk
+    for parent, field in meta.parents.items():
+        pk = get_pk_field(parent)
+        if pk:
+            return pk
+    return None
