@@ -95,7 +95,7 @@ def tag_query(context, queryset, save='', **kwargs):
             if key in reserved_keywords:
                 continue
             key = key.replace('.', '__')
-            if value.startswith('(') and value.endswith(')'):
+            if isinstance(value, str) and value.startswith('(') and value.endswith(')'):
                 value = F(value[1:-1])
             if key.startswith('_'):
                 key = key[1:]

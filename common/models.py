@@ -12,7 +12,7 @@ from django.core import serializers
 from django.core.cache import cache
 from django.core.exceptions import ValidationError
 from django.db import models
-from django.db.models import Q, query
+from django.db.models import query, Q
 from django.db.models.deletion import Collector
 from django.db.models.signals import m2m_changed, post_delete, post_init, post_save, pre_save
 from django.dispatch import receiver
@@ -1120,8 +1120,8 @@ class Entity(CommonModel):
         self._reason = _reason or self._reason
         self._force_default = _force_default or self._force_default
         if force_insert:
-            self.pk = self.id = None
-            self.uuid = uuid.uuid4()
+            self.pk = self.id = self.uuid = None
+        self.uuid = self.uuid or uuid.uuid4()
         return super().save(*args, **kwargs)
 
     def delete(self, *args, _ignore_log=None, _current_user=None, _reason=None,
@@ -1289,9 +1289,9 @@ class PerishableEntity(Entity):
             previous.end_date = self.end_date or current_date
             previous.save(_ignore_log=self._ignore_log, _current_user=self._current_user, _reason=self._reason,
                           _force_default=True, force_insert=force_insert, force_update=force_update, **kwargs)
-            self.pk = self.id = self.end_date = None
-            self.uuid = uuid.uuid4()
+            self.pk = self.id = self.end_date = self.uuid = None
             self.start_date = previous.end_date or current_date
+        self.uuid = self.uuid or uuid.uuid4()
         super().save(_ignore_log=self._ignore_log, _current_user=self._current_user, _reason=self._reason,
                      _force_default=self._force_default, force_insert=force_insert, force_update=force_update, **kwargs)
         if not self._force_default and previous:
@@ -1520,8 +1520,8 @@ def post_save_receiver(sender, instance, created, raw, *args, **kwargs):
     """
     if isinstance(instance, Entity):
         # Ajoute le point d'entrée global de l'entité
-        if created and not instance._meta.pk.remote_field:
-            if not settings.IGNORE_GLOBAL and not instance._ignore_global:
+        if not settings.IGNORE_GLOBAL and not instance._ignore_global:
+            if created and instance.uuid and not instance._meta.pk.remote_field:
                 Global.objects.create(content_type=instance.model_type, object_id=instance.pk, object_uid=instance.uuid)
         # Sauvegarde l'historique de modification
         if raw:
@@ -1680,8 +1680,6 @@ def post_delete_receiver(sender, instance, *args, **kwargs):
     :return: Rien
     """
     if isinstance(instance, Entity):
-        # Supprime le point d'entrée global de l'entité
-        # Global.objects.filter(object_uid=instance.uuid).delete()
         # Sauvegarde l'historique de suppression
         if not settings.IGNORE_LOG and not instance._ignore_log:
             log_delete.apply_async(args=(instance, ), retry=False)

@@ -41,16 +41,16 @@ class CommonAdmin(admin.ModelAdmin):
             'view': self.has_view_permission(request),
         }
 
-    def has_view_permission(self, request):
+    def has_view_permission(self, request, obj=None):
         opts = self.opts
         code = '{}.view_{}'.format(opts.app_label, opts.model_name)
-        return request.user.has_perm(code)
+        return request.user.has_perm(code, obj=obj)
 
     def has_change_permission(self, request, obj=None):
-        change_perm = super().has_change_permission(request)
+        change_perm = super().has_change_permission(request, obj=obj)
         if change_perm:
             return change_perm
-        view_perm = self.has_view_permission(request)
+        view_perm = self.has_view_permission(request, obj=obj)
         if view_perm and obj:
             return change_perm
         self.list_editable = ()
