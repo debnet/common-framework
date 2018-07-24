@@ -305,10 +305,10 @@ class ImportExport(object):
         :param m2m: Listes de relations de type many-to-many
         :return: Instance
         """
-        code_field = getattr(instance, '_code_field', 'id')
         # Enregistrement des clés étrangères
         try:
             for field_name, (related, value) in fks.items():
+                code_field = getattr(related, '_code_field', 'id')
                 fk = cache.get(related, {}).get(value, related.objects.get(**{code_field: value}))
                 setattr(instance, field_name, fk)
         except:
@@ -331,6 +331,7 @@ class ImportExport(object):
                 raise
         # Tests de validation et enregistrement de l'instance
         try:
+            code_field = getattr(instance, '_code_field', 'id')
             if not getattr(instance, code_field, None):
                 instance.validate_unique()
             instance.clean()
@@ -356,6 +357,7 @@ class ImportExport(object):
         # Enregistrement des many-to-many sur l'instance (possible qu'après l'enregistrement en base)
         try:
             for field_name, (related, values) in m2m.items():
+                code_field = getattr(related, '_code_field', 'id')
                 m2ms = [cache.get(related, {}).get(value, related.objects.get(**{code_field: value})) for value in values]
                 getattr(instance, field_name).set(m2ms)
         except:

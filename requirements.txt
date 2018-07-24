@@ -1,10 +1,10 @@
-Django==2.1b1
+Django==2.1rc1
 Pillow==5.2.0
 djangorestframework==3.8.2
 flake8==3.5.0
 model_mommy==1.5.1
 python-dateutil==2.7.3
-pip==10.0.1
+pip==18.0
 pytz==2018.5
 requests==2.19.1
 setuptools==40.0.0
