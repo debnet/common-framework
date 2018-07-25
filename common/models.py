@@ -1087,7 +1087,7 @@ class Entity(CommonModel):
         verbose_name=_("date de modification"))
     current_user = models.ForeignKey(
         settings.AUTH_USER_MODEL, blank=True, null=True, editable=False, on_delete=models.SET_NULL, related_name='+',
-        verbose_name=_("utilisateur"))
+        verbose_name=_("dernier utilisateur"))
     globals = GenericRelation(Global)
     objects = EntityQuerySet.as_manager()
 

@@ -265,21 +265,43 @@ class JsonField(forms.CharField):
         'invalid': _("'%(value)s' value must be valid JSON."),
     }
 
+    class InvalidInput(str):
+        pass
+
     def __init__(self, **kwargs):
         kwargs.setdefault('widget', forms.Textarea)
         super().__init__(**kwargs)
 
     def to_python(self, value):
+        if self.disabled:
+            return value
+        from common.fields import JsonString
         if value in self.empty_values:
             return None
+        elif isinstance(value, (list, dict, int, float, JsonString)):
+            return value
         try:
-            return json_decode(value)
+            converted = json_decode(value)
         except ValueError:
             raise forms.ValidationError(
                 self.error_messages['invalid'],
                 code='invalid',
                 params={'value': value},
             )
+        if isinstance(converted, str):
+            return JsonString(converted)
+        else:
+            return converted
+
+    def bound_data(self, data, initial):
+        if self.disabled:
+            return initial
+        try:
+            return json_decode(data)
+        except ValueError:
+            return JsonField.InvalidInput(data)
 
     def prepare_value(self, value):
+        if isinstance(value, JsonField.InvalidInput):
+            return value
         return json_encode(value, sort_keys=True)

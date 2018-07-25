@@ -149,6 +149,14 @@ class JsonField(models.Field):
     def get_internal_type(self):
         return 'TextField'
 
+    def deconstruct(self):
+        name, path, args, kwargs = super().deconstruct()
+        if self.default == '{}':
+            del kwargs['default']
+        if self.encoder is not None:
+            kwargs['encoder'] = self.encoder
+        return name, path, args, kwargs
+
     def get_transform(self, name):
         transform = super().get_transform(name)
         if transform:
@@ -164,20 +172,18 @@ class JsonField(models.Field):
         """
         if value is None or value == '':
             return {} if not self.null else None
+        try:
+            while isinstance(value, str):
+                value = json_decode(value)
+        except ValueError:
+            pass
+        if isinstance(value, dict):
+            return JsonDict(**value)
         elif isinstance(value, str):
-            try:
-                res = json_decode(value)
-            except ValueError:
-                res = value
-            if isinstance(res, dict):
-                return JsonDict(**res)
-            elif isinstance(res, str):
-                return JsonString(res)
-            elif isinstance(res, list):
-                return JsonList(res)
-            return res
-        else:
-            return value
+            return JsonString(value)
+        elif isinstance(value, list):
+            return JsonList(value)
+        return value
 
     def get_db_prep_value(self, value, connection, prepared=False):
         """
@@ -186,21 +192,12 @@ class JsonField(models.Field):
         if value is None and self.null:
             return None
         # default values come in as strings; only non-strings should be run through `dumps`
-        if isinstance(value, str):
-            try:
+        try:
+            while isinstance(value, str):
                 value = json_decode(value)
-            except ValueError:
-                pass
-        value = json_encode(value, cls=self.encoder, sort_keys=True)
-        return value
-
-    def deconstruct(self):
-        name, path, args, kwargs = super().deconstruct()
-        if self.default == '{}':
-            del kwargs['default']
-        if self.encoder is not None:
-            kwargs['encoder'] = self.encoder
-        return name, path, args, kwargs
+        except ValueError:
+            pass
+        return json_encode(value, cls=self.encoder, sort_keys=True)
 
     def validate(self, value, model_instance):
         super().validate(value, model_instance)
