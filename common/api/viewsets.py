@@ -175,7 +175,8 @@ class CommonModelViewSet(viewsets.ModelViewSet):
             fields = get('fields')
             if str_to_bool(get('simple')) or fields:
                 # Supprime la récupération des relations
-                queryset = queryset.select_related(None).prefetch_related(None)
+                if queryset.query.select_related:
+                    queryset = queryset.select_related(None).prefetch_related(None)
                 # Champs spécifiques
                 try:
                     relateds = set()
