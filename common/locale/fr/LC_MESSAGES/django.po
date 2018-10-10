@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: PACKAGE VERSION\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2018-07-25 09:43+0000\n"
+"POT-Creation-Date: 2018-10-10 23:42+0000\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -47,12 +47,8 @@ msgid "{} élément(s) ont été restaurés avec succès !"
 msgstr "{} élément(s) ont été restaurés avec succès !"
 
 #: common/admin.py:299
-msgid ""
-"{} élément(s) n'ont pas pu être restaurés car leurs relations sont "
-"manquantes !"
-msgstr ""
-"{} élément(s) n'ont pas pu être restaurés car leurs relations sont "
-"manquantes !"
+msgid "{} élément(s) n'ont pas pu être restaurés car leurs relations sont manquantes !"
+msgstr "{} élément(s) n'ont pas pu être restaurés car leurs relations sont manquantes !"
 
 #: common/admin.py:301
 msgid "L'élément #{} n'a pu être restauré pour la raison suivante : {}"
@@ -103,10 +99,8 @@ msgid "Actions"
 msgstr "Actions"
 
 #: common/api/api_views.py:79
-msgid ""
-"Nom d'utilisateur ou e-mail requis pour la réinitialisation de mot de passe."
-msgstr ""
-"Nom d'utilisateur ou e-mail requis pour la réinitialisation de mot de passe."
+msgid "Nom d'utilisateur ou e-mail requis pour la réinitialisation de mot de passe."
+msgstr "Nom d'utilisateur ou e-mail requis pour la réinitialisation de mot de passe."
 
 #: common/api/api_views.py:82 common/api/api_views.py:112
 msgid "Utilisateur non trouvé."
@@ -285,12 +279,8 @@ msgstr "métadonnées"
 
 #: common/excel.py:121
 #, python-brace-format
-msgid ""
-"La feuille correspondant au modèle '{model_name}' n'a pu être trouvée dans "
-"le fichier."
-msgstr ""
-"La feuille correspondant au modèle '{model_name}' n'a pu être trouvée dans "
-"le fichier."
+msgid "La feuille correspondant au modèle '{model_name}' n'a pu être trouvée dans le fichier."
+msgstr "La feuille correspondant au modèle '{model_name}' n'a pu être trouvée dans le fichier."
 
 #: common/excel.py:234
 msgid "Informations"
@@ -317,24 +307,16 @@ msgid "description"
 msgstr "description"
 
 #: common/excel.py:323 common/excel.py:328
-msgid ""
-"Impossible de récupérer la valeur de clé étrangère correspondant à [{}] pour "
-"le champ [{}] de [{}]"
-msgstr ""
-"Impossible de récupérer la valeur de clé étrangère correspondant à [{}] pour "
-"le champ [{}] de [{}]"
+msgid "Impossible de récupérer la valeur de clé étrangère correspondant à [{}] pour le champ [{}] de [{}]"
+msgstr "Impossible de récupérer la valeur de clé étrangère correspondant à [{}] pour le champ [{}] de [{}]"
 
 #: common/excel.py:354
 msgid "Impossible d'ajouter la métadata [{},{}] pour l'instance '[{}]'"
 msgstr "Impossible d'ajouter la métadata [{},{}] pour l'instance '[{}]'"
 
 #: common/excel.py:364
-msgid ""
-"Impossible de récupérer les valeurs de relation correspondantes à [{}] pour "
-"le champ [{}] de [{}]"
-msgstr ""
-"Impossible de récupérer les valeurs de relation correspondantes à [{}] pour "
-"le champ [{}] de [{}]"
+msgid "Impossible de récupérer les valeurs de relation correspondantes à [{}] pour le champ [{}] de [{}]"
+msgstr "Impossible de récupérer les valeurs de relation correspondantes à [{}] pour le champ [{}] de [{}]"
 
 #: common/fields.py:128
 msgid "A JSON object"
@@ -404,13 +386,14 @@ msgstr "{} connexion(s) à la base de données interrompues(s)."
 msgid "{} {} supprimé(s)."
 msgstr "{} {} supprimé(s)."
 
-#: common/middleware.py:145
-msgid ""
-"Le nombre maximal d'utilisations de ce service pour cet utilisateur a été "
-"atteint."
-msgstr ""
-"Le nombre maximal d'utilisations de ce service pour cet utilisateur a été "
-"atteint."
+#: common/middleware.py:153
+msgid "Le nombre maximal d'appels ({limit}) de ce service pour cet utilisateur ({user}) a été atteint et sera réinitialisé le {date:%d/%m/%Y %H:%M:%S}."
+msgstr "Le nombre maximal d'appels ({limit}) de ce service pour cet utilisateur ({user}) a été atteint et sera réinitialisé le {date:%d/%m/%Y %H:%M:%S}."
+
+#: common/middleware.py:157
+#, python-brace-format
+msgid "Le nombre maximal d'appels ({limit}) de ce service pour cet utilisateur ({user}) a été atteint et ne peut plus être utilisé."
+msgstr "Le nombre maximal d'appels ({limit}) de ce service pour cet utilisateur ({user}) a été atteint et ne peut plus être utilisé."
 
 #: common/models.py:163 common/models.py:801 common/models.py:965
 msgid "type d'entité"
@@ -435,21 +418,15 @@ msgstr "{key}: {value}"
 
 #: common/models.py:195
 msgid "Unable to get metadata from an unsaved model instance."
-msgstr ""
-"Impossible de récupérer des métadonnées d'une instance de modèle non "
-"sauvegardée."
+msgstr "Impossible de récupérer des métadonnées d'une instance de modèle non sauvegardée."
 
 #: common/models.py:218 common/models.py:247
 msgid "Unable to set metadata for an unsaved model instance."
-msgstr ""
-"Impossible de définir une métadonnée sur une instance de modèle non "
-"sauvegardée."
+msgstr "Impossible de définir une métadonnée sur une instance de modèle non sauvegardée."
 
 #: common/models.py:277
 msgid "Unable to delete metadata from an unsaved model instance."
-msgstr ""
-"Impossible de supprimer des métadonnées d'une instance de modèle non "
-"sauvegardée."
+msgstr "Impossible de supprimer des métadonnées d'une instance de modèle non sauvegardée."
 
 #: common/models.py:291
 msgid "métadonnée"
@@ -459,7 +436,7 @@ msgstr "métadonnée"
 msgid "Unable to update an instance which have no unique fields."
 msgstr "Impossible de mettre à jour une instance qui n'a pas de champ unique."
 
-#: common/models.py:736 common/models.py:1931
+#: common/models.py:736 common/models.py:1953
 msgid "date"
 msgstr "date"
 
@@ -499,7 +476,7 @@ msgstr "Restauration"
 msgid "Many-to-many"
 msgstr "Many-to-many"
 
-#: common/models.py:793 common/models.py:1830 common/models.py:1927
+#: common/models.py:793 common/models.py:1830 common/models.py:1947
 msgid "utilisateur"
 msgstr "utilisateur"
 
@@ -670,7 +647,7 @@ msgstr "Bearer"
 msgid "JWT"
 msgstr "JWT"
 
-#: common/models.py:1390 common/models.py:1923
+#: common/models.py:1390 common/models.py:1943
 msgid "nom"
 msgstr "nom"
 
@@ -754,27 +731,55 @@ msgstr "métadonnées de groupe"
 msgid "métadonnées de groupes"
 msgstr "métadonnées de groupes"
 
-#: common/models.py:1928
+#: common/models.py:1929
+msgid "Toutes les heures"
+msgstr "Toutes les heures"
+
+#: common/models.py:1930
+msgid "Tous les jours"
+msgstr "Tous les jours"
+
+#: common/models.py:1931
+msgid "Toutes les semaines"
+msgstr "Toutes les semaines"
+
+#: common/models.py:1932
+msgid "Tous les mois"
+msgstr "Tous les mois"
+
+#: common/models.py:1933
+msgid "Tous les ans"
+msgstr "Tous les ans"
+
+#: common/models.py:1948
 msgid "nombre"
 msgstr "nombre"
 
-#: common/models.py:1929
+#: common/models.py:1949
 msgid "limite"
 msgstr "limite"
 
-#: common/models.py:1930
+#: common/models.py:1950
+msgid "réinitialisation"
+msgstr "réinitialisation"
+
+#: common/models.py:1951
+msgid "date réinitialisation"
+msgstr "date réinitialisation"
+
+#: common/models.py:1952
 msgid "adresse"
 msgstr "adresse"
 
-#: common/models.py:1934
+#: common/models.py:1966
 msgid "{} ({} : {})"
 msgstr "{} ({} : {})"
 
-#: common/models.py:1937
+#: common/models.py:1969
 msgid "utilisation de service"
 msgstr "utilisation de service"
 
-#: common/models.py:1938
+#: common/models.py:1970
 msgid "utilisation des services"
 msgstr "utilisation des services"
 
@@ -788,12 +793,8 @@ msgid "L'extension 'unaccent' n'est pas installée sur la base de données."
 msgstr "L'extension 'unaccent' n'est pas installée sur la base de données."
 
 #: common/operations.py:94
-msgid ""
-"L'extension 'pg_trgm' n'est pas installée sur la base de données, l'index de "
-"type GIN ne sera donc pas créé et seul l'index de type BTREE sera créé."
-msgstr ""
-"L'extension 'pg_trgm' n'est pas installée sur la base de données, l'index de "
-"type GIN ne sera donc pas créé et seul l'index de type BTREE sera créé."
+msgid "L'extension 'pg_trgm' n'est pas installée sur la base de données, l'index de type GIN ne sera donc pas créé et seul l'index de type BTREE sera créé."
+msgstr "L'extension 'pg_trgm' n'est pas installée sur la base de données, l'index de type GIN ne sera donc pas créé et seul l'index de type BTREE sera créé."
 
 #: common/templates/common/cache.html:13
 msgid "Voir"

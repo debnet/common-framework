@@ -222,7 +222,7 @@ Les notifications des changements par webhook est désactivée par défaut et pe
 L'usage des services permet de compter le nombre de fois où une URL est appelée dans l'application par un même
 utilisateur et même de limiter le nombre d'usages.
 
-La fonctionnalité est désactivée par défaut et peut être activée via ``IP_DETECTION``. 
+La fonctionnalité est désactivée par défaut et peut être activée via ``SERVICE_USAGE``. 
 Il est également nécessaire d'ajouter ``'common.middleware.ServiceUsageMiddleware'`` dans ``MIDDLEWARE_CLASSES``.
 
 ### Métadonnées utilisateurs & groupes

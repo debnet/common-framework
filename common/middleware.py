@@ -127,20 +127,49 @@ class ServiceUsageMiddleware:
         return response
 
     def process_response(self, request, response):
-        if settings.IP_DETECTION:
+        if settings.SERVICE_USAGE:
             try:
                 request.resolver_match = getattr(request, 'resolver_match', None) or resolve(request.path)
             except Resolver404:
                 return response
             if request.resolver_match and hasattr(request, 'user') and request.user.is_authenticated and \
                     response.status_code in range(200, 300):
-                usage, created = ServiceUsage.objects.get_or_create(
-                    name=getattr(request.resolver_match, 'view_name', request.resolver_match),
-                    user=request.user)
+                service_name = getattr(request.resolver_match, 'view_name', request.resolver_match)
+                defaults = settings.SERVICE_USAGE_DATA.get(service_name) or settings.SERVICE_USAGE_DEFAULT or {}
+                if settings.SERVICE_USAGE_LIMIT_ONLY:
+                    usage = ServiceUsage.objects.filter(
+                        name=service_name, user=request.user).first()
+                    if not usage:
+                        return response
+                else:
+                    usage, created = ServiceUsage.objects.get_or_create(
+                        name=service_name, user=request.user, defaults=defaults)
                 usage.count += 1
                 usage.address = get_ip(request)
                 usage.save()
-                if usage.limit and usage.limit < usage.count:
-                    raise PermissionDenied(_(
-                        "Le nombre maximal d'utilisations de ce service pour cet utilisateur a été atteint."))
+                try:
+                    if usage.limit and usage.limit < usage.count:
+                        if usage.reset_date:
+                            text = _("Le nombre maximal d'appels ({limit}) de ce service pour cet utilisateur "
+                                     "({user}) a été atteint et sera réinitialisé le {date:%d/%m/%Y %H:%M:%S}.").format(
+                                limit=usage.limit, user=request.user, date=usage.reset_date)
+                            raise PermissionDenied(text)
+                        text = _("Le nombre maximal d'appels ({limit}) de ce service pour cet utilisateur "
+                                 "({user}) a été atteint et ne peut plus être utilisé.").format(
+                            limit=usage.limit, user=request.user)
+                        raise PermissionDenied(text)
+                except PermissionDenied as exception:
+                    if hasattr(response, 'data'):
+                        # Django REST Framework 403
+                        from rest_framework.views import exception_handler
+                        from rest_framework.exceptions import PermissionDenied as ApiPermissionDenied
+                        api_response = exception_handler(ApiPermissionDenied(exception), None)
+                        api_response.accepted_renderer = response.accepted_renderer
+                        api_response.accepted_media_type = response.accepted_media_type
+                        api_response.renderer_context = response.renderer_context
+                        api_response.exception = True
+                        api_response.render()
+                        return api_response
+                    else:
+                        raise
         return response

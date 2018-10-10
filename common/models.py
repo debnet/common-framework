@@ -1920,6 +1920,26 @@ class ServiceUsage(CommonModel):
     """
     Utilisation et/ou restriction des APIs
     """
+    RESET_HOURLY = 'H'
+    RESET_DAILY = 'D'
+    RESET_WEEKLY = 'W'
+    RESET_MONTHLY = 'M'
+    RESET_YEARLY = 'Y'
+    RESETS = (
+        (RESET_HOURLY, _("Toutes les heures")),
+        (RESET_DAILY, _("Tous les jours")),
+        (RESET_WEEKLY, _("Toutes les semaines")),
+        (RESET_MONTHLY, _("Tous les mois")),
+        (RESET_YEARLY, _("Tous les ans")),
+    )
+    RESET_DELTA = {
+        RESET_HOURLY: dict(hours=1),
+        RESET_DAILY: dict(days=1),
+        RESET_WEEKLY: dict(weeks=1),
+        RESET_MONTHLY: dict(months=1),
+        RESET_YEARLY: dict(years=1),
+    }
+
     name = models.CharField(max_length=200, verbose_name=_("nom"))
     user = models.ForeignKey(
         settings.AUTH_USER_MODEL,
@@ -1927,8 +1947,20 @@ class ServiceUsage(CommonModel):
         verbose_name=_("utilisateur"))
     count = models.PositiveIntegerField(default=0, verbose_name=_("nombre"))
     limit = models.PositiveIntegerField(blank=True, null=True, verbose_name=_("limite"))
+    reset = models.CharField(max_length=1, blank=True, choices=RESETS, verbose_name=_("réinitialisation"))
+    reset_date = models.DateTimeField(blank=True, null=True, verbose_name=_("date réinitialisation"))
     address = models.CharField(max_length=40, verbose_name=_("adresse"))
     date = models.DateTimeField(auto_now=True, verbose_name=_("date"))
+
+    def save(self, *args, **kwargs):
+        if self.limit is not None and self.reset:
+            self.reset_date = self.reset_date or now()
+            if now() >= self.reset_date:
+                from dateutil.relativedelta import relativedelta
+                delta = self.RESET_DELTA.get(self.reset)
+                self.reset_date = now() + relativedelta(**delta)
+                self.count = 0
+        return super().save(*args, **kwargs)
 
     def __str__(self):
         return _("{} ({} : {})").format(self.name, self.address, self.count)

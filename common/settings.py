@@ -12,7 +12,10 @@ class Settings:
 
     # Valeurs par défaut
     default = dict(
-        IP_DETECTION=False,
+        SERVICE_USAGE=False,
+        SERVICE_USAGE_DEFAULT={},
+        SERVICE_USAGE_DATA={},
+        SERVICE_USAGE_LIMIT_ONLY=False,
         IGNORE_LOG=False,
         IGNORE_GLOBAL=False,
         NOTIFY_CHANGES=False,

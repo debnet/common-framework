@@ -489,8 +489,8 @@ class GroupMetaDataAdmin(admin.ModelAdmin):
 
 @admin.register(ServiceUsage)
 class ServiceUsageAdmin(admin.ModelAdmin):
-    list_display = ('name', 'user', 'count', 'limit', 'address', 'date', )
-    list_filter = ('name', 'user', 'date', )
+    list_display = ('name', 'user', 'count', 'address', 'date', 'limit', 'reset', 'reset_date', )
+    list_filter = ('user', 'date', 'reset_date', )
     ordering = ('name', 'user', )
     search_fields = ('name', 'address', )
     raw_id_fields = ('user', )
