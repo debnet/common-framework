@@ -11,13 +11,14 @@
         {% for key in keys %}
             <input id="{{ key|slugify }}" type="checkbox" name="{{ key }}" />
             <a href="{{ request.path }}?key={{ key }}#{{ key|slugify }}">({% trans "Voir" %})</a>
-            <label for="{{ key }}">{{ key }}</label>
+            <label for="{{ key|slugify }}">{{ key }}</label>
             {% if request.GET.key == key %}
             <pre>{{ value }}</pre>
             {% else %}
             <br />
             {% endif %}
         {% endfor %}
+        <br />
         <input type="submit" value="{% trans "Supprimer" %}" />
         {% csrf_token %}
     </form>

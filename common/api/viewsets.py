@@ -5,6 +5,7 @@ from django.db.models.query import F, EmptyResultSet, Prefetch, QuerySet
 from rest_framework import serializers
 from rest_framework import viewsets
 from rest_framework.exceptions import ValidationError
+from rest_framework.schemas import AutoSchema
 
 from common.api.utils import AGGREGATES, CACHE_PREFIX, CACHE_TIMEOUT, RESERVED_QUERY_PARAMS, url_value, parse_filters
 from common.api.fields import ChoiceDisplayField, ReadOnlyObjectField
@@ -18,6 +19,7 @@ class CommonModelViewSet(viewsets.ModelViewSet):
     Définition commune de ModelViewSet pour l'API REST
     """
     url_params = {}
+    schema = AutoSchema()
 
     def get_serializer_class(self):
         # Le serializer par défaut est utilisé en cas de modification/suppression
@@ -345,6 +347,7 @@ class UserViewSet(CommonModelViewSet):
             return True
         elif self.action in ['update', 'partial_update']:
             # Autorise la modification de soi-même ou d'un autre utilisateur de rang inférieur
+            self.kwargs.update({self.lookup_field: self.kwargs.get(self.lookup_url_kwarg or self.lookup_field, None)})
             user = self.get_object()
             if (current_user == user) or (current_user.is_staff and not (user.is_staff or user.is_superuser)):
                 return True

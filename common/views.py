@@ -21,13 +21,20 @@ def view_cache(request):
         value = cache.get(key)
         try:
             value = dict(value)
+            value = json_encode(value, indent=4)
         except (TypeError, ValueError):
             pass
-    for key in request.POST:
-        cache.delete_pattern(key)
+    if hasattr(cache, 'keys'):
+        for key in request.POST:
+            cache.delete_pattern(key)
+        keys = sorted(cache.keys('*'))
+    else:
+        for key in request.POST:
+            cache.delete(key)
+        keys = sorted((key.split(':')[-1] for key in cache._cache.keys()))
 
     return {
-        'keys': sorted(cache.keys('*')),
+        'keys': keys,
         'value': value or None,
     }
 

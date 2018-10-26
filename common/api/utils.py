@@ -850,7 +850,7 @@ def create_api(*models, default_config=None, router=None, all_serializers=None, 
     router = router or routers.DefaultRouter()
     for model, viewset in sorted(viewsets.items(), key=lambda key: key[0]._meta.model_name):
         code = model._meta.model_name
-        router.register(code, viewset, base_name=code)
+        router.register(code, viewset, basename=code)
 
     # Mise à jour des serializers et viewsets par défaut
     all_serializers.update(serializers)
