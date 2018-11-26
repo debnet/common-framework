@@ -501,7 +501,7 @@ def api_view_with_serializer(http_method_names=None, input_serializer=None, seri
     return decorator
 
 
-def auto_view(http_method_names, input_serializer=None, serializer=None, validation=True, many=False,
+def auto_view(http_method_names=None, input_serializer=None, serializer=None, validation=True, many=False,
               custom_func=None, query_func=None, func_args=None, func_kwargs=None):
     """
     Décorateur permettant de générer le corps d'une APIView à partir d'un QuerySet
@@ -543,7 +543,10 @@ def auto_view(http_method_names, input_serializer=None, serializer=None, validat
             return Response(serializer(queryset, context=dict(request=request, **context)).data)
 
         return api_view_with_serializer(
-            http_method_names, input_serializer=input_serializer, serializer=serializer, validation=validation)(wrapped)
+            http_method_names=http_method_names,
+            input_serializer=input_serializer,
+            serializer=serializer,
+            validation=validation)(wrapped)
     return wrapper
 
 

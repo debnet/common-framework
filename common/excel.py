@@ -46,21 +46,30 @@ TYPES = {
     'TextField': _('Texte'),
     'TimeField': _('Heure'),
     'URLField': _('URL'),
+    'UUIDField': _('UUID'),
     'ForeignKey': _('Référence'),
     'ManyToManyField': _('Références multiples'),
     'OneToOneField': _('Référence'),
 }
-IGNORE_FIELDS = ('uuid', 'creation_date', 'modification_date', 'current_user', 'history', 'globals')
 CELL_OFFSET = 3
 
 METADATA_NAME = _('métadonnées')
 
 
 class ImportExport(object):
-    def __init__(self, models, log=logger, force=False):
+    def __init__(self, models, log=logger, force=False, clean=True, non_editables=False):
+        """
+        :param models: Liste des modèles à exporter/importer
+        :param log: Logger
+        :param force: Force l'insertion même en cas d'erreur
+        :param clean: Exécute les tests de validation
+        :param non_editables: Exporte les données non éditables
+        """
         self.models = models
         self.log = log
         self.force = force
+        self.clean = clean
+        self.non_editables = non_editables
 
     @transaction.atomic
     def importer(self, file):
@@ -118,14 +127,15 @@ class ImportExport(object):
             model_name = re.sub(r'[^\w]+', ' ', str(model._meta.verbose_name).lower())
             # Récupération de la feuille correspondante au modèle
             if model_name not in worksheets:
-                self.log.warning(_("La feuille correspondant au modèle '{model_name}' "
-                                   "n'a pu être trouvée dans le fichier.").format(model_name=model_name))
+                self.log.warning(_(
+                    "La feuille correspondant au modèle '{model_name}' "
+                    "n'a pu être trouvée dans le fichier.").format(model_name=model_name))
                 continue
             worksheet = worksheets.get(model_name)
             # Récupération des champs du modèle
             fields = {}
             for field in chain(model._meta.fields, model._meta.many_to_many):
-                if field.name != code_field and (field.auto_created or field in IGNORE_FIELDS):
+                if field.name != code_field and (field.auto_created or not (field.editable or self.non_editables)):
                     continue
                 field.m2m = field in model._meta.many_to_many
                 fields[str(field.verbose_name).lower()] = field
@@ -178,7 +188,10 @@ class ImportExport(object):
                         continue
                     elif field.choices:
                         choices = {str(value): str(key) for key, value in field.flatchoices}
-                        value = choices[value]
+                        if hasattr(field, 'max_choices'):  # MultiSelectField
+                            value = [choices[val] for val in choices.keys() if val in value]
+                        else:
+                            value = choices[value]
                     elif type in ['DateField', 'DateTimeField']:
                         value = parsedate(value, dayfirst=True)
                     elif type == 'DecimalField':
@@ -207,11 +220,11 @@ class ImportExport(object):
                 cache[model][code] = instance
                 # Enregistrement immédiat (si possible)
                 if delayed:
-                    self.delayed_models.append((instance, fks, m2m))
+                    self.delayed_models.append((instance, fks, m2m, current_metadata))
                     continue
                 self._save_instance(instance, metadata=current_metadata, cache=cache, fks=fks, m2m=m2m)
             # Enregistrement différé
-            for instance, fks, m2m in self.delayed_models:
+            for instance, fks, m2m, current_metadata in self.delayed_models:
                 self._save_instance(instance, metadata=current_metadata, cache=cache, fks=fks, m2m=m2m)
             # Intégration terminée
             done.append(model)
@@ -244,15 +257,14 @@ class ImportExport(object):
         for model in self.models:
             meta = model._meta
             for field in meta.fields + meta.many_to_many:
-                if field.auto_created or field.name in IGNORE_FIELDS:
+                if field.auto_created or not (field.editable or self.non_editables):
                     continue
                 datas = [
                     meta.verbose_name.capitalize(),
                     field.verbose_name,
                     TYPES[field.get_internal_type()],
                     ' | '.join(str(value) for key, value in field.flatchoices),
-                    field.help_text
-                ]
+                    field.help_text]
                 for column, data in enumerate(datas):
                     cell = worksheet.cell(row=row, column=column + 1)
                     cell.value = str(data)
@@ -290,8 +302,7 @@ class ImportExport(object):
                 try:
                     cell.value = value
                 except:
-                    import json
-                    cell.value = json.dumps(value)
+                    cell.value = json_encode(value)
                 row += 1
 
         workbook.save(file)
@@ -300,6 +311,7 @@ class ImportExport(object):
         """
         Enregistre l'instance en base de données
         :param instance: Instance à sauvegarder
+        :param metadata: Metadonnées liées à l'instance
         :param cache: Autres instances en cache (optimisation)
         :param fks: Liste des clés étrangères
         :param m2m: Listes de relations de type many-to-many
@@ -314,9 +326,9 @@ class ImportExport(object):
         except:
             if self.delayed_models:
                 # On va chercher l'instance parent et l'enregistrer en amont
-                for index, (instance_parent, fks, m2m) in enumerate(self.delayed_models):
-                    if instance_parent.code == value:
-                        self._save_instance(instance_parent, metadata, cache=cache, fks=fks, m2m=m2m)
+                for index, (parent, _fks, _m2m, _metadata) in enumerate(self.delayed_models):
+                    if parent.code == value:
+                        self._save_instance(parent, metadata=_metadata, cache=cache, fks=_fks, m2m=_m2m)
                         self.delayed_models.pop(index)
                         break
                 else:
@@ -334,7 +346,8 @@ class ImportExport(object):
             code_field = getattr(instance, '_code_field', 'id')
             if not getattr(instance, code_field, None):
                 instance.validate_unique()
-            instance.clean()
+            if self.clean:
+                instance.clean()
             with patch_settings(IGNORE_LOG=True):
                 instance.save()
         except ValidationError as errors:
@@ -382,7 +395,7 @@ class ImportExport(object):
         # Titres
         fields = [(field.name, str(field.verbose_name),)
                   for field in chain(meta.fields, meta.many_to_many)
-                  if field.name == code_field or not (field.auto_created or field.name in IGNORE_FIELDS)]
+                  if field.name == code_field or not (field.auto_created or not (field.editable or self.non_editables))]
         for column, (field_code, field_name) in enumerate(fields):
             cell = worksheet.cell(row=1, column=column + 1)
             cell.value = field_name
