@@ -10,9 +10,9 @@ import re
 import sys
 import threading
 from contextlib import contextmanager
-from datetime import date, datetime, time
+from datetime import date, datetime, time, timedelta
 from decimal import ROUND_HALF_EVEN, Decimal, InvalidOperation
-from functools import wraps
+from functools import lru_cache, wraps
 from importlib import import_module
 from itertools import chain, product
 from uuid import uuid4
@@ -51,12 +51,37 @@ class singleton:
         return self.instance
 
 
+def timed_cache(**dkwargs):
+    """
+    Décorateur de cache avec durée d'expiration
+    :param dkwargs: Paramètres d'expiration (timedelta)
+    """
+
+    def _wrapper(func):
+        maxsize = dkwargs.pop('maxsize', None)
+        typed = dkwargs.pop('typed', False)
+        update_delta = timedelta(**dkwargs)
+        next_update = datetime.utcnow() - update_delta
+        func = lru_cache(maxsize=maxsize, typed=typed)(func)
+
+        @wraps(func)
+        def _wrapped(*args, **kwargs):
+            nonlocal next_update
+            utcnow = datetime.utcnow()
+            if utcnow >= next_update:
+                func.cache_clear()
+                next_update = utcnow + update_delta
+            return func(*args, **kwargs)
+        return _wrapped
+    return _wrapper
+
+
 @singleton
 class CeleryFake:
     """
     Mock Celery pour les tâches asynchrones
     """
-    def task(self, *a, **k):
+    def task(self, *dargs, **dkwargs):
         def decorator(func):
             @wraps(func)
             def wrapped(*args, **kwargs):
@@ -1187,7 +1212,7 @@ def process_file(file_path, sleep=5, extract_directory=None):
             tar.extractall()
             tar.close()
             return
-    except:
+    except Exception:
         logger.error(_("Erreur lors du désarchivage : {}").format(file_base), exc_info=True)
         raise
     return file_path

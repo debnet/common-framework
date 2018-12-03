@@ -58,11 +58,11 @@ class PickleField(models.BinaryField):
             _value = bytes(_value, encoding='utf-8')
             try:
                 _value = base64.b64decode(_value)
-            except:
+            except Exception:
                 pass
         try:
             return pickle.loads(_value)
-        except:
+        except Exception:
             return super().to_python(value)
 
     def get_prep_value(self, value):

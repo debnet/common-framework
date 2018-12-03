@@ -72,7 +72,7 @@ if websocket:
         server = loop.run_until_complete(server)
         try:
             loop.run_forever()
-        except:
+        except Exception:
             pass
         finally:
             server.close()

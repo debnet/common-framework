@@ -33,8 +33,7 @@ except ImportError:
 
 from common.fields import JsonField, PickleField, json_encode
 from common.settings import settings
-from common.utils import get_current_app, get_current_user, get_pk_field, merge_dict
-
+from common.utils import get_current_app, get_current_user, get_pk_field, merge_dict, timed_cache
 
 # Logging
 logger = logging.getLogger(__name__)
@@ -159,16 +158,26 @@ class MetaData(models.Model):
     """
     content_type = models.ForeignKey(
         ContentType,
-        on_delete=models.CASCADE,
+        on_delete=models.CASCADE, related_name='+',
         verbose_name=_("type d'entité"))
     object_id = models.TextField(verbose_name=_("identifiant"))
     entity = GenericForeignKey()
 
-    key = models.CharField(max_length=100, verbose_name=_("clé"))
-    value = JsonField(blank=True, null=True, verbose_name=_("valeur"))
-    creation_date = models.DateTimeField(auto_now_add=True, verbose_name=_("date de création"))
-    modification_date = models.DateTimeField(auto_now=True, verbose_name=_("date de modification"))
-    deletion_date = models.DateTimeField(blank=True, null=True, verbose_name=_("date de suppression"))
+    key = models.CharField(
+        max_length=100,
+        verbose_name=_("clé"))
+    value = JsonField(
+        blank=True, null=True,
+        verbose_name=_("valeur"))
+    creation_date = models.DateTimeField(
+        auto_now_add=True,
+        verbose_name=_("date de création"))
+    modification_date = models.DateTimeField(
+        auto_now=True,
+        verbose_name=_("date de modification"))
+    deletion_date = models.DateTimeField(
+        blank=True, null=True,
+        verbose_name=_("date de suppression"))
     objects = MetaDataQuerySet.as_manager()
 
     def __str__(self):  # pragma: no cover
@@ -733,12 +742,21 @@ class HistoryCommon(CommonModel):
     """
     Abstraction commune aux historiques et champs modifiés
     """
-    creation_date = models.DateTimeField(auto_now_add=True, editable=False, verbose_name=_("date"))
+    creation_date = models.DateTimeField(
+        auto_now_add=True, editable=False,
+        verbose_name=_("date"))
     restoration_date = models.DateTimeField(
-        blank=True, null=True, editable=False, verbose_name=_("dernière restauration"))
-    restored = models.NullBooleanField(editable=False, verbose_name=_("restauré"))
-    data = JsonField(blank=True, null=True, editable=False, verbose_name=_("données"))
-    data_size = models.PositiveIntegerField(editable=False, verbose_name=_("taille données"))
+        blank=True, null=True, editable=False,
+        verbose_name=_("dernière restauration"))
+    restored = models.NullBooleanField(
+        editable=False,
+        verbose_name=_("restauré"))
+    data = JsonField(
+        blank=True, null=True, editable=False,
+        verbose_name=_("données"))
+    data_size = models.PositiveIntegerField(
+        editable=False,
+        verbose_name=_("taille données"))
 
     def save(self, *args, **kwargs):
         self.data_size = 0
@@ -786,25 +804,42 @@ class History(HistoryCommon):
 
     user = models.ForeignKey(
         settings.AUTH_USER_MODEL,
-        on_delete=models.CASCADE,
-        blank=True,
-        null=True,
-        editable=False,
+        blank=True, null=True, editable=False,
+        on_delete=models.CASCADE, related_name='histories',
         verbose_name=_("utilisateur"))
-    status = models.CharField(max_length=1, choices=LOG_STATUS, editable=False, verbose_name=_("statut"))
+    status = models.CharField(
+        max_length=1, choices=LOG_STATUS, editable=False,
+        verbose_name=_("statut"))
     content_type = models.ForeignKey(
         ContentType,
-        on_delete=models.CASCADE,
-        blank=True,
-        null=True,
-        editable=False,
+        blank=True, null=True, editable=False,
+        on_delete=models.CASCADE, related_name='+',
         verbose_name=_("type d'entité"))
-    object_id = models.TextField(editable=False, verbose_name=_("identifiant"))
-    object_uid = models.UUIDField(editable=False, verbose_name=_("UUID"))
-    object_str = models.TextField(editable=False, verbose_name=_("entité"))
-    reason = models.TextField(blank=True, null=True, editable=False, verbose_name=_("motif"))
-    admin = models.BooleanField(default=False, editable=False, verbose_name=_("admin"))
+    object_id = models.TextField(
+        editable=False,
+        verbose_name=_("identifiant"))
+    object_uid = models.UUIDField(
+        editable=False,
+        verbose_name=_("UUID"))
+    object_str = models.TextField(
+        editable=False,
+        verbose_name=_("entité"))
+    reason = models.TextField(
+        blank=True, null=True, editable=False,
+        verbose_name=_("motif"))
+    admin = models.BooleanField(
+        default=False, editable=False,
+        verbose_name=_("admin"))
     entity = CustomGenericForeignKey()
+
+    _model = None
+
+    @property
+    def model(self):
+        if self.content_type:
+            self._model = self._model or self.content_type.model_class()
+            return self._model
+        return None
 
     def __str__(self):  # pragma: no cover
         return _("[{status}] {content_type} #{object_id}").format(
@@ -836,7 +871,7 @@ class History(HistoryCommon):
                 if not entity:
                     self.restored = False
                     return self.restored
-                for field in self.historyfield_set.filter(status_m2m__isnull=True):
+                for field in self.fields.filter(status_m2m__isnull=True):
                     setattr(entity, field.name, field.data)
             entity._from_admin = from_admin
             entity._restore = True
@@ -846,10 +881,10 @@ class History(HistoryCommon):
                 _reason=reason,
                 _force_default=force_default)
             if not rollback:
-                for field in self.historyfield_set.filter(status_m2m__isnull=False):
+                for field in self.fields.filter(status_m2m__isnull=False):
                     getattr(entity, field.name).set(field.data)
             self.restored = True
-        except:
+        except Exception:
             self.restored = False
             raise
         finally:
@@ -860,7 +895,6 @@ class History(HistoryCommon):
     class Meta:
         verbose_name = _("historique")
         verbose_name_plural = _("historiques")
-        ordering = ['-creation_date']
         index_together = ('content_type', 'object_id')
 
 
@@ -879,19 +913,69 @@ class HistoryField(HistoryCommon):
 
     history = models.ForeignKey(
         'History',
-        on_delete=models.CASCADE,
         editable=False,
+        on_delete=models.CASCADE, related_name='fields',
         verbose_name=_("historique"))
-    field_name = models.CharField(max_length=100, editable=False, verbose_name=_("nom du champ"))
-    old_value = models.TextField(blank=True, null=True, editable=False, verbose_name=_("ancienne valeur"))
-    new_value = models.TextField(blank=True, null=True, editable=False, verbose_name=_("nouvelle valeur"))
+    field_name = models.CharField(
+        max_length=100, editable=False,
+        verbose_name=_("nom du champ"))
+    old_value = models.TextField(
+        blank=True, null=True, editable=False,
+        verbose_name=_("ancienne valeur"))
+    new_value = models.TextField(
+        blank=True, null=True, editable=False,
+        verbose_name=_("nouvelle valeur"))
     status_m2m = models.CharField(
-        max_length=1,
+        max_length=1, blank=True, null=True, editable=False,
         choices=LOG_STATUS_M2M,
-        blank=True,
-        null=True,
-        editable=False,
         verbose_name=_("statut M2M"))
+    editable = models.BooleanField(
+        default=True, editable=False,
+        verbose_name=_("éditable"))
+
+    _field = None
+
+    @property
+    def field(self):
+        if self.history.model:
+            self._field = self._field or self.history.model._meta.get_field(self.field_name)
+            return self._field
+        return None
+
+    @property
+    def old_inner_value(self):
+        return self._get_inner_value(self.old_value)
+
+    @property
+    def new_inner_value(self):
+        return self._get_inner_value(self.new_value)
+
+    def _get_inner_value(self, value):
+        if value is None:
+            return None
+        try:
+            if self.field.many_to_many:
+                model = self.field.related_model
+                return [(self.get_instance(model, val) or val) for val in value.split(' | ')]
+            value = self.field.to_python(value)
+            if isinstance(value, str) and not value:
+                return None
+            if self.field.choices:
+                if not value:
+                    return None
+                instance = self.history.model(**{self.field_name: value})
+                return getattr(instance, 'get_{}_display'.format(self.field_name))() or value
+            elif self.field.related_model:
+                instance = self.get_instance(self.field.related_model, value)
+                return instance or value
+        except Exception:
+            pass
+        return value
+
+    @staticmethod
+    @timed_cache(days=1)
+    def get_instance(model, value):
+        return model.objects.filter(pk=value).first()
 
     def __str__(self):  # pragma: no cover
         return _("[{entity}] ({field}) {old} ~ {new}").format(
@@ -925,7 +1009,7 @@ class HistoryField(HistoryCommon):
                 _reason=reason,
                 _force_default=force_default)
             self.restored = True
-        except:
+        except Exception:
             self.restored = False
             raise
         finally:
@@ -934,9 +1018,8 @@ class HistoryField(HistoryCommon):
         return self.restored
 
     class Meta:
-        verbose_name = _("champ modifié")
-        verbose_name_plural = _("champs modifiés")
-        ordering = ['-creation_date']
+        verbose_name = _("historique de champ modifié")
+        verbose_name_plural = _("historiques de champs modifiés")
 
 
 class GlobalManager(models.Manager):
@@ -950,7 +1033,7 @@ class GlobalManager(models.Manager):
         """
         try:
             return self.get(object_uid=uuid).entity
-        except:
+        except Exception:
             return None
 
 
@@ -960,11 +1043,15 @@ class Global(models.Model):
     """
     content_type = models.ForeignKey(
         ContentType,
-        on_delete=models.CASCADE,
         editable=False,
+        on_delete=models.CASCADE, related_name='+',
         verbose_name=_("type d'entité"))
-    object_id = models.TextField(editable=False, verbose_name=_("identifiant"))
-    object_uid = models.UUIDField(unique=True, editable=False, verbose_name=_("UUID"))
+    object_id = models.TextField(
+        editable=False,
+        verbose_name=_("identifiant"))
+    object_uid = models.UUIDField(
+        unique=True, editable=False,
+        verbose_name=_("UUID"))
     entity = GenericForeignKey()
     objects = GlobalManager()
 
@@ -1086,7 +1173,9 @@ class Entity(CommonModel):
         auto_now=True,
         verbose_name=_("date de modification"))
     current_user = models.ForeignKey(
-        settings.AUTH_USER_MODEL, blank=True, null=True, editable=False, on_delete=models.SET_NULL, related_name='+',
+        settings.AUTH_USER_MODEL,
+        blank=True, null=True, editable=False,
+        on_delete=models.SET_NULL, related_name='+',
         verbose_name=_("dernier utilisateur"))
     globals = GenericRelation(Global)
     objects = EntityQuerySet.as_manager()
@@ -1262,8 +1351,12 @@ class PerishableEntity(Entity):
     """
     Entité périssable
     """
-    start_date = models.DateTimeField(blank=True, null=True, verbose_name=_("date d'effet"))
-    end_date = models.DateTimeField(blank=True, null=True, verbose_name=_("date de fin"))
+    start_date = models.DateTimeField(
+        blank=True, null=True,
+        verbose_name=_("date d'effet"))
+    end_date = models.DateTimeField(
+        blank=True, null=True,
+        verbose_name=_("date de fin"))
     objects = PerishableEntityQuerySet.as_manager()
 
     def save(self, *args, _ignore_log=None, _current_user=None, _reason=None, _force_default=None,
@@ -1387,16 +1480,31 @@ class BaseWebhook(CommonModel):
         History.M2M: 'is_m2m',
     }
 
-    name = models.CharField(max_length=100, blank=True, null=True, verbose_name=_("nom"))
+    name = models.CharField(
+        max_length=100, blank=True, null=True,
+        verbose_name=_("nom"))
     url = models.URLField(verbose_name=_("url"))
-    method = models.CharField(max_length=5, default=METHOD_POST, choices=METHODS, verbose_name=_("method"))
-    format = models.CharField(max_length=4, default=FORMAT_JSON, choices=FORMATS, verbose_name=_("format"))
+    method = models.CharField(
+        max_length=5, default=METHOD_POST, choices=METHODS,
+        verbose_name=_("method"))
+    format = models.CharField(
+        max_length=4, default=FORMAT_JSON, choices=FORMATS,
+        verbose_name=_("format"))
     authorization = models.CharField(
-        max_length=6, choices=AUTHORIZATIONS, blank=True, null=True, verbose_name=_("authentification"))
-    token = models.TextField(blank=True, null=True, verbose_name=_("token"))
-    timeout = models.PositiveSmallIntegerField(default=30, verbose_name=_("délai d'attente"))
-    retries = models.PositiveSmallIntegerField(default=0, verbose_name=_("tentatives"))
-    delay = models.PositiveSmallIntegerField(default=0, verbose_name=_("délai entre tentatives"))
+        max_length=6, blank=True, null=True, choices=AUTHORIZATIONS,
+        verbose_name=_("authentification"))
+    token = models.TextField(
+        blank=True, null=True,
+        verbose_name=_("token"))
+    timeout = models.PositiveSmallIntegerField(
+        default=30,
+        verbose_name=_("délai d'attente"))
+    retries = models.PositiveSmallIntegerField(
+        default=0,
+        verbose_name=_("tentatives"))
+    delay = models.PositiveSmallIntegerField(
+        default=0,
+        verbose_name=_("délai entre tentatives"))
 
     def serialize_data(self, data):
         """
@@ -1467,12 +1575,24 @@ class Webhook(BaseWebhook):
     """
     Webhook
     """
-    types = models.ManyToManyField(ContentType, blank=True, verbose_name=_("types"))
-    is_create = models.BooleanField(default=True, verbose_name=_("création"))
-    is_update = models.BooleanField(default=True, verbose_name=_("modification"))
-    is_delete = models.BooleanField(default=True, verbose_name=_("suppression"))
-    is_restore = models.BooleanField(default=True, verbose_name=_("restauration"))
-    is_m2m = models.BooleanField(default=True, verbose_name=_("many-to-many"))
+    types = models.ManyToManyField(
+        ContentType, blank=True,
+        verbose_name=_("types"))
+    is_create = models.BooleanField(
+        default=True,
+        verbose_name=_("création"))
+    is_update = models.BooleanField(
+        default=True,
+        verbose_name=_("modification"))
+    is_delete = models.BooleanField(
+        default=True,
+        verbose_name=_("suppression"))
+    is_restore = models.BooleanField(
+        default=True,
+        verbose_name=_("restauration"))
+    is_m2m = models.BooleanField(
+        default=True,
+        verbose_name=_("many-to-many"))
 
     class Meta(BaseWebhook.Meta):
         verbose_name = _("webhook")
@@ -1578,12 +1698,17 @@ def log_save(instance, created):
         new_value = new_data.get(key, None)
         if old_value == new_value:
             continue
+        try:
+            editable = instance._meta.get_field(key).editable
+        except Exception:
+            editable = True
         HistoryField.objects.create(
             history=history,
             field_name=key,
-            old_value=str(old_value) if old_value is not None else None,
-            new_value=str(new_value) if new_value is not None else None,
-            data=old_value)
+            old_value=None if old_value is None else str(old_value),
+            new_value=None if new_value is None else str(new_value),
+            data=old_value,
+            editable=editable)
     logger.debug("Create/update log saved for entity {} #{} ({})".format(
         instance._meta.object_name, instance.pk, instance.uuid))
 
@@ -1659,14 +1784,18 @@ def log_m2m(instance, model, status_m2m):
                 admin=instance._from_admin)
             instance._history = history
         # Sauvegarde la relation modifiée
-        labels = {e.pk: str(e) for e in model.objects.filter(id__in=set(old_value + new_value))}
+        try:
+            editable = instance._meta.get_field(field).editable
+        except Exception:
+            editable = True
         field = HistoryField.objects.create(
             history=history,
             field_name=field,
-            old_value=' | '.join(labels[id] for id in old_value if id in labels) if old_value is not None else None,
-            new_value=' | '.join(labels[id] for id in new_value if id in labels) if new_value is not None else None,
+            old_value=' | '.join(str(value) for value in old_value) if old_value else None,
+            new_value=' | '.join(str(value) for value in new_value) if new_value else None,
             data=old_value,
-            status_m2m=status_m2m)
+            status_m2m=status_m2m,
+            editable=editable)
         logger.debug("Many-to-many log saved for field '{}' in entity {} #{} ({})".format(
             field, instance._meta.object_name, instance.pk, instance.uuid))
 
@@ -1829,7 +1958,9 @@ class UserMetaData(CommonModel):
         on_delete=models.CASCADE,
         verbose_name=_("utilisateur"),
         related_name='metadata')
-    data = JsonField(blank=True, null=True, verbose_name=_("données"))
+    data = JsonField(
+        blank=True, null=True,
+        verbose_name=_("données"))
 
     @staticmethod
     def set(user, **data):
@@ -1880,7 +2011,9 @@ class GroupMetaData(CommonModel):
         on_delete=models.CASCADE,
         verbose_name=_("groupe"),
         related_name='metadata')
-    data = JsonField(blank=True, null=True, verbose_name=_("données"))
+    data = JsonField(
+        blank=True, null=True,
+        verbose_name=_("données"))
 
     @staticmethod
     def set(group, **data):
@@ -1940,17 +2073,31 @@ class ServiceUsage(CommonModel):
         RESET_YEARLY: dict(years=1),
     }
 
-    name = models.CharField(max_length=200, verbose_name=_("nom"))
+    name = models.CharField(
+        max_length=200,
+        verbose_name=_("nom"))
     user = models.ForeignKey(
         settings.AUTH_USER_MODEL,
-        on_delete=models.CASCADE,
+        on_delete=models.CASCADE, related_name='usages',
         verbose_name=_("utilisateur"))
-    count = models.PositiveIntegerField(default=0, verbose_name=_("nombre"))
-    limit = models.PositiveIntegerField(blank=True, null=True, verbose_name=_("limite"))
-    reset = models.CharField(max_length=1, blank=True, choices=RESETS, verbose_name=_("réinitialisation"))
-    reset_date = models.DateTimeField(blank=True, null=True, verbose_name=_("date réinitialisation"))
-    address = models.CharField(max_length=40, verbose_name=_("adresse"))
-    date = models.DateTimeField(auto_now=True, verbose_name=_("date"))
+    count = models.PositiveIntegerField(
+        default=0,
+        verbose_name=_("nombre"))
+    limit = models.PositiveIntegerField(
+        blank=True, null=True,
+        verbose_name=_("limite"))
+    reset = models.CharField(
+        max_length=1, blank=True, choices=RESETS,
+        verbose_name=_("réinitialisation"))
+    reset_date = models.DateTimeField(
+        blank=True, null=True,
+        verbose_name=_("date réinitialisation"))
+    address = models.CharField(
+        max_length=40,
+        verbose_name=_("adresse"))
+    date = models.DateTimeField(
+        auto_now=True,
+        verbose_name=_("date"))
 
     def save(self, *args, **kwargs):
         if self.limit is not None and self.reset:
@@ -2022,15 +2169,22 @@ def get_data_from_object(instance, types=True, **options):
 
 
 # Monkey-patch des utilisateurs et groupes pour ajouter les fonctions utilitaires de gestion des métadonnées
-setattr(AbstractBaseUser, 'set_metadata', lambda self, **metas: UserMetaData.set(self, **metas))
-setattr(AbstractBaseUser, 'get_metadata', lambda self, key=None, groups=True: UserMetaData.get(self, key=key, groups=groups))
-setattr(AbstractBaseUser, 'del_metadata', lambda self, key: UserMetaData.remove(self, key))
-setattr(AbstractBaseUser, 'merge_metadata', lambda self, *idict, **metas: UserMetaData.merge(self, *idict, **metas))
-setattr(Group, 'set_metadata', lambda self, **metas: GroupMetaData.set(self, **metas))
-setattr(Group, 'get_metadata', lambda self, key=None: GroupMetaData.get(self, key=key))
-setattr(Group, 'del_metadata', lambda self, key: GroupMetaData.remove(self, key))
-setattr(Group, 'merge_metadata', lambda self, *idict, **metas: GroupMetaData.merge(self, *idict, **metas))
-
+setattr(AbstractBaseUser, 'set_metadata',
+        lambda self, **metas: UserMetaData.set(self, **metas))
+setattr(AbstractBaseUser, 'get_metadata',
+        lambda self, key=None, groups=True: UserMetaData.get(self, key=key, groups=groups))
+setattr(AbstractBaseUser, 'del_metadata',
+        lambda self, key: UserMetaData.remove(self, key))
+setattr(AbstractBaseUser, 'merge_metadata',
+        lambda self, *idict, **metas: UserMetaData.merge(self, *idict, **metas))
+setattr(Group, 'set_metadata',
+        lambda self, **metas: GroupMetaData.set(self, **metas))
+setattr(Group, 'get_metadata',
+        lambda self, key=None: GroupMetaData.get(self, key=key))
+setattr(Group, 'del_metadata',
+        lambda self, key: GroupMetaData.remove(self, key))
+setattr(Group, 'merge_metadata',
+        lambda self, *idict, **metas: GroupMetaData.merge(self, *idict, **metas))
 
 # Common models
 MODELS = [

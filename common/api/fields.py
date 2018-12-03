@@ -44,7 +44,7 @@ class QuerySetChoiceField(ChoiceField):
             if self.order_by:
                 queryset = queryset.order_by(self.order_by)
             return list(queryset.values_list(self.value, self.label))
-        except:
+        except Exception:
             return []
 
 
@@ -101,7 +101,7 @@ class CustomHyperlinkedField:
         try:
             # Récupération du modèle de la clé étrangère via le modèle du Serializer parent
             model = self.parent.Meta.model._meta.get_field(self.field_name).related_model
-        except:
+        except Exception:
             # Récupération du modèle lié au QuerySet
             model = getattr(getattr(self, 'queryset', None), 'model', None) or type(obj)
 
@@ -115,7 +115,7 @@ class CustomHyperlinkedField:
         kwargs = {self.lookup_url_kwarg: lookup_value}
         try:
             return self.reverse(view_name, kwargs=kwargs, request=request, format=format)
-        except:
+        except Exception:
             return None
 
 

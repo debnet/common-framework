@@ -1,9 +1,10 @@
 # coding: utf-8
 import logging
 import re
-from itertools import chain
+from itertools import chain, zip_longest
 
 from django.db.models.fields.files import FieldFile
+from openpyxl.worksheet.datavalidation import DataValidation
 
 from common.models import MetaData
 from common.utils import decimal, parsedate, str_to_bool, json_encode, patch_settings
@@ -53,7 +54,8 @@ TYPES = {
 }
 CELL_OFFSET = 3
 
-METADATA_NAME = _('métadonnées')
+METADATA_NAME = _("Métadonnées")
+DROPDOWN_NAME = _("Listes")
 
 
 class ImportExport(object):
@@ -238,6 +240,7 @@ class ImportExport(object):
         :return: Rien
         """
         workbook = Workbook()
+        self.dropdowns = {}
         # Style des titres
         self.title_font = Font(bold=True)
         self.metadata = {}
@@ -245,13 +248,13 @@ class ImportExport(object):
         # Feuille d'aide sur les données
         worksheet = workbook.active
         worksheet.title = str(_("Informations"))
-        titles = [_("modèle"), _("champ"), _("type"), _("valeurs possibles"), _("description")]
+        titles = [_("modèle"), _("champ"), _("type"), _("description")]
         widths = {}
-        for column, title in enumerate(titles):
-            cell = worksheet.cell(row=1, column=column + 1)
+        for column, title in enumerate(titles, start=1):
+            cell = worksheet.cell(row=1, column=column)
             cell.value = str(title)
             cell.font = self.title_font
-            column_letter = get_column_letter(column + 1)
+            column_letter = get_column_letter(column)
             widths[column_letter] = len(str(cell.value)) + CELL_OFFSET
         row = 2
         for model in self.models:
@@ -263,17 +266,29 @@ class ImportExport(object):
                     meta.verbose_name.capitalize(),
                     field.verbose_name,
                     TYPES[field.get_internal_type()],
-                    ' | '.join(str(value) for key, value in field.flatchoices),
                     field.help_text]
-                for column, data in enumerate(datas):
-                    cell = worksheet.cell(row=row, column=column + 1)
+                if field.choices:
+                    self.dropdowns[model, field.name] = [str(value) for key, value in field.flatchoices]
+                for column, data in enumerate(datas, start=1):
+                    cell = worksheet.cell(row=row, column=column)
                     cell.value = str(data)
-                    column_letter = get_column_letter(column + 1)
+                    column_letter = get_column_letter(column)
                     widths[column_letter] = max(widths[column_letter], len(str(data)) + CELL_OFFSET)
                 row += 1
         # Redimensionne les colonnes
         for column_letter, width in widths.items():
             worksheet.column_dimensions[column_letter].width = width
+
+        # Listes déroulantes
+        worksheet = workbook.create_sheet(title=str(DROPDOWN_NAME))
+        worksheet.sheet_state = 'hidden'
+        for row in zip_longest(*self.dropdowns.values(), fillvalue=None):
+            worksheet.append(row)
+        for index, key in enumerate(self.dropdowns.keys(), start=1):
+            column = get_column_letter(index)
+            self.dropdowns[key] = DataValidation(
+                type='list', formula1='={}!${}:${}'.format(DROPDOWN_NAME, column, column))
+
         # Feuille par modèle
         for model in self.models:
             self._write_model(workbook, model)
@@ -281,11 +296,11 @@ class ImportExport(object):
         # Export des métadatas
         worksheet = workbook.create_sheet(title=str(METADATA_NAME))
         fields = [('code', 'Code'), ('cle', 'Clé'), ('valeur', 'Valeur')]
-        for column, (field_code, field_name) in enumerate(fields):
-            cell = worksheet.cell(row=1, column=column + 1)
+        for column, (field_code, field_name) in enumerate(fields, start=1):
+            cell = worksheet.cell(row=1, column=column)
             cell.value = field_name
             cell.font = self.title_font
-            column_letter = get_column_letter(column + 1)
+            column_letter = get_column_letter(column)
             widths[column_letter] = len(str(cell.value)) + CELL_OFFSET
         # On construit la feuille des métadonnées ligne par ligne en bouclant sur notre dictionnaire de métadonnées
         row = 2
@@ -301,7 +316,7 @@ class ImportExport(object):
                 cell = worksheet.cell(row=row, column=3)
                 try:
                     cell.value = value
-                except:
+                except Exception:
                     cell.value = json_encode(value)
                 row += 1
 
@@ -323,7 +338,7 @@ class ImportExport(object):
                 code_field = getattr(related, '_code_field', 'id')
                 fk = cache.get(related, {}).get(value, related.objects.get(**{code_field: value}))
                 setattr(instance, field_name, fk)
-        except:
+        except Exception:
             if self.delayed_models:
                 # On va chercher l'instance parent et l'enregistrer en amont
                 for index, (parent, _fks, _m2m, _metadata) in enumerate(self.delayed_models):
@@ -363,7 +378,7 @@ class ImportExport(object):
         try:
             for key, value in metadata.items():
                 instance.set_metadata(key, value)
-        except:
+        except Exception:
             logger.error(_("Impossible d'ajouter la métadata [{},{}] pour l'instance '[{}]'").format(
                 key, value, instance._meta.verbose_name))
             raise
@@ -373,7 +388,7 @@ class ImportExport(object):
                 code_field = getattr(related, '_code_field', 'id')
                 m2ms = [cache.get(related, {}).get(value, related.objects.get(**{code_field: value})) for value in values]
                 getattr(instance, field_name).set(m2ms)
-        except:
+        except Exception:
             logger.error(_("Impossible de récupérer les valeurs de relation "
                            "correspondantes à [{}] pour le champ [{}] de [{}]").format(
                 ', '.join(str(v) for v in values), field_name, instance._meta.verbose_name))
@@ -392,21 +407,22 @@ class ImportExport(object):
         code_field = getattr(model, '_code_field', 'id')
         worksheet = workbook.create_sheet(title=re.sub(r'[^\w]+', ' ', str(meta.verbose_name).capitalize()))
         widths = {}
+        dropdowns = {}
         # Titres
         fields = [(field.name, str(field.verbose_name),)
                   for field in chain(meta.fields, meta.many_to_many)
                   if field.name == code_field or not (field.auto_created or not (field.editable or self.non_editables))]
-        for column, (field_code, field_name) in enumerate(fields):
-            cell = worksheet.cell(row=1, column=column + 1)
+        for column, (field_code, field_name) in enumerate(fields, start=1):
+            cell = worksheet.cell(row=1, column=column)
             cell.value = field_name
             cell.font = self.title_font
-            column_letter = get_column_letter(column + 1)
+            column_letter = get_column_letter(column)
             widths[column_letter] = len(str(cell.value)) + CELL_OFFSET
         # Récupération des données
         queryset = model.objects.select_related().order_by(code_field)
         row = 2
         for element in queryset:
-            for column, (field_code, field_name) in enumerate(fields):
+            for column, (field_code, field_name) in enumerate(fields, start=1):
                 value = getattr(element, field_code)
                 if value is None:
                     continue
@@ -429,20 +445,34 @@ class ImportExport(object):
                         value = getattr(value, code_field, value.id)
                 elif field.choices:
                     value = getattr(element, 'get_{}_display'.format(field_code))()
+                    if column not in dropdowns:
+                        data_validation = dropdowns[column] = self.dropdowns[model, field_code]
+                        worksheet.add_data_validation(data_validation)
+                    dropdowns[column].add(worksheet["{}{}".format(get_column_letter(column), row)])
                 elif field.get_internal_type() in ['DateField', 'DateTimeField']:
                     value = parsedate(value).isoformat()
                 elif isinstance(value, FieldFile):
                     value = value.name
                 elif isinstance(value, dict):
                     value = json_encode(value)
-                cell = worksheet.cell(row=row, column=column + 1)
+                cell = worksheet.cell(row=row, column=column)
                 try:
                     cell.value = value
-                except:
+                except Exception:
                     cell.value = str(value)
-                column_letter = get_column_letter(column + 1)
+                column_letter = get_column_letter(column)
                 widths[column_letter] = max(widths[column_letter], len(str(value)) + CELL_OFFSET)
             row += 1
+        # Ajout de lignes vides avec listes déroulantes
+        for row in range(row, row + 10):
+            for column, (field_code, field_name) in enumerate(fields, start=1):
+                field = meta.get_field(field_code)
+                if not field.choices:
+                    continue
+                if column not in dropdowns:
+                    data_validation = dropdowns[column] = self.dropdowns[model, field_code]
+                    worksheet.add_data_validation(data_validation)
+                dropdowns[column].add(worksheet["{}{}".format(get_column_letter(column), row)])
         # Redimensionne les colonnes
         for column_letter, width in widths.items():
             worksheet.column_dimensions[column_letter].width = width
