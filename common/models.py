@@ -16,7 +16,8 @@ from django.db.models import query, Q
 from django.db.models.deletion import Collector
 from django.db.models.signals import m2m_changed, post_delete, post_init, post_save, pre_save
 from django.dispatch import receiver
-from django.forms.models import model_to_dict
+from django.forms.models import model_to_dict as django_model_to_dict
+from django.utils.text import camel_case_to_spaces
 from django.utils.timezone import now
 from django.utils.translation import ugettext_lazy as _
 from rest_framework.renderers import JSONRenderer
@@ -324,7 +325,7 @@ class CommonQuerySet(models.QuerySet):
         Retourne l'ensemble des entités du QuerySet sous forme de dictionnaire
         :return: Liste de dictionnaires
         """
-        return [e.to_dict(*args, **kwargs) if isinstance(e, CommonModel) else e for e in self]
+        return [e.to_dict(*args, **kwargs) for e in self]
 
     def __json__(self):
         """
@@ -448,21 +449,23 @@ class CommonModel(models.Model):
         return MetaData.remove(self, key=key, logic=logic, date=date, queryset=self.metadata)
 
     def to_dict(self, includes=None, excludes=None,
-                editables=False, uids=False, metadata=False, names=False, types=False,
-                display=False, fks=False, m2m=False, no_ids=False, functions=None, extra=None, raw=False, **kwargs):
+                editables=False, uids=False, metadata=False, names=False, types=False, display=False, labels=False,
+                fks=False, m2m=False, no_ids=False, no_empty=False, functions=None, extra=None, raw=False, **kwargs):
         """
         Retourne la représentation d'une entité sous forme de dictionnaire
-        :param includes: Attributs à inclure
-        :param excludes: Attributs à exclure
+        :param includes: Attributs à inclure (liste ou dictionnaire)
+        :param excludes: Attributs à exclure (liste ou dictionnaire)
         :param editables: Inclure les valeurs des attributs non éditables ?
         :param uids: Inclure les identifiants uniques de toutes les entités liées ?
         :param metadata: Inclure les métadonnées ?
         :param names: Inclure les informations textuelles du modèle ?
         :param types: Inclure le type d'entité ?
         :param display: Inclure le libellé de l'attribut s'il existe ?
+        :param labels: Utiliser le libellé du champ à la place de son code ?
         :param fks: Inclure les éléments liés via les clés étrangères ?
         :param m2m: Inclure les identifiants des relations ManyToMany liées ?
-        :param no_ids: Inclure les identifiants des clés primaires et les identifiants des clés étrangères ?
+        :param no_ids: Ne pas inclure les identifiants des clés primaires et les identifiants des clés étrangères ?
+        :param no_empty: Ne pas inclure les données vides ou nulles ?
         :param functions: Exécuter et inclure le résultat d'une ou plusieurs fonctions ?
         Les fonctions doivent être de la forme suivante :
         [ (nom_champ, nom_fonction, [arg1, arg2, ...], {kwarg1: valeur, kwargs2: valeur, ...} ]
@@ -470,12 +473,20 @@ class CommonModel(models.Model):
         :param raw: Ne pas chercher à retourner des valeurs serialisables ?
         :return: Dictionnaire
         """
-        keywords = dict(editables=editables, uids=uids, metadata=metadata,
-                        names=names, types=types, display=display, fks=fks, m2m=m2m, no_ids=no_ids)
-        keywords.update(kwargs)
-        from django.db.models.fields.related import ManyToManyField
-        meta = self._meta
         data = dict()
+        meta = self._meta
+        keywords = dict(
+            editables=editables, uids=uids, metadata=metadata, names=names, types=types,
+            display=display, labels=labels, fks=fks, m2m=m2m, no_ids=no_ids, no_empty=no_empty)
+        if isinstance(includes, dict):
+            keywords.update(includes=includes)
+            includes = set(includes.get('__all__') or []) | set(includes.get(meta.model) or [])
+        if isinstance(excludes, dict):
+            keywords.update(excludes=excludes)
+            excludes = set(excludes.get('__all__') or []) | set(excludes.get(meta.model) or [])
+        keywords.update(kwargs)
+        # Utilitaires
+        is_empty = lambda value: False if isinstance(value, (int, float, complex, bool)) else not bool(value)
         # Données textuelles de l'entité (nom, modèle, représentation, etc...)
         if names:
             data.update(
@@ -488,7 +499,7 @@ class CommonModel(models.Model):
                     verbose_name_plural=str(meta.verbose_name_plural) if meta.verbose_name_plural else None))
         # Type de l'entité
         if types:
-            data_type = model_to_dict(get_content_type(self))
+            data_type = model_to_dict(get_content_type(self), **keywords)
             data_type.pop('_state', None)  # Non serialisable
             data.update(_content_type=data_type)
         deferred_fields = self.get_deferred_fields()
@@ -505,29 +516,38 @@ class CommonModel(models.Model):
             # Champs exclus
             if excludes and field.name in excludes:
                 continue
+            field_name = str(field.verbose_name or camel_case_to_spaces(field.name)) if labels else field.name
             # Relations de type many-to-many
-            if isinstance(field, ManyToManyField):
+            if isinstance(field, models.ManyToManyField):
                 if not m2m:
                     continue
                 if self.pk is None:
-                    data[field.name] = []
+                    data[field_name] = []
                 else:
                     value = field.value_from_object(self)
                     related = field.related_model
                     # Identifiants
                     if not no_ids:
-                        data[field.name + '_ids'] = [v.pk for v in value]
+                        result = [v.pk for v in value]
+                        if result or not no_empty:
+                            data[field_name + str(_(" (IDs)") if labels else '_ids')] = result
                     # Données
                     if fks:
-                        if isinstance(related, CommonModel):
-                            data[field.name] = [v.to_dict(**keywords) for v in value]
+                        if issubclass(related, CommonModel):
+                            result = [v.to_dict(**keywords) for v in value]
+                            if result or not no_empty:
+                                data[field_name] = result
                         else:
-                            data[field.name] = [model_to_dict(v) for v in value]
-                            for item in data[field.name]:
-                                item.pop('_state', None)  # Non serialisable
+                            result = [model_to_dict(v, **keywords) for v in value]
+                            if result or not no_empty:
+                                data[field_name] = result
+                                for item in result:
+                                    item.pop('_state', None)  # Non serialisable
                     # GUIDs (uniquement entités)
-                    if uids and isinstance(related, Entity):
-                        data[field.name + '_uids'] = [v.uuid for v in value]
+                    if uids and issubclass(related, Entity):
+                        result = [v.uuid for v in value]
+                        if result or not no_empty:
+                            data[field_name + str(_(" (UIDs)") if labels else '_uids')] = result
             # Autres champs
             else:
                 # Valeur du champ
@@ -538,47 +558,63 @@ class CommonModel(models.Model):
                 if isinstance(field, (models.ForeignKey, models.OneToOneField)):
                     # Identifiant
                     if not no_ids:
-                        data[field.attname] = value
+                        data[(field_name + str(_(" (ID)"))) if labels else field.attname] = value
                     if fks or uids:
                         fk = getattr(self, field.name, None)
                         # Données
                         if fks and fk:
                             if isinstance(fk, CommonModel):
-                                data[field.name] = fk.to_dict(**keywords)
+                                data[field_name] = fk.to_dict(**keywords)
                             else:
-                                data[field.name] = model_to_dict(fk)
-                                data[field.name].pop('_state', None)  # Non serialisable
+                                data[field_name] = model_to_dict(fk, **keywords)
+                                data[field_name].pop('_state', None)  # Non serialisable
                         # GUID (uniquement entité)
                         if uids and isinstance(fk, Entity):
-                            data[field.name + '_uid'] = fk.uuid
+                            data[field_name + str(_(" (UID)") if labels else '_uid')] = fk.uuid
                 # Gestion des valeurs nulles (hors clés étrangères)
-                elif value is None:
-                    data[field.name] = None
+                elif value is None and not no_empty:
+                    data[field_name] = None
                 # Cas spécifique du champ JSON
                 elif isinstance(field, JsonField):
-                    data[field.name] = value if raw else json_encode(value, sort_keys=True)
+                    result = value if raw else json_encode(value, sort_keys=True)
+                    if result or not no_empty:
+                        data[field_name] = result
                 # Cas spécifique du champ binaire (pickle)
                 elif isinstance(field, PickleField):
-                    data[field.name] = value if raw else pickle.dumps(value)
+                    result = value if raw else pickle.dumps(value)
+                    if result or not no_empty:
+                        data[field_name] = result
                 # Cas spécifique des champs fichier & image
                 elif isinstance(field, (models.FileField, models.ImageField)):
-                    data[field.name] = (value if raw else getattr(value, 'url', None)) if value else None
+                    result = (value if raw else getattr(value, 'url', None)) if value else None
+                    if result or not no_empty:
+                        data[field_name] = result
                 # Cas spécifique pour les listes
                 elif isinstance(value, (list, set, tuple)):
-                    data[field.name] = value if raw else ','.join(value)
+                    result = value if raw else ','.join(value)
+                    if result or not no_empty:
+                        data[field_name] = result
                 elif hasattr(self, 'get_{}_json'.format(field.name)):
-                    data[field.name] = getattr(self, 'get_{}_json'.format(field.name))()
-                else:
-                    data[field.name] = value
+                    result = getattr(self, 'get_{}_json'.format(field.name))()
+                    if result or not no_empty:
+                        data[field_name] = result
+                elif not is_empty(value) or not no_empty:
+                    data[field_name] = value
                 if display and hasattr(self, 'get_{}_display'.format(field.name)):
-                    data[field.name + '_display'] = getattr(self, 'get_{}_display'.format(field.name))()
+                    result = getattr(self, 'get_{}_display'.format(field.name))()
+                    if result or not no_empty:
+                        data[field_name + str(_(" (libellé)") if labels else '_display')] = result
         # Gestion des métadonnées
         if metadata:
-            data['metadata'] = self.get_metadata()
+            current_metadata = self.get_metadata()
+            if current_metadata or not no_empty:
+                data['metadata'] = current_metadata
         # Appel de fonctions internes à l'entité
         if functions:
             for key, func_name, func_args, func_kwargs in functions:
-                data[key] = getattr(self, func_name)(*func_args, **func_kwargs)
+                result = getattr(self, func_name)(*func_args, **func_kwargs)
+                if not is_empty(result) or not no_empty:
+                    data[key] = result
         # Champs additionnels
         if extra:
             # Récupération automatique des prefetchs
@@ -589,7 +625,7 @@ class CommonModel(models.Model):
                     continue
                 item = getattr(self, field, None)
                 # Liste d'entités
-                if item and isinstance(item, list) and item[0] and isinstance(item[0], Entity):
+                if isinstance(item, list) and item and isinstance(item[0], Entity):
                     data[field] = [i.to_dict(**keywords) for i in item]
                 # QuerySet d'entités
                 elif isinstance(item, (CommonModel, CommonQuerySet)):
@@ -597,7 +633,7 @@ class CommonModel(models.Model):
                 # Dictionnaire
                 elif isinstance(item, dict):
                     for key, value in item.items():
-                        if key in data:
+                        if key in data and (not is_empty(value) or not no_empty):
                             continue
                         # Entités ou QuerySet d'entités
                         if isinstance(value, (CommonModel, CommonQuerySet)):
@@ -606,7 +642,7 @@ class CommonModel(models.Model):
                         else:
                             data[key] = value
                 # Valeur quelconque
-                else:
+                elif not is_empty(item) or not no_empty:
                     data[field] = item
         return data
 
@@ -2165,6 +2201,27 @@ def get_data_from_object(instance, types=True, **options):
             data.update(_content_type=get_data_from_object(content_type, types=False))
     elif hasattr(instance, '__dict__'):
         data = instance.__dict__
+    return data
+
+
+def model_to_dict(instance, fields=None, exclude=None, **kwargs):
+    """
+    Equivalent récursif du `model_to_dict` de Django
+    :param instance: Instance
+    :param fields: Champs à inclures (organisés par modèle)
+    :param exclude: Champs à inclures (organisés par modèle)
+    :return: Dictionnaire
+    """
+    model = instance._meta.model
+    _includes, _excludes = fields or kwargs.get('includes') or {}, exclude or kwargs.get('excludes') or {}
+    fields = _includes.get(model) if isinstance(_includes, dict) else _includes
+    exclude = _excludes.get(model) if isinstance(_excludes, dict) else _excludes
+    data = django_model_to_dict(instance, fields=fields, exclude=exclude)
+    for key, value in data.items():
+        if isinstance(value, models.Model):
+            data[key] = model_to_dict(value, fields=fields, exclude=exclude)
+        elif isinstance(value, list) and value and isinstance(value[0], models.Model):
+            data[key] = [model_to_dict(item, fields=fields, exclude=exclude) for item in value]
     return data
 
 
