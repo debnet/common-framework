@@ -397,7 +397,7 @@ class CommonModel(models.Model):
             self.refresh_from_db()
         return count
 
-    def save(self, *args, force_insert=True, _full_update=False, **kwargs):
+    def save(self, *args, force_insert=False, _full_update=False, **kwargs):
         """
         Sauvegarde l'instance du modèle
         """
@@ -793,12 +793,6 @@ class HistoryCommon(CommonModel):
     data_size = models.PositiveIntegerField(
         editable=False,
         verbose_name=_("taille données"))
-
-    def save(self, *args, **kwargs):
-        self.data_size = 0
-        if self.data is not None:
-            self.data_size = len(str(self.data))
-        return super().save(*args, **kwargs)
 
     class Meta:
         abstract = True
@@ -1724,11 +1718,13 @@ def log_save(instance, created):
         object_str=str(instance),
         reason=instance._reason,
         data=old_data,
+        data_size=len(json_encode(old_data)),
         admin=instance._from_admin)
     instance._history = history
     # Sauvegarde les champs modifiés
     if history.status != History.UPDATE:
         return
+    fields = []
     for key in new_data:
         old_value = old_data.get(key, None)
         new_value = new_data.get(key, None)
@@ -1738,13 +1734,15 @@ def log_save(instance, created):
             editable = instance._meta.get_field(key).editable
         except Exception:
             editable = True
-        HistoryField.objects.create(
+        fields.append(HistoryField(
             history=history,
             field_name=key,
             old_value=None if old_value is None else str(old_value),
             new_value=None if new_value is None else str(new_value),
             data=old_value,
-            editable=editable)
+            data_size=len(json_encode(old_value)),
+            editable=editable))
+    HistoryField.objects.bulk_create(fields)
     logger.debug("Create/update log saved for entity {} #{} ({})".format(
         instance._meta.object_name, instance.pk, instance.uuid))
 
@@ -1817,6 +1815,7 @@ def log_m2m(instance, model, status_m2m):
                 object_str=str(instance),
                 reason=instance._reason,
                 data=None,
+                data_size=0,
                 admin=instance._from_admin)
             instance._history = history
         # Sauvegarde la relation modifiée
@@ -1830,6 +1829,7 @@ def log_m2m(instance, model, status_m2m):
             old_value=' | '.join(str(value) for value in old_value) if old_value else None,
             new_value=' | '.join(str(value) for value in new_value) if new_value else None,
             data=old_value,
+            data_size=len(json_encode(old_value)),
             status_m2m=status_m2m,
             editable=editable)
         logger.debug("Many-to-many log saved for field '{}' in entity {} #{} ({})".format(
@@ -1877,6 +1877,7 @@ def log_delete(instance):
         object_str=str(instance),
         reason=instance._reason,
         data=data,
+        data_size=len(json_encode(data)),
         admin=instance._from_admin)
     instance._history = history
     logger.debug("Delete log saved for entity {} #{} ({})".format(
@@ -1964,7 +1965,6 @@ def notify_changes(instance, status, status_m2m=None):
     filters.update(dict(types__in=[instance.model_type]))
     for webhook in Webhook.objects.filter(**filters):
         webhook.send_http(data)
-
     return data
 
 
