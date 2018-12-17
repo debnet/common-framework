@@ -36,7 +36,6 @@ class CommonModelSerializer(serializers.HyperlinkedModelSerializer if HYPERLINKE
         meta = request and getattr(request, 'query_params', None) and request.query_params.get('meta', False)
         if meta and hasattr(instance, 'metadata'):
             # Soit un QuerySet de MetaData soit un lien vers un modèle ayant un champ "data" (voir User/Group)
-            # TODO: la récupération des métadonnées ne fonctionne pas sur les modèles d'héritage concret (?)
             return instance.metadata.data if hasattr(instance.metadata, 'data') \
                 else {meta.key: meta.value for meta in instance.metadata.all() if meta.valid}
         return None
@@ -51,6 +50,8 @@ class CommonModelSerializer(serializers.HyperlinkedModelSerializer if HYPERLINKE
             pk_field_in_fields = any(f in getattr(self.Meta, 'fields', [f]) for f in (pk_field.name, ALL_FIELDS))
             if not pk_field_in_excludes and pk_field_in_fields and pk_field.name not in self._declared_fields:
                 field, options = self.build_standard_field(pk_field.name, pk_field)
+                if hasattr(field, 'view_name') and pk_field.related_model:  # Arbitraire
+                    options['view_name'] = '{}-detail'.format(pk_field.related_model._meta.model_name)
                 self._declared_fields[pk_field.name] = field(**options)
                 self._declared_fields.move_to_end(pk_field.name, last=False)
         super().__init__(*args, **kwargs)
