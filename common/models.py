@@ -405,7 +405,7 @@ class CommonModel(models.Model):
             kwargs['update_fields'] = update_fields = set(kwargs.pop('update_fields', self.modified.keys()))
             # Les champs de date avec auto_now=True ne sont modifiés que pendant la sauvegarde
             update_fields.update([field.name for field in self._meta.fields if getattr(field, 'auto_now', None)])
-        return super().save(*args, **kwargs)
+        return super().save(*args, force_insert=force_insert, **kwargs)
 
     def get_metadata(self, key=None, valid=True, raw=False):
         """
@@ -1241,7 +1241,7 @@ class Entity(CommonModel):
         if force_insert:
             self.pk = self.id = self.uuid = None
         self.uuid = self.uuid or uuid.uuid4()
-        return super().save(*args, **kwargs)
+        return super().save(*args, force_insert=force_insert, **kwargs)
 
     def delete(self, *args, _ignore_log=None, _current_user=None, _reason=None,
                _force_default=None, keep_parents=False, **kwargs):
