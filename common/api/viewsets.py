@@ -30,7 +30,8 @@ class CommonModelViewSet(viewsets.ModelViewSet):
             return default_serializer
 
         # Le serializer peut être substitué en fonction des paramètres d'appel de l'API
-        url_params = self.url_params or self.request.query_params.dict()
+        query_params = getattr(self.request, 'query_params', None)
+        url_params = self.url_params or (query_params.dict() if query_params else {})
         if default_serializer:
 
             # Fonction utilitaire d'ajout de champ au serializer

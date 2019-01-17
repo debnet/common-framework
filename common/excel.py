@@ -359,7 +359,7 @@ class ImportExport(object):
         # Tests de validation et enregistrement de l'instance
         try:
             code_field = getattr(instance, '_code_field', 'id')
-            if not getattr(instance, code_field, None):
+            if not self.force and not getattr(instance, code_field, None):
                 instance.validate_unique()
             if self.clean:
                 instance.clean()
