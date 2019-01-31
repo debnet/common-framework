@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: PACKAGE VERSION\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2018-12-04 16:58+0000\n"
+"POT-Creation-Date: 2019-01-30 12:10+0000\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -42,14 +42,20 @@ msgstr "{} élément(s) ont été restaurés avec succès !"
 msgid "{} élément(s) n'ont pas pu être restaurés car leurs relations sont manquantes !"
 msgstr "{} élément(s) n'ont pas pu être restaurés car leurs relations sont manquantes !"
 
-msgid "L'élément #{} n'a pu être restauré pour la raison suivante : {}"
-msgstr "L'élément #{} n'a pu être restauré pour la raison suivante : {}"
+msgid "L'élément {} n'a pu être restauré pour la raison suivante : {}"
+msgstr "L'élément {} n'a pu être restauré pour la raison suivante : {}"
 
 msgid "Annuler les modifications"
 msgstr "Annuler les modifications"
 
+msgid "Annuler toutes les modifications"
+msgstr "Annuler toutes les modifications"
+
 msgid "Restaurer les données d'origine"
 msgstr "Restaurer les données d'origine"
+
+msgid "Restaurer toutes les données d'origine"
+msgstr "Restaurer toutes les données d'origine"
 
 msgid "Champs modifiés"
 msgstr "Champs modifiés"
@@ -399,6 +405,9 @@ msgstr "motif"
 
 msgid "admin"
 msgstr "admin"
+
+msgid "collection"
+msgstr "collection"
 
 #, python-brace-format
 msgid "[{status}] {content_type} #{object_id}"

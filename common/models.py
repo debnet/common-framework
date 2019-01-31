@@ -4,14 +4,15 @@ import pickle
 import time
 import uuid
 
+from django.apps import apps
 from django.contrib.auth import get_user_model
 from django.contrib.auth.models import AbstractBaseUser, Group
 from django.contrib.contenttypes.fields import GenericForeignKey, GenericRelation
 from django.contrib.contenttypes.models import ContentType
 from django.core import serializers
 from django.core.cache import cache
-from django.core.exceptions import ValidationError
-from django.db import models
+from django.core.exceptions import ValidationError, FieldDoesNotExist
+from django.db import models, transaction
 from django.db.models import query, Q
 from django.db.models.deletion import Collector
 from django.db.models.signals import m2m_changed, post_delete, post_init, post_save, pre_save
@@ -860,6 +861,9 @@ class History(HistoryCommon):
     admin = models.BooleanField(
         default=False, editable=False,
         verbose_name=_("admin"))
+    collector = JsonField(
+        blank=True, null=True, editable=False,
+        verbose_name=_("collection"))
     entity = CustomGenericForeignKey()
 
     _model = None
@@ -877,7 +881,7 @@ class History(HistoryCommon):
             content_type=self.content_type, object_id=self.object_id)
 
     def restore(self, *, ignore_log=None, current_user=None, reason=None,
-                force_default=None, from_admin=None, rollback=False):
+                force_default=None, from_admin=None, rollback=False, all_fields=False):
         """
         Permet de restaurer complètement une entité
         :param ignore_log: Ignorer l'historisation ?
@@ -886,33 +890,59 @@ class History(HistoryCommon):
         :param force_default: Force le comportement par défaut de la sauvegarde ?
         :param from_admin: Indique que la restauration a été demandée via l'interface d'administration ?
         :param rollback: Recrée l'entité si elle a été supprimée ?
+        :param all_fields: Restaurer également les données non éditables ?
         """
         try:
             entity = self.entity
             if rollback:
                 if not entity:
                     entity = self.content_type.model_class()()
+                model = entity._meta.model
                 if not self.data:
                     self.restored = False
                     return self.restored
-                for key, value in self.data.items():
-                    setattr(entity, key, value)
+                for field_name, value in self.data.items():
+                    try:
+                        field = model._meta.get_field(field_name)
+                        if not all_fields and not field.editable:
+                            continue
+                    except FieldDoesNotExist:
+                        continue
+                    setattr(entity, field_name, value)
             else:
                 if not entity:
                     self.restored = False
                     return self.restored
-                for field in self.fields.filter(status_m2m__isnull=True):
+                fields = self.fields.filter(status_m2m__isnull=True)
+                if not all_fields:
+                    fields = fields.exclude(editable=False)
+                for field in fields:
                     setattr(entity, field.name, field.data)
             entity._from_admin = from_admin
             entity._restore = True
-            entity.save(
-                _current_user=current_user or get_current_user(),
-                _ignore_log=ignore_log,
-                _reason=reason,
-                _force_default=force_default)
-            if not rollback:
-                for field in self.fields.filter(status_m2m__isnull=False):
-                    getattr(entity, field.name).set(field.data)
+            with transaction.atomic():
+                entity.save(
+                    _current_user=current_user or get_current_user(),
+                    _ignore_log=ignore_log,
+                    _reason=reason,
+                    _force_default=force_default)
+                if not rollback:
+                    fields = self.fields.filter(status_m2m__isnull=False)
+                    if not all_fields:
+                        fields = fields.exclude(editable=False)
+                    for field in fields:
+                        getattr(entity, field.name).set(field.data)
+                elif self.collector and entity.pk:
+                    for model_label, fields in self.collector.items():
+                        try:
+                            model = apps.get_model(model_label)
+                        except LookupError:
+                            continue
+                        for field_name, values in fields.items():
+                            filters = Q(**{field_name + '__isnull': True})
+                            if all(isinstance(v, str) for v in values):
+                                filters |= Q(**{field_name: ''})
+                            model.objects.filter(filters, pk__in=values).update(**{field_name: entity.pk})
             self.restored = True
         except Exception:
             self.restored = False
@@ -1012,7 +1042,7 @@ class HistoryField(HistoryCommon):
             entity=self.history.content_type, field=self.field_name, old=self.old_value, new=self.new_value)
 
     def restore(self, *, ignore_log=None, current_user=None, reason=None,
-                force_default=None, from_admin=None, rollback=False):
+                force_default=None, from_admin=None, **kwargs):
         """
         Permet de restaurer un champ d'une entité
         :param ignore_log: Ignorer l'historisation ?
@@ -1020,7 +1050,6 @@ class HistoryField(HistoryCommon):
         :param reason: Message d'information associé à l'historique de restauration
         :param force_default: Force le comportement par défaut de la sauvegarde ?
         :param from_admin: Indique que la restauration a été demandée via l'interface d'administration ?
-        :param rollback: (Utilisé uniquement sur un historique complet)
         """
         try:
             entity = self.history.entity
@@ -1136,6 +1165,9 @@ class EntityQuerySet(CommonQuerySet):
 
         collector = Collector(using=del_query.db)
         collector.collect(del_query)
+        self._collector = {key._meta.label: {
+            field.name: [instance.pk for instance in instances] for (field, value), instances in value.items()
+        } for key, value in collector.field_updates.items()}
         deleted, _rows_count = collector.delete()
 
         self._result_cache = None
@@ -1220,6 +1252,7 @@ class Entity(CommonModel):
     _force_default = False
     _history = None
     _init = False
+    _collector = None
     _natural_key = ('uuid', )
 
     def save(self, *args, _ignore_log=None, _current_user=None, _reason=None,
@@ -1266,6 +1299,9 @@ class Entity(CommonModel):
         using = kwargs.get('using', False) or router.db_for_write(self.__class__, instance=self)
         collector = Collector(using=using)
         collector.collect([self], keep_parents=keep_parents)
+        self._collector = {key._meta.label: {
+            field.name: [instance.pk for instance in instances] for (field, value), instances in value.items()
+        } for key, value in collector.field_updates.items()}
         for instances in collector.data.values():
             for instance in instances:
                 instance._ignore_log = self._ignore_log
@@ -1719,7 +1755,8 @@ def log_save(instance, created):
         reason=instance._reason,
         data=old_data,
         data_size=len(json_encode(old_data)),
-        admin=instance._from_admin)
+        admin=instance._from_admin,
+        collector=instance._collector)
     instance._history = history
     # Sauvegarde les champs modifiés
     if history.status != History.UPDATE:
@@ -1816,7 +1853,8 @@ def log_m2m(instance, model, status_m2m):
                 reason=instance._reason,
                 data=None,
                 data_size=0,
-                admin=instance._from_admin)
+                admin=instance._from_admin,
+                collector=instance._collector)
             instance._history = history
         # Sauvegarde la relation modifiée
         try:
@@ -1878,7 +1916,8 @@ def log_delete(instance):
         reason=instance._reason,
         data=data,
         data_size=len(json_encode(data)),
-        admin=instance._from_admin)
+        admin=instance._from_admin,
+        collector=instance._collector)
     instance._history = history
     logger.debug("Delete log saved for entity {} #{} ({})".format(
         instance._meta.object_name, instance.pk, instance.uuid))

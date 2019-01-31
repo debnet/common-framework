@@ -264,19 +264,22 @@ class MetaDataAdmin(admin.ModelAdmin):
         return super().get_queryset(request).prefetch_related('entity')
 
 
-def restore(modeladmin, request, queryset, rollback=False):
+def restore(modeladmin, request, queryset, rollback=False, all_fields=False):
     """
     Action d'annulation des modifications
     :param modeladmin: Classe d'administration
     :param request: Requête HTTP
     :param queryset: Ensemble des entités sélectionnées
+    :param rollback: Recrée l'entité si elle a été supprimée ?
+    :param all_fields: Restaurer également les données non éditables ?
     :return: Rien
     """
     fail, success = 0, 0
     errors = []
-    for history in queryset.order_by('creation_date'):
+    for history in queryset.order_by('-creation_date'):
         try:
-            result = history.restore(current_user=request.user, from_admin=True, rollback=rollback)
+            result = history.restore(
+                current_user=request.user, from_admin=True, rollback=rollback, all_fields=all_fields)
             if result:
                 success += 1
             else:
@@ -284,26 +287,47 @@ def restore(modeladmin, request, queryset, rollback=False):
         except Exception as e:
             errors.append((history.pk, e))
     if success > 0:
-        messages.success(request, _("{} élément(s) ont été restaurés avec succès !").format(success))
+        messages.success(request, _(
+            "{} élément(s) ont été restaurés avec succès !").format(success))
     if fail > 0:
-        messages.warning(
-            request,
-            _("{} élément(s) n'ont pas pu être restaurés car leurs relations sont manquantes !").format(fail))
+        messages.warning(request, _(
+            "{} élément(s) n'ont pas pu être restaurés car leurs relations sont manquantes !").format(fail))
     for id, error in errors:
-        messages.error(request, _("L'élément #{} n'a pu être restauré pour la raison suivante : {}").format(id, error))
+        messages.error(request, _(
+            "L'élément {} n'a pu être restauré pour la raison suivante : {}").format(id, error))
 
 
 restore.short_description = _("Annuler les modifications")
 
 
+def restore_all(modeladmin, request, queryset):
+    """
+    Action d'annulation de toutes les modifications
+    """
+    return restore(modeladmin, request, queryset, all_fields=True)
+
+
+restore_all.short_description = _("Annuler toutes les modifications")
+
+
 def rollback(modeladmin, request, queryset):
     """
-    Action de reversion dans l'administration
+    Action de reversion des modifications
     """
     return restore(modeladmin, request, queryset, rollback=True)
 
 
 rollback.short_description = _("Restaurer les données d'origine")
+
+
+def rollback_all(modeladmin, request, queryset):
+    """
+    Action de reversion de toutes les modifications
+    """
+    return restore(modeladmin, request, queryset, rollback=True, all_fields=True)
+
+
+rollback_all.short_description = _("Restaurer toutes les données d'origine")
 
 
 @admin.register(History)
@@ -312,16 +336,18 @@ class HistoryAdmin(admin.ModelAdmin):
     Configuration de l'administration pour les entrées d'historique
     """
     date_hierarchy = 'creation_date'
-    readonly_fields = ('user', 'status', 'object_str', 'content_type', 'object_id', 'object_uid', 'admin', 'reason',
-                       'data', )
-    list_display = ('id', 'creation_date', 'user', 'status', 'entity_url', 'content_type', 'object_id', 'data_size',
-                    'restoration_date', 'restored', 'admin', 'has_reason', 'fields_count', )
+    readonly_fields = (
+        'user', 'status', 'object_str', 'content_type', 'object_id', 'object_uid',
+        'admin', 'reason', 'data', 'collector', )
+    list_display = (
+        'id', 'creation_date', 'user', 'status', 'entity_url', 'content_type', 'object_id', 'data_size',
+        'restoration_date', 'restored', 'admin', 'has_reason', 'fields_count', )
     list_display_links = ('id', )
     list_filter = ('creation_date', 'user', 'status', 'content_type', 'restoration_date', 'restored', 'admin', )
     list_select_related = True
     ordering = ('-creation_date', )
     search_fields = ('object_str', 'content_type', )
-    actions = [restore, rollback]
+    actions = [restore, restore_all, rollback, rollback_all]
 
     def entity_url(self, obj):
         if obj.status != History.DELETE:

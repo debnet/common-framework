@@ -2,12 +2,12 @@ Django==2.1.5
 Pillow==5.4.1
 coreapi==2.3.3
 djangorestframework==3.9.1
-flake8==3.6.0
+flake8==3.7.1
 model_mommy==1.5.1
 python-dateutil==2.7.5
-pip==19.0
+pip==19.0.1
 pytz==2018.9
 pyyaml==4.2b1
 requests==2.21
-setuptools==40.6.3
+setuptools==40.7.1
 wheel==0.32.3
