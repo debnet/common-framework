@@ -534,16 +534,11 @@ class CommonModel(models.Model):
                             data[field_name + str(_(" (IDs)") if labels else '_ids')] = result
                     # Données
                     if fks:
-                        if issubclass(related, CommonModel):
-                            result = [v.to_dict(**keywords) for v in value]
-                            if result or not no_empty:
-                                data[field_name] = result
-                        else:
-                            result = [model_to_dict(v, **keywords) for v in value]
-                            if result or not no_empty:
-                                data[field_name] = result
-                                for item in result:
-                                    item.pop('_state', None)  # Non serialisable
+                        result = [model_to_dict(v, **keywords) for v in value]
+                        if result or not no_empty:
+                            data[field_name] = result
+                            for item in result:
+                                item.pop('_state', None)  # Non serialisable
                     # GUIDs (uniquement entités)
                     if uids and issubclass(related, Entity):
                         result = [v.uuid for v in value]
@@ -564,11 +559,8 @@ class CommonModel(models.Model):
                         fk = getattr(self, field.name, None)
                         # Données
                         if fks and fk:
-                            if isinstance(fk, CommonModel):
-                                data[field_name] = fk.to_dict(**keywords)
-                            else:
-                                data[field_name] = model_to_dict(fk, **keywords)
-                                data[field_name].pop('_state', None)  # Non serialisable
+                            data[field_name] = model_to_dict(fk, **keywords)
+                            data[field_name].pop('_state', None)  # Non serialisable
                         # GUID (uniquement entité)
                         if uids and isinstance(fk, Entity):
                             data[field_name + str(_(" (UID)") if labels else '_uid')] = fk.uuid
@@ -861,9 +853,12 @@ class History(HistoryCommon):
     admin = models.BooleanField(
         default=False, editable=False,
         verbose_name=_("admin"))
-    collector = JsonField(
+    collector_update = JsonField(
         blank=True, null=True, editable=False,
-        verbose_name=_("collection"))
+        verbose_name=_("mises à jour"))
+    collector_delete = JsonField(
+        blank=True, null=True, editable=False,
+        verbose_name=_("suppressions"))
     entity = CustomGenericForeignKey()
 
     _model = None
@@ -932,8 +927,8 @@ class History(HistoryCommon):
                         fields = fields.exclude(editable=False)
                     for field in fields:
                         getattr(entity, field.name).set(field.data)
-                elif self.collector and entity.pk:
-                    for model_label, fields in self.collector.items():
+                elif entity.pk:
+                    for model_label, fields in (self.collector_update or {}).items():
                         try:
                             model = apps.get_model(model_label)
                         except LookupError:
@@ -943,6 +938,15 @@ class History(HistoryCommon):
                             if all(isinstance(v, str) for v in values):
                                 filters |= Q(**{field_name: ''})
                             model.objects.filter(filters, pk__in=values).update(**{field_name: entity.pk})
+                    for model_label, datas in (self.collector_delete or {}).items():
+                        try:
+                            model = apps.get_model(model_label)
+                        except LookupError:
+                            continue
+                        for data in datas:
+                            data.update({entity._meta.model_name: entity.pk})
+                            data = {key if key.endswith('_id') else key + '_id': value for key, value in data.items()}
+                            model.objects.get_or_create(**data)
             self.restored = True
         except Exception:
             self.restored = False
@@ -1165,9 +1169,12 @@ class EntityQuerySet(CommonQuerySet):
 
         collector = Collector(using=del_query.db)
         collector.collect(del_query)
-        self._collector = {key._meta.label: {
+        self._collector_update = {key._meta.label: {
             field.name: [instance.pk for instance in instances] for (field, value), instances in value.items()
         } for key, value in collector.field_updates.items()}
+        self._collector_delete = {key._meta.label: [
+            model_to_dict(value, exclude='id') for value in values
+        ] for key, values in collector.data.items() if key._meta.auto_created}
         deleted, _rows_count = collector.delete()
 
         self._result_cache = None
@@ -1252,7 +1259,7 @@ class Entity(CommonModel):
     _force_default = False
     _history = None
     _init = False
-    _collector = None
+    _collector_update, _collector_delete = None, None
     _natural_key = ('uuid', )
 
     def save(self, *args, _ignore_log=None, _current_user=None, _reason=None,
@@ -1299,9 +1306,12 @@ class Entity(CommonModel):
         using = kwargs.get('using', False) or router.db_for_write(self.__class__, instance=self)
         collector = Collector(using=using)
         collector.collect([self], keep_parents=keep_parents)
-        self._collector = {key._meta.label: {
+        self._collector_update = {key._meta.label: {
             field.name: [instance.pk for instance in instances] for (field, value), instances in value.items()
         } for key, value in collector.field_updates.items()}
+        self._collector_delete = {key._meta.label: [
+            model_to_dict(value, exclude='id') for value in values
+        ] for key, values in collector.data.items() if key._meta.auto_created}
         for instances in collector.data.values():
             for instance in instances:
                 instance._ignore_log = self._ignore_log
@@ -1368,9 +1378,10 @@ class Entity(CommonModel):
         :return: dict
         """
         data = super().__json__()
-        data.update(_current_user=get_data_from_object(self._current_user or self.current_user),
-                    _reason=self._reason, _from_admin=self._from_admin, _restore=self._restore,
-                    _ignore_log=self._ignore_log, _force_default=self._force_default)
+        data.update(
+            _current_user=get_data_from_object(self._current_user or self.current_user),
+            _reason=self._reason, _from_admin=self._from_admin, _restore=self._restore,
+            _ignore_log=self._ignore_log, _force_default=self._force_default)
         return data
 
     @staticmethod
@@ -1756,7 +1767,8 @@ def log_save(instance, created):
         data=old_data,
         data_size=len(json_encode(old_data)),
         admin=instance._from_admin,
-        collector=instance._collector)
+        collector_update=instance._collector_update,
+        collector_delete=instance._collector_delete)
     instance._history = history
     # Sauvegarde les champs modifiés
     if history.status != History.UPDATE:
@@ -1854,7 +1866,8 @@ def log_m2m(instance, model, status_m2m):
                 data=None,
                 data_size=0,
                 admin=instance._from_admin,
-                collector=instance._collector)
+                collector_update=instance._collector_update,
+                collector_delete=instance._collector_delete)
             instance._history = history
         # Sauvegarde la relation modifiée
         try:
@@ -1917,7 +1930,8 @@ def log_delete(instance):
         data=data,
         data_size=len(json_encode(data)),
         admin=instance._from_admin,
-        collector=instance._collector)
+        collector_update=instance._collector_update,
+        collector_delete=instance._collector_delete)
     instance._history = history
     logger.debug("Delete log saved for entity {} #{} ({})".format(
         instance._meta.object_name, instance.pk, instance.uuid))
@@ -2230,7 +2244,7 @@ def get_data_from_object(instance, types=True, **options):
     data = {}
     if not instance:
         return None
-    elif hasattr(instance, 'to_dict'):
+    elif isinstance(instance, CommonModel):
         data = instance.to_dict(types=types, **options)
     elif isinstance(instance, models.Model):
         data = model_to_dict(instance)
@@ -2252,15 +2266,18 @@ def model_to_dict(instance, fields=None, exclude=None, **kwargs):
     :return: Dictionnaire
     """
     model = instance._meta.model
-    _includes, _excludes = fields or kwargs.get('includes') or {}, exclude or kwargs.get('excludes') or {}
+    _includes, _excludes = fields or kwargs.pop('includes', {}) or {}, exclude or kwargs.pop('excludes', {}) or {}
     fields = _includes.get(model) if isinstance(_includes, dict) else _includes
     exclude = _excludes.get(model) if isinstance(_excludes, dict) else _excludes
-    data = django_model_to_dict(instance, fields=fields, exclude=exclude)
-    for key, value in data.items():
-        if isinstance(value, models.Model):
-            data[key] = model_to_dict(value, fields=fields, exclude=exclude)
-        elif isinstance(value, list) and value and isinstance(value[0], models.Model):
-            data[key] = [model_to_dict(item, fields=fields, exclude=exclude) for item in value]
+    if isinstance(instance, CommonModel):
+        data = instance.to_dict(includes=_includes, excludes=_excludes, **kwargs)
+    else:
+        data = django_model_to_dict(instance, fields=fields, exclude=exclude)
+        for key, value in data.items():
+            if isinstance(value, models.Model):
+                data[key] = model_to_dict(value, fields=fields, exclude=exclude)
+            elif isinstance(value, list) and value and isinstance(value[0], models.Model):
+                data[key] = [model_to_dict(item, fields=fields, exclude=exclude) for item in value]
     return data
 
 

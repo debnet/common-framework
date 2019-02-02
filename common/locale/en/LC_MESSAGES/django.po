@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: PACKAGE VERSION\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2019-01-30 12:10+0000\n"
+"POT-Creation-Date: 2019-02-02 16:41+0000\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -406,8 +406,11 @@ msgstr "reason"
 msgid "admin"
 msgstr "admin"
 
-msgid "collection"
-msgstr "collection"
+msgid "mises à jour"
+msgstr "updates"
+
+msgid "suppressions"
+msgstr "deletions"
 
 #, python-brace-format
 msgid "[{status}] {content_type} #{object_id}"
@@ -681,9 +684,3 @@ msgstr "Error while unpacking: {}"
 
 msgid "Cette fonction ne peut être utilisée que sur PostgreSQL."
 msgstr "This function only works on PostgreSQL."
-
-#~ msgid "Consulter"
-#~ msgstr "View"
-
-#~ msgid "valeurs possibles"
-#~ msgstr "possible values"

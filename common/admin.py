@@ -338,7 +338,7 @@ class HistoryAdmin(admin.ModelAdmin):
     date_hierarchy = 'creation_date'
     readonly_fields = (
         'user', 'status', 'object_str', 'content_type', 'object_id', 'object_uid',
-        'admin', 'reason', 'data', 'collector', )
+        'admin', 'reason', 'data', 'collector_update', 'collector_delete')
     list_display = (
         'id', 'creation_date', 'user', 'status', 'entity_url', 'content_type', 'object_id', 'data_size',
         'restoration_date', 'restored', 'admin', 'has_reason', 'fields_count', )
