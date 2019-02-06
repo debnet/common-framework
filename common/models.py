@@ -912,7 +912,7 @@ class History(HistoryCommon):
                 if not all_fields:
                     fields = fields.exclude(editable=False)
                 for field in fields:
-                    setattr(entity, field.name, field.data)
+                    setattr(entity, field.field_name, field.data)
             entity._from_admin = from_admin
             entity._restore = True
             with transaction.atomic():
@@ -926,7 +926,7 @@ class History(HistoryCommon):
                     if not all_fields:
                         fields = fields.exclude(editable=False)
                     for field in fields:
-                        getattr(entity, field.name).set(field.data)
+                        getattr(entity, field.field_name).set(field.data)
                 elif entity.pk:
                     for model_label, fields in (self.collector_update or {}).items():
                         try:
@@ -1771,27 +1771,27 @@ def log_save(instance, created):
         collector_delete=instance._collector_delete)
     instance._history = history
     # Sauvegarde les champs modifiés
-    if history.status != History.UPDATE:
-        return
-    fields = []
-    for key in new_data:
-        old_value = old_data.get(key, None)
-        new_value = new_data.get(key, None)
-        if old_value == new_value:
-            continue
-        try:
-            editable = instance._meta.get_field(key).editable
-        except Exception:
-            editable = True
-        fields.append(HistoryField(
-            history=history,
-            field_name=key,
-            old_value=None if old_value is None else str(old_value),
-            new_value=None if new_value is None else str(new_value),
-            data=old_value,
-            data_size=len(json_encode(old_value)),
-            editable=editable))
-    HistoryField.objects.bulk_create(fields)
+    restore_update = not dict(diff).get(instance._meta.pk.name)
+    if history.status in (History.UPDATE, History.RESTORE) and restore_update:
+        fields = []
+        for key in new_data:
+            old_value = old_data.get(key, None)
+            new_value = new_data.get(key, None)
+            if old_value == new_value:
+                continue
+            try:
+                editable = instance._meta.get_field(key).editable
+            except Exception:
+                editable = True
+            fields.append(HistoryField(
+                history=history,
+                field_name=key,
+                old_value=None if old_value is None else str(old_value),
+                new_value=None if new_value is None else str(new_value),
+                data=old_value,
+                data_size=len(json_encode(old_value)),
+                editable=editable))
+        HistoryField.objects.bulk_create(fields)
     logger.debug("Create/update log saved for entity {} #{} ({})".format(
         instance._meta.object_name, instance.pk, instance.uuid))
 
