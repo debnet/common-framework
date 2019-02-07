@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: PACKAGE VERSION\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2019-02-02 16:41+0000\n"
+"POT-Creation-Date: 2019-02-07 11:01+0000\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -50,12 +50,6 @@ msgstr "Annuler les modifications"
 
 msgid "Annuler toutes les modifications"
 msgstr "Annuler toutes les modifications"
-
-msgid "Restaurer les données d'origine"
-msgstr "Restaurer les données d'origine"
-
-msgid "Restaurer toutes les données d'origine"
-msgstr "Restaurer toutes les données d'origine"
 
 msgid "Champs modifiés"
 msgstr "Champs modifiés"

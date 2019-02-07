@@ -264,13 +264,12 @@ class MetaDataAdmin(admin.ModelAdmin):
         return super().get_queryset(request).prefetch_related('entity')
 
 
-def restore(modeladmin, request, queryset, rollback=False, all_fields=False):
+def restore(modeladmin, request, queryset, all_fields=False):
     """
     Action d'annulation des modifications
     :param modeladmin: Classe d'administration
     :param request: Requête HTTP
     :param queryset: Ensemble des entités sélectionnées
-    :param rollback: Recrée l'entité si elle a été supprimée ?
     :param all_fields: Restaurer également les données non éditables ?
     :return: Rien
     """
@@ -279,7 +278,7 @@ def restore(modeladmin, request, queryset, rollback=False, all_fields=False):
     for history in queryset.order_by('-creation_date'):
         try:
             result = history.restore(
-                current_user=request.user, from_admin=True, rollback=rollback, all_fields=all_fields)
+                current_user=request.user, from_admin=True, all_fields=all_fields)
             if result:
                 success += 1
             else:
@@ -310,26 +309,6 @@ def restore_all(modeladmin, request, queryset):
 restore_all.short_description = _("Annuler toutes les modifications")
 
 
-def rollback(modeladmin, request, queryset):
-    """
-    Action de reversion des modifications
-    """
-    return restore(modeladmin, request, queryset, rollback=True)
-
-
-rollback.short_description = _("Restaurer les données d'origine")
-
-
-def rollback_all(modeladmin, request, queryset):
-    """
-    Action de reversion de toutes les modifications
-    """
-    return restore(modeladmin, request, queryset, rollback=True, all_fields=True)
-
-
-rollback_all.short_description = _("Restaurer toutes les données d'origine")
-
-
 @admin.register(History)
 class HistoryAdmin(admin.ModelAdmin):
     """
@@ -347,7 +326,7 @@ class HistoryAdmin(admin.ModelAdmin):
     list_select_related = True
     ordering = ('-creation_date', )
     search_fields = ('object_str', 'content_type', )
-    actions = [restore, restore_all, rollback, rollback_all]
+    actions = [restore, restore_all]
 
     def entity_url(self, obj):
         if obj.status != History.DELETE:
