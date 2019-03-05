@@ -1326,7 +1326,7 @@ def get_current_user():
             continue
         if not hasattr(request, 'user'):
             continue
-        return request.user
+        return request.user if request.user.pk else None
     return None
 
 
