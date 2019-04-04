@@ -1,7 +1,7 @@
 # coding: utf-8
 from django.contrib import admin, messages
 from django.contrib.admin import options
-from django.contrib.admin.actions import delete_selected as django_delete_selected
+from django.contrib.admin.actions import delete_selected
 from django.contrib.admin.sites import all_sites
 from django.contrib.contenttypes.models import ContentType
 from django.db import models
@@ -19,16 +19,17 @@ from common.models import (
 from common.utils import get_pk_field
 
 
-def delete_selected(modeladmin, request, queryset):
+def delete_selected_entity(modeladmin, request, queryset):
     """
     Action de suppression dans l'administration
     """
     queryset._from_admin = True
     queryset._current_user = request.user
-    return django_delete_selected(modeladmin, request, queryset)
+    return delete_selected(modeladmin, request, queryset)
 
 
-delete_selected.short_description = django_delete_selected.short_description
+delete_selected_entity.allowed_permissions = ('delete',)
+delete_selected_entity.short_description = delete_selected.short_description
 
 
 class CommonAdmin(admin.ModelAdmin):
@@ -85,8 +86,8 @@ class EntityAdmin(CommonAdmin):
     """
     Configuration de l'administration par défaut
     """
-    actions = [delete_selected]
-    ordering = ['-modification_date', ]
+    actions = [delete_selected_entity]
+    ordering = ['-modification_date']
     date_hierarchy = 'creation_date'
 
     def save_model(self, request, obj, form, change):
@@ -104,6 +105,11 @@ class EntityAdmin(CommonAdmin):
         list_filter += ['creation_date'] if 'creation_date' not in list_filter else []
         list_filter += ['modification_date'] if 'modification_date' not in list_filter else []
         return tuple(list_filter)
+
+    def get_actions(self, request):
+        actions = super().get_actions(request)
+        actions.pop('delete_selected', None)
+        return actions
 
 
 class PerishableValidFilter(admin.SimpleListFilter):
