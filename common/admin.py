@@ -87,6 +87,7 @@ class EntityAdmin(CommonAdmin):
     Configuration de l'administration par défaut
     """
     actions = [delete_selected_entity]
+    delete_selected_confirmation_template = 'common/delete_selected.html'
     ordering = ['-modification_date']
     date_hierarchy = 'creation_date'
 
