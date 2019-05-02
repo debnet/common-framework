@@ -1,5 +1,6 @@
 # coding: utf-8
 from functools import wraps
+from json import JSONDecodeError
 
 from django.conf import settings
 from django.db.models import F, Q, QuerySet, Count, Sum, Avg, Min, Max
@@ -11,7 +12,8 @@ from rest_framework.relations import PrimaryKeyRelatedField
 from rest_framework.response import Response
 
 from common.api.fields import ChoiceDisplayField, ReadOnlyObjectField
-from common.utils import get_field_by_path, get_prefetchs, get_related, parsedate, prefetch_metadata, str_to_bool
+from common.utils import (
+    get_field_by_path, get_prefetchs, get_related, json_decode, parsedate, prefetch_metadata, str_to_bool)
 
 
 # URLs dans les serializers
@@ -27,7 +29,8 @@ AGGREGATES = {
 }
 RESERVED_QUERY_PARAMS = [
     'filters', 'fields', 'order_by', 'group_by', 'all', 'display',
-    'distinct', 'silent', 'simple', 'meta', 'cache', 'timeout'] + list(AGGREGATES.keys())
+    'distinct', 'silent', 'simple', 'meta', 'cache', 'timeout',
+] + list(AGGREGATES.keys())
 
 # Gestion du cache
 CACHE_PREFIX = 'api_'
@@ -43,10 +46,20 @@ def url_value(filter, value):
     """
     if not isinstance(value, str):
         return value
-    if filter and any(filter.endswith(lookup) for lookup in ('__in', '__range', '__any', '__all')):
-        return value.split(',')
-    if filter and any(filter.endswith(lookup) for lookup in ('__isnull', '__isempty')):
-        return str_to_bool(value)
+    if filter:
+        if any(filter.endswith(lookup) for lookup in ('__in', '__range', '__any', '__all')):
+            return value.split(',')
+        if any(filter.endswith(lookup) for lookup in ('__isnull', '__isempty')):
+            return str_to_bool(value)
+        if any(filter.endswith(lookup) for lookup in ('__hasdict', '__indict')):
+            try:
+                return json_decode(value)
+            except JSONDecodeError:
+                data = {}
+                for subvalue in value.split(','):
+                    key, val = subvalue.split(':')
+                    data[key] = val
+                return data
     return value
 
 
@@ -580,7 +593,7 @@ def api_paginate(request, queryset, serializer, pagination=None, enable_options=
     if enable_options:
 
         # Fonction de récupération des données depuis les paramètres
-        def get(name):
+        def get_from_url_params(name):
             return url_params.get(name, '').replace('.', '__').replace(' ', '')
 
         # Critères de recherche dans le cache
@@ -592,7 +605,9 @@ def api_paginate(request, queryset, serializer, pagination=None, enable_options=
             new_url_params.update(**cache_params)
             new_url_params.update(**url_params)
             url_params = new_url_params
-            new_cache_params = {key: value for key, value in url_params.items() if key not in default_reserved_query_params}
+            new_cache_params = {
+                key: value for key, value in url_params.items()
+                if key not in default_reserved_query_params}
             if new_cache_params:
                 from django.utils.timezone import now
                 from datetime import timedelta
@@ -611,10 +626,10 @@ def api_paginate(request, queryset, serializer, pagination=None, enable_options=
             options['raw_url'] = plain_url
 
         # Erreurs silencieuses
-        silent = str_to_bool(get('silent'))
+        silent = str_to_bool(get_from_url_params('silent'))
 
         # Extraction de champs spécifiques
-        fields = get('fields')
+        fields = get_from_url_params('fields')
         if fields:
             # Supprime la récupération des relations
             queryset = queryset.select_related(None).prefetch_related(None)
@@ -640,8 +655,7 @@ def api_paginate(request, queryset, serializer, pagination=None, enable_options=
         # Filtres (dans une fonction pour être appelé par les aggregations sans group_by)
         def do_filter(queryset):
             try:
-                filters = {}
-                excludes = {}
+                filters, excludes = {}, {}
                 for key, value in url_params.items():
                     key = key.replace('.', '__')
                     if value.startswith('(') and value.endswith(')'):
@@ -649,7 +663,7 @@ def api_paginate(request, queryset, serializer, pagination=None, enable_options=
                     if key in reserved_query_params:
                         continue
                     if key.startswith('-'):
-                        key = key[1:]
+                        key = key[1:].strip()
                         excludes[key] = url_value(key, value)
                     else:
                         key = key.strip()
@@ -659,7 +673,7 @@ def api_paginate(request, queryset, serializer, pagination=None, enable_options=
                 if excludes:
                     queryset = queryset.exclude(**excludes)
                 # Filtres génériques
-                others = url_params.get('filters', '')
+                others = get_from_url_params('filters')
                 if others:
                     queryset = queryset.filter(parse_filters(others))
                 if filters or excludes or others:
@@ -676,13 +690,13 @@ def api_paginate(request, queryset, serializer, pagination=None, enable_options=
         try:
             aggregations = {}
             for aggregate, function in AGGREGATES.items():
-                for field in url_params.get(aggregate, '').split(','):
+                for field in get_from_url_params(aggregate, '').split(','):
                     if not field:
                         continue
                     distinct = field.startswith(' ')
                     field = field.strip().replace('.', '__')
                     aggregations[field + '_' + aggregate] = function(field, distinct=distinct)
-            group_by = get('group_by')
+            group_by = get_from_url_params('group_by')
             if group_by:
                 _queryset = queryset.values(*group_by.split(','))
                 if aggregations:
@@ -706,7 +720,7 @@ def api_paginate(request, queryset, serializer, pagination=None, enable_options=
 
         # Tris
         try:
-            order_by = get('order_by')
+            order_by = get_from_url_params('order_by')
             if order_by:
                 temp_queryset = queryset.order_by(*order_by.split(','))
                 str(temp_queryset.query)  # Force SQL evaluation to retrieve exception
@@ -724,7 +738,7 @@ def api_paginate(request, queryset, serializer, pagination=None, enable_options=
         # Distinct
         distincts = []
         try:
-            distinct = get('distinct')
+            distinct = get_from_url_params('distinct')
             if distinct:
                 distincts = distinct.split(',')
                 if str_to_bool(distinct) is not None:
@@ -746,7 +760,7 @@ def api_paginate(request, queryset, serializer, pagination=None, enable_options=
             source = field_name.strip().replace('.', '__')
             # Champ spécifique en cas d'énumération
             choices = getattr(get_field_by_path(queryset.model, field_name), 'flatchoices', None)
-            if choices and str_to_bool(get('display')):
+            if choices and str_to_bool(get_from_url_params('display')):
                 fields[field_name + '_display'] = ChoiceDisplayField(choices=choices, source=source)
             # Champ spécifique pour l'affichage de la valeur
             fields[field_name] = ReadOnlyObjectField(source=source if '.' in field_name else None)
@@ -754,7 +768,7 @@ def api_paginate(request, queryset, serializer, pagination=None, enable_options=
         # Création de serializer à la volée en cas d'aggregation ou de restriction de champs
         aggregations = {}
         for aggregate in AGGREGATES.keys():
-            for field in url_params.get(aggregate, '').split(','):
+            for field in get_from_url_params(aggregate).split(','):
                 if not field:
                     continue
                 field_name = field.strip() + '_' + aggregate
@@ -763,7 +777,7 @@ def api_paginate(request, queryset, serializer, pagination=None, enable_options=
         # Regroupements & aggregations
         if 'group_by' in url_params or aggregations:
             fields = {}
-            for field in url_params.get('group_by', '').split(','):
+            for field in get_from_url_params('group_by').split(','):
                 add_field_to_serializer(fields, field)
             fields.update(aggregations)
             # Un serializer avec les données groupées est créé à la volée
@@ -771,7 +785,7 @@ def api_paginate(request, queryset, serializer, pagination=None, enable_options=
         # Restriction de champs
         elif 'fields' in url_params:
             fields = {}
-            for field in url_params.get('fields', '').split(','):
+            for field in get_from_url_params('fields').split(','):
                 add_field_to_serializer(fields, field)
             # Un serializer avec restriction des champs est créé à la volée
             serializer = type(serializer.__name__, (serializers.Serializer, ), fields)
@@ -783,7 +797,7 @@ def api_paginate(request, queryset, serializer, pagination=None, enable_options=
         queryset = query_func(queryset, *func_args, **func_kwargs)
 
     # Uniquement si toutes les données sont demandées
-    all_data = str_to_bool(get('all'))
+    all_data = str_to_bool(get_from_url_params('all'))
     if all_data:
         return Response(serializer(queryset, context=context, many=True).data)
 

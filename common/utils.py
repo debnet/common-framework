@@ -836,7 +836,9 @@ def get_field_by_path(model, path):
     except FieldDoesNotExist:
         return None
     if inner_path:
-        return get_field_by_path(field.related_model, '.'.join(inner_path))
+        if field.related_model:
+            return get_field_by_path(field.related_model, '.'.join(inner_path))
+        return field
     return field
 
 

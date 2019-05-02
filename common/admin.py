@@ -290,8 +290,8 @@ def restore(modeladmin, request, queryset, all_fields=False):
                 success += 1
             else:
                 fail += 1
-        except Exception as e:
-            errors.append((history.pk, e))
+        except Exception as error:
+            errors.append((history.pk, error))
     if success > 0:
         messages.success(request, _(
             "{} élément(s) ont été restaurés avec succès !").format(success))

@@ -13,8 +13,7 @@ from common.utils import json_decode, json_encode
 
 
 # Vérifie que l'on utilise le moteur de bases de données PostgreSQL
-is_postgresql = lambda connection: \
-    connection.settings_dict['ENGINE'] in ['django.db.backends.postgresql_psycopg2', 'django.db.backends.postgresql']
+is_postgresql = lambda connection: connection.settings_dict['ENGINE'] == 'django.db.backends.postgresql'
 is_mysql = lambda connection: connection.settings_dict['ENGINE'] == 'django.db.backends.mysql'
 is_sqlite = lambda connection: connection.settings_dict['ENGINE'] == 'django.db.backends.sqlite3'
 
@@ -236,6 +235,9 @@ except ImportError:
 
 
 class JsonKeyTransform(Transform):
+    """
+    Transformation générale pour JsonField
+    """
     operator = '->'
     nested_operator = '#>'
 
@@ -280,6 +282,11 @@ class JsonKeyTransformTextLookupMixin(object):
 
 @JsonKeyTransform.register_lookup
 class JsonKeyTransformIExact(JsonKeyTransformTextLookupMixin, lookups.IExact):
+    pass
+
+
+@JsonKeyTransform.register_lookup
+class JsonKeyTransformContains(JsonKeyTransformTextLookupMixin, lookups.Contains):
     pass
 
 
@@ -423,7 +430,7 @@ class JsonContains(JsonDictLookup):
     Recherche les éléments qui contiennent le dictionnaire fourni en paramètre
     Uniquement pour PostgreSQL
     """
-    lookup_name = 'contains'
+    lookup_name = 'hasdict'
     lookup_operator = '@>'
 
 
@@ -433,7 +440,7 @@ class JsonContained(JsonDictLookup):
     Recherche les éléments qui sont contenus dans le dictionnaire fourni en paramètre
     Uniquement pour PostgreSQL
     """
-    lookup_name = 'contained'
+    lookup_name = 'indict'
     lookup_operator = '<@'
 
 
