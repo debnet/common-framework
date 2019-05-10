@@ -690,7 +690,7 @@ def api_paginate(request, queryset, serializer, pagination=None, enable_options=
         try:
             aggregations = {}
             for aggregate, function in AGGREGATES.items():
-                for field in get_from_url_params(aggregate, '').split(','):
+                for field in get_from_url_params(aggregate).split(','):
                     if not field:
                         continue
                     distinct = field.startswith(' ')
