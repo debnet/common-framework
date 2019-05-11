@@ -1456,23 +1456,24 @@ class PerishableEntity(Entity):
         self._reason = _reason or self._reason
         self._force_default = force_insert or force_update or _force_default or self._force_default
         self.start_date = self.start_date or current_date
+        kwargs.update(_ignore_log=self._ignore_log, _current_user=self._current_user, _reason=self._reason)
         previous = None
         if self.pk and not self._force_default:
             previous = self.__class__.objects.get(pk=self.pk)
             previous.end_date = self.end_date or current_date
-            previous.save(_ignore_log=self._ignore_log, _current_user=self._current_user, _reason=self._reason,
-                          _force_default=True, force_insert=force_insert, force_update=force_update, **kwargs)
+            previous.save(_force_default=True, force_insert=force_insert, force_update=force_update, **kwargs)
             self.pk = self.id = self.end_date = self.uuid = None
             self.start_date = previous.end_date or current_date
-        self.uuid = self.uuid or uuid.uuid4()
-        super().save(_ignore_log=self._ignore_log, _current_user=self._current_user, _reason=self._reason,
-                     _force_default=self._force_default, force_insert=force_insert, force_update=force_update, **kwargs)
-        if not self._force_default and previous:
+        if self._force_default:
+            self._force_default = False
+            return super().save(_force_default=True, force_insert=force_insert, force_update=force_update, **kwargs)
+        result = super().save(force_insert=True, **kwargs)
+        if previous:
             for metadata in previous.metadata.all():
                 metadata.pk = metadata.id = None
                 metadata.entity = self
                 metadata.save(force_insert=True)
-        self._force_default = False
+        return result
 
     def delete(self, *args, _ignore_log=None, _current_user=None, _reason=None, _force_default=None, **kwargs):
         """
