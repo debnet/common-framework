@@ -589,12 +589,12 @@ def api_paginate(request, queryset, serializer, pagination=None, enable_options=
     context = dict(request=request, **(context or {}))
     options = dict(aggregates=None, distinct=None, filters=None, order_by=None)
 
+    # Fonction de récupération des données depuis les paramètres
+    def get_from_url_params(name):
+        return url_params.get(name, '').replace('.', '__').replace(' ', '')
+
     # Activation des options
     if enable_options:
-
-        # Fonction de récupération des données depuis les paramètres
-        def get_from_url_params(name):
-            return url_params.get(name, '').replace('.', '__').replace(' ', '')
 
         # Critères de recherche dans le cache
         cache_key = url_params.pop('cache', None)
