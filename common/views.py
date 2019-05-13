@@ -40,7 +40,7 @@ def view_cache(request):
 
 
 @never_cache
-@render_to('common/scripts.js')
+@render_to('common/scripts.js', content_type='text/javascript')
 def scripts(request):
     """
     Scripts communs:

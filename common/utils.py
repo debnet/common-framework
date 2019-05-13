@@ -919,7 +919,7 @@ def recursive_get_urls(module=None, namespaces=None, attributes=None, model=None
 
         patterns = list(chain(*(getattr(module, attribute, []) for attribute in attributes))) or patterns
         if patterns and isinstance(patterns[-1], str):
-            patterns, app_name = patterns
+            patterns, *junk = patterns
     except (TypeError, ValueError):
         patterns = []
 

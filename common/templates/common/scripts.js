@@ -6,6 +6,7 @@
         this.name = "DjangoJsError";
         this.message = (message || "");
     }
+
     DjangoJsError.prototype = new Error();
     DjangoJsError.prototype.constructor = DjangoJsError;
 
@@ -69,7 +70,7 @@
             }
 
 
-            for (var idx=0; idx < array.length; idx++) {
+            for (var idx = 0; idx < array.length; idx++) {
                 url += array[idx] + parts[idx + 1];
             }
 
@@ -84,7 +85,7 @@
                 return url;
             }
 
-            for (var idx=0; idx < tokens.length; idx++) {
+            for (var idx = 0; idx < tokens.length; idx++) {
                 var token = tokens[idx],
                     prop = token.slice(1, -1),
                     value = object[prop];
@@ -146,10 +147,10 @@
         csrf_element: function() {
             var token = this.csrf_token(),
                 elem = [
-                '<input type="hidden" name="csrfmiddlewaretoken" value="',
-                token ? token : '',
-                '">'
-            ];
+                    '<input type="hidden" name="csrfmiddlewaretoken" value="',
+                    token ? token : '',
+                    '">'
+                ];
 
             return elem.join('');
         },

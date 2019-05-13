@@ -326,14 +326,14 @@ class CommonQuerySet(models.QuerySet):
         Retourne l'ensemble des entités du QuerySet sous forme de dictionnaire
         :return: Liste de dictionnaires
         """
-        return [e.to_dict(*args, **kwargs) for e in self]
+        return [item.to_dict(*args, **kwargs) if isinstance(item, CommonModel) else item for item in self]
 
     def __json__(self):
         """
         Représentation de l'instance sous forme de dictionnaire pour sérialisation JSON
         :return: dict
         """
-        return [item.__json__() for item in self]
+        return [item.__json__() if isinstance(item, CommonModel) else item for item in self]
 
 
 class CommonModel(models.Model):
@@ -876,7 +876,7 @@ class History(HistoryCommon):
             content_type=self.content_type, object_id=self.object_id)
 
     def restore(self, *, ignore_log=None, current_user=None, reason=None,
-                force_default=None, from_admin=None, all_fields=False, override=None):
+                force_default=False, from_admin=None, all_fields=False, override=None):
         """
         Permet de restaurer complètement une entité
         :param ignore_log: Ignorer l'historisation ?
@@ -907,11 +907,8 @@ class History(HistoryCommon):
                 setattr(entity, field_name, value)
             entity._from_admin = from_admin
             entity._restore = True
-            entity.save(
-                _current_user=current_user or get_current_user(),
-                _ignore_log=ignore_log,
-                _reason=reason,
-                _force_default=force_default)
+            entity.save(_current_user=current_user or get_current_user(),
+                        _ignore_log=ignore_log, _reason=reason, _force_default=force_default)
             if entity.pk:
                 for field in entity._meta.many_to_many:
                     try:
@@ -1040,7 +1037,7 @@ class HistoryField(HistoryCommon):
             entity=self.history.content_type, field=self.field_name, old=self.old_value, new=self.new_value)
 
     def restore(self, *, ignore_log=None, current_user=None, reason=None,
-                force_default=None, from_admin=None, override=None, **kwargs):
+                force_default=False, from_admin=None, override=None, **kwargs):
         """
         Permet de restaurer un champ d'une entité
         :param ignore_log: Ignorer l'historisation ?
@@ -1068,11 +1065,8 @@ class HistoryField(HistoryCommon):
                 setattr(entity, self.field_name, value)
             entity._from_admin = from_admin
             entity._restore = True
-            entity.save(
-                _current_user=current_user or get_current_user(),
-                _ignore_log=ignore_log,
-                _reason=reason,
-                _force_default=force_default)
+            entity.save(_current_user=current_user or get_current_user(),
+                        _ignore_log=ignore_log, _reason=reason, _force_default=force_default)
             self.restored = True
         except Exception as error:
             logger.warning(error, exc_info=True)
@@ -1143,7 +1137,7 @@ class EntityQuerySet(CommonQuerySet):
     _from_admin = False
     _force_default = False
 
-    def delete(self, _ignore_log=None, _current_user=None, _reason=None, _force_default=None):
+    def delete(self, _ignore_log=None, _current_user=None, _reason=None, _force_default=False):
         """
         Surcharge de la suppression des entités du QuerySet
         :param _ignore_log: Ignorer l'historique de suppression ?
@@ -1183,7 +1177,7 @@ class EntityQuerySet(CommonQuerySet):
         self._result_cache = None
         return deleted, _rows_count
 
-    def create(self, _ignore_log=None, _current_user=None, _reason=None, _force_default=None, **kwargs):
+    def create(self, _ignore_log=None, _current_user=None, _reason=None, _force_default=False, **kwargs):
         """
         Surcharge de la création d'entités
         :param _ignore_log: Ignorer l'historique de création ?
@@ -1194,12 +1188,8 @@ class EntityQuerySet(CommonQuerySet):
         if _force_default:
             return super().create(**kwargs)
         obj = self.model(**kwargs)
-        obj.save(
-            force_insert=True,
-            using=self.db,
-            _ignore_log=_ignore_log,
-            _current_user=_current_user or get_current_user(),
-            _reason=_reason)
+        obj.save(force_insert=True, using=self.db,
+                 _ignore_log=_ignore_log, _current_user=_current_user or get_current_user(), _reason=_reason)
         return obj
 
     def distinct_on_fields(self, *fields, order_by=False):
@@ -1266,7 +1256,7 @@ class Entity(CommonModel):
     _natural_key = ('uuid', )
 
     def save(self, *args, _ignore_log=None, _current_user=None, _reason=None,
-             _force_default=None, force_insert=False, **kwargs):
+             _force_default=False, force_insert=False, **kwargs):
         """
         Surcharge de la sauvegarde de l'entité
         :param _ignore_log: Ignorer l'historique de modification ?
@@ -1275,29 +1265,30 @@ class Entity(CommonModel):
         :param _force_default: Force le comportement par défaut ?
         :param force_insert: Force l'insertion même en cas de présence d'une PK ?
         """
-        if _force_default:
-            return super().save(*args, **kwargs)
+        self.uuid = self.uuid or uuid.uuid4()
+        if _force_default or self._force_default:
+            return super().save(force_insert=force_insert, *args, **kwargs)
         self._ignore_log = _ignore_log or self._ignore_log
         self._current_user = self.current_user = _current_user or self._current_user or get_current_user()
         self._reason = _reason or self._reason
         self._force_default = _force_default or self._force_default
         if force_insert:
-            self.pk = self.id = self.uuid = None
-        self.uuid = self.uuid or uuid.uuid4()
+            self.pk = self.id = None
+            self.uuid = uuid.uuid4()
         return super().save(*args, force_insert=force_insert, **kwargs)
 
     def delete(self, *args, _ignore_log=None, _current_user=None, _reason=None,
-               _force_default=None, keep_parents=False, **kwargs):
+               _force_default=False, keep_parents=False, **kwargs):
         """
         Surcharge de la suppression de l'entité
         :param _ignore_log: Ignorer l'historique de suppression ?
         :param _current_user: Utilisateur à l'origine de la suppression
         :param _reason: Raison de la suppression
         :param _force_default: Force le comportement par défaut ?
+        :param keep_parents: Préserve la suppression des entitées parentes ?
         """
         if _force_default:
             return super().delete(*args, **kwargs)
-
         assert self.pk is not None, _(
             "{} can't be deleted because it doesn't exists in database.").format(self._meta.object_name)
         self._ignore_log = _ignore_log or self._ignore_log
@@ -1439,59 +1430,46 @@ class PerishableEntity(Entity):
         verbose_name=_("date de fin"))
     objects = PerishableEntityQuerySet.as_manager()
 
-    def save(self, *args, _ignore_log=None, _current_user=None, _reason=None, _force_default=None,
-             force_insert=False, force_update=False, **kwargs):
+    def save(self, *args, _force_default=False, force_insert=False, force_update=False, **kwargs):
         """
         Surcharge de la sauvegarde de l'entité périssable
-        :param _ignore_log: Ignorer l'historique de modification ?
-        :param _current_user: Utilisateur à l'origine de la modification
-        :param _reason: Raison de la modification
         :param _force_default: Force le comportement par défaut ?
         :param force_insert: Force l'insertion des données ?
         :param force_update: Force la mise à jour des données ?
         """
         current_date = now()
-        self._ignore_log = _ignore_log or self._ignore_log
-        self._current_user = self.current_user = _current_user or self._current_user or get_current_user()
-        self._reason = _reason or self._reason
-        self._force_default = force_insert or force_update or _force_default or self._force_default
         self.start_date = self.start_date or current_date
-        kwargs.update(_ignore_log=self._ignore_log, _current_user=self._current_user, _reason=self._reason)
-        previous = None
-        if self.pk and not self._force_default:
-            previous = self.__class__.objects.get(pk=self.pk)
-            previous.end_date = self.end_date or current_date
-            previous.save(_force_default=True, force_insert=force_insert, force_update=force_update, **kwargs)
-            self.pk = self.id = self.end_date = self.uuid = None
-            self.start_date = previous.end_date or current_date
-        if self._force_default:
-            self._force_default = False
-            return super().save(_force_default=True, force_insert=force_insert, force_update=force_update, **kwargs)
-        result = super().save(force_insert=True, **kwargs)
-        if previous:
-            for metadata in previous.metadata.all():
-                metadata.pk = metadata.id = None
-                metadata.entity = self
-                metadata.save(force_insert=True)
-        return result
+        if _force_default or self._force_default:
+            kwargs.update(_force_default=True, force_insert=force_insert, force_update=force_update)
+            return super().save(*args, **kwargs)
+        if not force_update:
+            previous = None
+            if self.pk:
+                previous = self.__class__.objects.get(pk=self.pk)
+                previous.end_date = self.end_date or current_date
+                previous.save(force_update=True, **kwargs)
+                self.pk = self.id = self.end_date = self.uuid = None
+                self.start_date = previous.end_date or current_date
+            result = super().save(force_insert=True, **kwargs)
+            if previous:
+                for metadata in previous.metadata.all():
+                    metadata.pk = metadata.id = None
+                    metadata.entity = self
+                    metadata.save(force_insert=True)
+            return result
+        return super().save(force_insert=force_insert, force_update=force_update, *args, **kwargs)
 
-    def delete(self, *args, _ignore_log=None, _current_user=None, _reason=None, _force_default=None, **kwargs):
+    def delete(self, *args, _force_default=False, **kwargs):
         """
         Surcharge de la suppression de l'entité périssable
-        :param _ignore_log: Ignorer l'historique de suppression ?
-        :param _current_user: Utilisateur à l'origine de la suppression
-        :param _reason: Raison de la suppression
         :param _force_default: Force le comportement par défaut ?
         """
-        self._ignore_log = _ignore_log or self._ignore_log
-        self._current_user = self.current_user = _current_user or self._current_user or get_current_user()
-        self._reason = _reason or self._reason
-        self._force_default = _force_default or self._force_default
-        if self.pk and not self._force_default:
+        if _force_default or self._force_default:
+            return super().delete(_force_default=True, *args, **kwargs)
+        if self.pk:
             self.end_date = self.end_date or now()
-            return self.save(_ignore_log=_ignore_log, _current_user=_current_user, _reason=_reason, _force_default=True)
-        else:
-            return super().delete(_ignore_log=_ignore_log, _current_user=_current_user, _reason=_reason, **kwargs)
+            return self.save(force_update=True, *args, **kwargs)
+        return super().delete(*args, **kwargs)
 
     def clean(self):
         if self.start_date and self.end_date and self.end_date < self.start_date:
@@ -2071,13 +2049,17 @@ class UserMetaData(CommonModel):
 
     @staticmethod
     def get(user, key=None, groups=True):
+        data = {}
         if groups:
-            data = {}
             for group in user.groups.select_related('metadata').all():
-                merge_dict(data, group.metadata.data or {})
+                try:
+                    merge_dict(data, group.metadata.data or {})
+                except GroupMetaData.DoesNotExist:
+                    continue
+        try:
             merge_dict(data, user.metadata.data or {})
-        else:
-            data = user.metadata.data
+        except UserMetaData.DoesNotExist:
+            pass
         return data.get(key) if key else data
 
     @staticmethod

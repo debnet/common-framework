@@ -2,7 +2,7 @@ Django==2.2.1
 Pillow==6.0
 PyYAML==5.1
 coreapi==2.3.3
-djangorestframework==3.9.3
+djangorestframework==3.9.4
 flake8==3.7.7
 model_mommy==1.5.1
 python-dateutil==2.8
@@ -10,4 +10,4 @@ pip==19.1.1
 pytz==2019.1
 requests==2.21
 setuptools==41.0.1
-wheel==0.33.3
+wheel==0.33.4

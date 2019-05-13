@@ -13,10 +13,9 @@ from common.utils import json_decode, json_encode
 
 
 # Vérifie que l'on utilise le moteur de bases de données PostgreSQL
-is_postgresql = lambda connection: connection.settings_dict['ENGINE'] in (
-    'django.db.backends.postgresql', 'django.db.backends.postgresql_psycopg2')
-is_mysql = lambda connection: connection.settings_dict['ENGINE'] == 'django.db.backends.mysql'
-is_sqlite = lambda connection: connection.settings_dict['ENGINE'] == 'django.db.backends.sqlite3'
+is_postgresql = lambda connection: connection.vendor == 'postgresql'
+is_mysql = lambda connection: connection.vendor == 'mysql'
+is_sqlite = lambda connection: connection.vendor == 'sqlite'
 
 
 class CustomDecimalField(models.DecimalField):
