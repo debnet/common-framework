@@ -1086,10 +1086,10 @@ class Null(object):
 null = Null()
 
 
-def to_object(contexte, name='Context', default=None):
+def to_object(data, name='Context', default=None):
     """
     Transforme un dictionnaire en objet ou une liste de dictionnaire en liste d'objets
-    :param contexte: Dictionnaire ou liste de dictionnaires
+    :param data: Dictionnaire ou liste de dictionnaires
     :param name: Nom de l'objet
     :param default: Valeur par défaut des attributs
     :return: Objet ou liste d'objets
@@ -1098,23 +1098,20 @@ def to_object(contexte, name='Context', default=None):
         try:
             object.__getattribute__(s, k)
         except AttributeError:
-            return default
+            return s.get(k, default)
 
-    if isinstance(contexte, list):
-        return [to_object(ctx, name) for ctx in contexte]
-    elif isinstance(contexte, dict):
-        attrs = dict(
-            __str__=lambda s: str(contexte),
-            __repr__=lambda s: repr(contexte),
-            __getitem__=lambda s, k: getattr(s, k, default),
-            __getattr__=lambda s, k: _getattr(s, k))
-        for key, value in contexte.items():
+    if isinstance(data, list):
+        return [to_object(ctx, name) for ctx in data]
+    elif isinstance(data, dict):
+        attrs = dict(__getattr__=lambda s, k: _getattr(s, k))
+        subdata = dict()
+        for key, value in data.items():
             if isinstance(value, (list, dict)):
-                attrs[key] = to_object(value, name)
+                subdata[key] = to_object(value, name)
                 continue
-            attrs[key] = value
-        return type(name, (object, ), attrs)()
-    return contexte
+            subdata[key] = value
+        return type(name, (dict, ), attrs)(subdata)
+    return data
 
 
 def file_is_text(file):
