@@ -1225,7 +1225,7 @@ def base64_encode(data):
     """
     from django.utils.http import urlsafe_base64_encode
     from django.utils.encoding import force_bytes
-    return urlsafe_base64_encode(force_bytes(data)).decode()
+    return urlsafe_base64_encode(force_bytes(data))
 
 
 def base64_decode(data):
