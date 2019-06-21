@@ -58,7 +58,7 @@ class Migration(migrations.Migration):
                 ('reason', models.TextField(null=True, editable=False, verbose_name='motif', blank=True)),
                 ('admin', models.BooleanField(default=False, editable=False, verbose_name='admin')),
                 ('content_type', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, null=True, verbose_name="type d'entité", to='contenttypes.ContentType', blank=True, editable=False)),
-                ('user', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, null=True, verbose_name='utilisateur', to=settings.AUTH_USER_MODEL, blank=True, editable=False)),
+                ('user', models.ForeignKey(on_delete=django.db.models.deletion.SET_NULL, null=True, verbose_name='utilisateur', to=settings.AUTH_USER_MODEL, blank=True, editable=False)),
             ],
             options={
                 'verbose_name_plural': 'historiques',

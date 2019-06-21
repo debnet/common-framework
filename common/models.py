@@ -828,7 +828,7 @@ class History(HistoryCommon):
     user = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         blank=True, null=True, editable=False,
-        on_delete=models.CASCADE, related_name='histories',
+        on_delete=models.SET_NULL, related_name='histories',
         verbose_name=_("utilisateur"))
     status = models.CharField(
         max_length=1, choices=LOG_STATUS, editable=False,
