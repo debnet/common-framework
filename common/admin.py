@@ -6,7 +6,7 @@ from django.contrib.admin.sites import all_sites
 from django.contrib.contenttypes.models import ContentType
 from django.db import models
 from django.db.models import Count
-from django.urls import reverse
+from django.urls import reverse, NoReverseMatch
 from django.utils.html import format_html
 from django.utils.text import camel_case_to_spaces, capfirst
 from django.utils.translation import ugettext_lazy as _
@@ -230,13 +230,15 @@ class GlobalAdmin(admin.ModelAdmin):
     search_fields = ('object_uid', )
 
     def entity_url(self, obj):
-        try:
-            pattern = 'admin:{app_label}_{model}_change'.format(
-                app_label=obj.content_type.app_label, model=obj.content_type.model)
-            url = reverse(pattern, args=(obj.object_id, ))
-            return format_html('<a href="{url}">{label}</a>', url=url, label=str(obj.entity))
-        except Exception:
-            return str(obj.entity or '')
+        if obj.entity:
+            try:
+                pattern = 'admin:{app_label}_{model}_change'.format(
+                    app_label=obj.content_type.app_label, model=obj.content_type.model)
+                url = reverse(pattern, args=(obj.object_id, ))
+                return format_html('<a href="{url}">{label}</a>', url=url, label=str(obj.entity))
+            except NoReverseMatch:
+                return str(obj.entity)
+        return None
     entity_url.admin_order_field = 'entity'
     entity_url.short_description = _("Entité")
 
@@ -260,10 +262,15 @@ class MetaDataAdmin(admin.ModelAdmin):
     search_fields = ('key', )
 
     def entity_url(self, obj):
-        pattern = 'admin:{app_label}_{model}_change'.format(
-            app_label=obj.content_type.app_label, model=obj.content_type.model)
-        url = reverse(pattern, args=(obj.object_id, ))
-        return format_html('<a href="{url}">{label}</a>', url=url, label=str(obj.entity))
+        if obj.entity:
+            try:
+                pattern = 'admin:{app_label}_{model}_change'.format(
+                    app_label=obj.content_type.app_label, model=obj.content_type.model)
+                url = reverse(pattern, args=(obj.object_id, ))
+                return format_html('<a href="{url}">{label}</a>', url=url, label=str(obj.entity))
+            except NoReverseMatch:
+                return str(obj.entity)
+        return None
     entity_url.short_description = _("Entité")
     entity_url.admin_order_field = 'entity'
 
@@ -342,7 +349,7 @@ class HistoryAdmin(admin.ModelAdmin):
                     app_label=obj.content_type.app_label, model=obj.content_type.model)
                 url = reverse(pattern, args=(obj.object_id, ))
                 return format_html('<a href="{url}">{label}</a>', url=url, label=obj.object_str)
-            except Exception:
+            except NoReverseMatch:
                 pass
         return format_html(obj.object_str)
     entity_url.admin_order_field = 'entity_str'
@@ -350,10 +357,13 @@ class HistoryAdmin(admin.ModelAdmin):
 
     def fields_count(self, obj):
         if obj.fields_count:
-            pattern = 'admin:{app_label}_{model}_changelist'.format(
-                app_label=HistoryField._meta.app_label, model=HistoryField._meta.model_name)
-            url = reverse(pattern) + '?history={}'.format(obj.pk)
-            return format_html('<a href="{url}">{label}</a>', url=url, label=obj.fields_count)
+            try:
+                pattern = 'admin:{app_label}_{model}_changelist'.format(
+                    app_label=HistoryField._meta.app_label, model=HistoryField._meta.model_name)
+                url = reverse(pattern) + '?history={}'.format(obj.pk)
+                return format_html('<a href="{url}">{label}</a>', url=url, label=obj.fields_count)
+            except NoReverseMatch:
+                pass
         return obj.fields_count
     fields_count.admin_order_field = 'fields_count'
     fields_count.short_description = _("Champs modifiés")
@@ -387,11 +397,8 @@ class HistoryFieldAdmin(admin.ModelAdmin):
     actions = [restore]
 
     def field(self, obj):
-        try:
-            label = getattr(obj.field, 'verbose_name', '') or capfirst(camel_case_to_spaces(obj.field_name))
-            return format_html('<span title="{code}">{label}</span>', label=capfirst(label), code=obj.field_name)
-        except Exception:
-            return obj.field_name
+        label = getattr(obj.field, 'verbose_name', '') or capfirst(camel_case_to_spaces(obj.field_name))
+        return format_html('<span title="{code}">{label}</span>', label=capfirst(label), code=obj.field_name)
     field.short_description = _("Champ")
 
     def old_inner_value(self, obj):
@@ -417,7 +424,7 @@ class HistoryFieldAdmin(admin.ModelAdmin):
                     pattern = 'admin:{app_label}_{model_name}_change'.format(app_label=app_label, model_name=model_name)
                     url = reverse(pattern, args=(item.pk, ))
                     values.append('<a href="{url}">{label}</a>'.format(url=url, label=str(item)))
-                except Exception:
+                except NoReverseMatch:
                     values.append(str(item))
             return format_html("<br />".join(values))
         return value

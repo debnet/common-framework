@@ -107,6 +107,23 @@ class Serialized(object):
             format=self.format, count=self.count, object=self.meta.object_name)
 
 
+class CustomGenericForeignKey(GenericForeignKey):
+    """
+    Surcharge de la GenericForeignKey qui ne vide pas les propriétés de la clé si l'instance n'existe pas
+    """
+
+    def __set__(self, instance, value):
+        if value is None:
+            ct = getattr(instance, self.ct_field, None)
+            fk = getattr(instance, self.fk_field, None)
+        else:
+            ct = self.get_content_type(obj=value)
+            fk = value._get_pk_val()
+        setattr(instance, self.ct_field, ct)
+        setattr(instance, self.fk_field, fk)
+        self.set_cached_value(instance, value)
+
+
 class MetaDataQuerySet(models.QuerySet):
     """
     QuerySet des métadonnées
@@ -163,7 +180,7 @@ class MetaData(models.Model):
         on_delete=models.CASCADE, related_name='+',
         verbose_name=_("type d'entité"))
     object_id = models.TextField(verbose_name=_("identifiant"))
-    entity = GenericForeignKey()
+    entity = CustomGenericForeignKey()
 
     key = models.CharField(
         max_length=100,
@@ -791,23 +808,6 @@ class HistoryCommon(CommonModel):
         abstract = True
 
 
-class CustomGenericForeignKey(GenericForeignKey):
-    """
-    Surcharge de la GenericForeignKey qui ne vide pas les propriétés de la clé si l'instance n'existe pas
-    """
-
-    def __set__(self, instance, value):
-        if value is None:
-            ct = getattr(instance, self.ct_field, None)
-            fk = getattr(instance, self.fk_field, None)
-        else:
-            ct = self.get_content_type(obj=value)
-            fk = value._get_pk_val()
-        setattr(instance, self.ct_field, ct)
-        setattr(instance, self.fk_field, fk)
-        self.set_cached_value(instance, value)
-
-
 class History(HistoryCommon):
     """
     Entité d'historique
@@ -1112,7 +1112,7 @@ class Global(models.Model):
     object_uid = models.UUIDField(
         unique=True, editable=False,
         verbose_name=_("UUID"))
-    entity = GenericForeignKey()
+    entity = CustomGenericForeignKey()
     objects = GlobalManager()
 
     def __str__(self):
