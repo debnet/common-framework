@@ -591,7 +591,7 @@ def api_paginate(request, queryset, serializer, pagination=None, enable_options=
 
     # Fonction de récupération des données depuis les paramètres
     def get_from_url_params(name):
-        return url_params.get(name, '').replace('.', '__').replace(' ', '')
+        return url_params.get(name, '').replace('.', '__')
 
     # Activation des options
     if enable_options:

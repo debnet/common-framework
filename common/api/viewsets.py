@@ -136,7 +136,7 @@ class CommonModelViewSet(viewsets.ModelViewSet):
 
             # Fonction de récupération des données depuis les paramètres
             def get_from_url_params(name):
-                return url_params.get(name, '').replace('.', '__').replace(' ', '')
+                return url_params.get(name, '').replace('.', '__')
 
             # Mots-clés réservés dans les URLs
             default_reserved_query_params = ['format'] + ([
