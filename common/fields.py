@@ -135,9 +135,10 @@ class JsonField(models.Field):
         default = kwargs.get('default', None)
         self.encoder = kwargs.get('encoder', None)
         if not null and default is None:
-            kwargs['default'] = '{}'
+            kwargs['default'] = dict()
         if isinstance(default, (list, dict)):
-            kwargs['default'] = json_encode(default, cls=self.encoder, sort_keys=True)
+            json_encode(default)
+            kwargs['default'] = default
         models.Field.__init__(self, *args, **kwargs)
 
     def db_type(self, connection):
@@ -150,7 +151,7 @@ class JsonField(models.Field):
 
     def deconstruct(self):
         name, path, args, kwargs = super().deconstruct()
-        if self.default == '{}':
+        if self.default == {}:
             del kwargs['default']
         if self.encoder is not None:
             kwargs['encoder'] = self.encoder
@@ -166,9 +167,6 @@ class JsonField(models.Field):
         return self.to_python(value)
 
     def to_python(self, value):
-        """
-        Convert our string value to JSON after we load it from the DB
-        """
         if value is None or value == '':
             return {} if not self.null else None
         try:
@@ -184,19 +182,10 @@ class JsonField(models.Field):
             return JsonList(value)
         return value
 
-    def get_db_prep_value(self, value, connection, prepared=False):
-        """
-        Convert our JSON object to a string before we save
-        """
-        if value is None and self.null:
-            return None
-        # default values come in as strings; only non-strings should be run through `dumps`
-        try:
-            while isinstance(value, str):
-                value = json_decode(value)
-        except ValueError:
-            pass
-        return json_encode(value, cls=self.encoder, sort_keys=True)
+    def get_prep_value(self, value):
+        if value is not None:
+            return json_encode(value, cls=self.encoder, sort_keys=True)
+        return value
 
     def validate(self, value, model_instance):
         super().validate(value, model_instance)
@@ -267,7 +256,7 @@ class JsonKeyTextTransform(JsonKeyTransform):
     """
     operator = '->>'
     nested_operator = '#>>'
-    _output_field = TextField()
+    output_field = TextField()
 
 
 class JsonKeyTransformTextLookupMixin(object):
