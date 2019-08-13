@@ -616,8 +616,8 @@ def get_choices_fields(*included_apps):
     :return: tuple contenant les choices fields triés par application
     """
     from django.apps import apps
-    resultats = dict()
-    choices_fields = list()
+    results = {}
+    choices_fields = []
     included_apps = included_apps or [app.label for app in apps.get_app_configs()]
 
     for model in apps.get_models():
@@ -628,17 +628,17 @@ def get_choices_fields(*included_apps):
                     choices_fields.append(field.choices)
                     choice_value = ' '.join([app_label, model._meta.model_name, field.name])
                     choice_libelle = '{} ({})'.format(field.verbose_name, model._meta.verbose_name)
-                    if app_label in resultats:
-                        resultats[app_label].append((choice_value, choice_libelle, ))
+                    if app_label in results:
+                        results[app_label].append((choice_value, choice_libelle, ))
                     else:
-                        resultats[app_label] = [(choice_value, choice_libelle, )]
+                        results[app_label] = [(choice_value, choice_libelle, )]
 
-    def ordered_choices(resultat):
-        for valeur, libelle in sorted(resultat, key=lambda x: x[1]):
+    def ordered_choices(result):
+        for valeur, libelle in sorted(result, key=lambda x: x[1]):
             yield valeur, libelle
 
     def choices_by_application():
-        for app_label, choices in sorted(resultats.items()):
+        for app_label, choices in sorted(results.items()):
             yield str(apps.get_app_config(app_label).verbose_name), tuple(ordered_choices(choices))
 
     return tuple(choices_by_application())
@@ -950,7 +950,7 @@ class CustomDict(collections.MutableMapping):
     """
 
     def __init__(self, *args, **kwargs):
-        self._dict = dict()
+        self._dict = {}
         self.update(dict(*args, **kwargs))
 
     def __getitem__(self, key):
@@ -1104,7 +1104,7 @@ def to_object(data, name='Context', default=None):
         return [to_object(ctx, name) for ctx in data]
     elif isinstance(data, dict):
         attrs = dict(__getattr__=lambda s, k: _getattr(s, k))
-        subdata = dict()
+        subdata = {}
         for key, value in data.items():
             if isinstance(value, (list, dict)):
                 subdata[key] = to_object(value, name)

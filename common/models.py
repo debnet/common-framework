@@ -491,7 +491,7 @@ class CommonModel(models.Model):
         :param raw: Ne pas chercher à retourner des valeurs serialisables ?
         :return: Dictionnaire
         """
-        data = dict()
+        data = {}
         meta = self._meta
         keywords = dict(
             editables=editables, uids=uids, metadata=metadata, names=names, types=types,

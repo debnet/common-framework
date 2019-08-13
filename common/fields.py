@@ -135,7 +135,7 @@ class JsonField(models.Field):
         default = kwargs.get('default', None)
         self.encoder = kwargs.get('encoder', None)
         if not null and default is None:
-            kwargs['default'] = dict()
+            kwargs['default'] = {}
         if isinstance(default, (list, dict)):
             json_encode(default)
             kwargs['default'] = default
