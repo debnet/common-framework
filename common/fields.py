@@ -247,7 +247,7 @@ class JsonKeyTransform(Transform):
             lookup = int(self.key_name)
         except ValueError:
             lookup = self.key_name
-        return '(%s %s %%s)' % (lhs, self.operator), [lookup] + params
+        return '(%s %s %%s)' % (lhs, self.operator), params + [lookup]
 
 
 class JsonKeyTextTransform(JsonKeyTransform):
