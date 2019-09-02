@@ -16,12 +16,15 @@ sys.path.insert(0, APP_DIR)
 # Minimum settings required for the app's tests.
 SETTINGS_DICT = {
     'BASE_DIR': APP_DIR,
+    'SECRET_KEY': '1',
     'INSTALLED_APPS': (
         'django.contrib.admin',
         'django.contrib.auth',
         'django.contrib.contenttypes',
         'django.contrib.sessions',
         'django.contrib.sites',
+        'django.contrib.messages',
+        'django.contrib.staticfiles',
         'rest_framework',
         'rest_framework.authtoken',
         'pytz',
@@ -34,16 +37,31 @@ SETTINGS_DICT = {
             'NAME': os.path.join(APP_DIR, 'db.sqlite3'),
         },
     },
-    'MIDDLEWARE_CLASSES': (
+    'MIDDLEWARE': (
+        'django.middleware.security.SecurityMiddleware',
+        'django.contrib.sessions.middleware.SessionMiddleware',
         'django.middleware.common.CommonMiddleware',
         'django.middleware.csrf.CsrfViewMiddleware',
-        'django.contrib.sessions.middleware.SessionMiddleware',
         'django.contrib.auth.middleware.AuthenticationMiddleware',
+        'django.contrib.messages.middleware.MessageMiddleware',
+        'django.middleware.clickjacking.XFrameOptionsMiddleware',
     ),
     'SITE_ID': 1,
-    'TEMPLATE_DIRS': (
-        os.path.join(APP_DIR, 'tests/templates'),
-    ),
+    'TEMPLATES': [
+        {
+            'BACKEND': 'django.template.backends.django.DjangoTemplates',
+            'DIRS': os.path.join(APP_DIR, 'tests/templates'),
+            'APP_DIRS': True,
+            'OPTIONS': {
+                'context_processors': [
+                    'django.template.context_processors.debug',
+                    'django.template.context_processors.request',
+                    'django.contrib.auth.context_processors.auth',
+                    'django.contrib.messages.context_processors.messages',
+                ],
+            },
+        },
+    ],
     'REST_FRAMEWORK': {
         'DEFAULT_PERMISSION_CLASSES': (
             'rest_framework.permissions.IsAuthenticated',
@@ -69,6 +87,7 @@ SETTINGS_DICT = {
     'USE_I18N': True,
     'USE_L10N': True,
     'USE_TZ': True,
+    'STATIC_URL': '/static/',
 }
 
 
