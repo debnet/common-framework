@@ -24,7 +24,7 @@ User = get_user_model()
 
 class BaseApiTestCase(APITestCase):
     """
-    Classe de test api de base gérant la création & suppression du user_admin
+    Basic API test class that manages the creation and removal of user_admin
     """
 
     @classmethod
@@ -50,7 +50,7 @@ class BaseApiTestCase(APITestCase):
 
 class AuthenticatedBaseApiTestCase(BaseApiTestCase):
     """
-    Classe de test api de base avec authentification du user_admin en setUp
+    Basic API test class with user_admin authentication in setUp
     """
 
     def setUp(self):
@@ -60,10 +60,10 @@ class AuthenticatedBaseApiTestCase(BaseApiTestCase):
 
 def raise_exception(error_type, code):
     """
-    Décorateur permettant de tester les levées d'exceptions
-    :param error_type: Type d'exception
-    :param code: Code de l'exception à retrouver
-    :return: Méthode décorée
+    Decorator to test the throws of exceptions
+    :param error_type: Exception type
+    :param code: Code of the exception to find
+    :return: Decorated method
     """
     def decorated(method):
         @wraps(method)
@@ -83,25 +83,25 @@ def create_api_test_class(
         test_options=True, test_order_by=True, test_filter=True, test_fields=True,
         test_metadata=True, test_simple=True, test_silent=True):
     """
-    Permet d'obtenir la classe de test du modèle avec les méthodes de tests standard de l'api
-    :param model: Modèle
-    :param serializer: Serializer spécifique à utiliser, si absent un serializer associé au modèle sera généré
-    :param data: liste de dictionnaires contenant les valeurs des attributs à positionner obligatoirement pour ce modèle
-    :param module: Ajoute la classe de test dans le module appelant
-    :param namespace: Namespace des URLs d'API
-    :param test_list: Test de la liste
-    :param test_get: Test du GET
-    :param test_post: Test du POST
-    :param test_put: Test du PUT
-    :param test_delete: Test du DELETE
-    :param test_options: Test du OPTIONS
-    :param test_order_by: Test des tris
-    :param test_filter: Test des filtres
-    :param test_fields: Test des restrictions de champs
-    :param test_metadata: Test des metadata
-    :param test_simple: Test des réquêtes simplifiées
-    :param test_silent: Test de la remontée d'erreur silencieuse
-    :return: Classe de test
+    Allows to obtain the test class of the model with the standard test methods of the API
+    :param model: Model
+    :param serializer: Specific serializer to use, if absent a serializer associated with the model will be generated
+    :param data: list of dictionaries containing the values of the attributes to be placed obligatorily for this model
+    :param module: Add the test class in the calling module
+    :param namespace: Namespace of the API URLs
+    :param test_list: Testing the list
+    :param test_get: Testing the GET
+    :param test_post: Testing the POST
+    :param test_put: Testing the PUT
+    :param test_delete: Testing the DELETE
+    :param test_options: Testing the OPTIONS
+    :param test_order_by: Testing of the tris
+    :param test_filter: Testing of the filters
+    :param test_fields: Testing of the field restriction
+    :param test_metadata: Testing of the metadata
+    :param test_simple: Testing of simplified queries
+    :param test_silent: Silent error feedback test
+    :return: Test class
     """
     app_label = model._meta.app_label
     object_name = model._meta.object_name
@@ -112,7 +112,7 @@ def create_api_test_class(
     test_class = type(class_name, (APITestCase, ), {})
     test_class.recipes_data = data
 
-    # Modification du module de la classe à partir de l'appelant
+    # Changing the class module from the caller
     if module:
         module_name = inspect.getmodule(inspect.stack()[1][0]).__name__
         setattr(sys.modules[module_name], class_name, test_class)
@@ -120,7 +120,7 @@ def create_api_test_class(
 
     def _setUpClass(cls):
         """
-        Ajout de l'admin user et des schémas d'url pour les actions de detail & list
+        Added admin user and url schematics for detail and list actions
         """
         super(APITestCase, cls).setUpClass()
         cls.user_admin = User.objects.filter(username='admin').first()
@@ -137,7 +137,7 @@ def create_api_test_class(
 
     def _tearDownClass(cls):
         """
-        Suppression de l'admin
+        Remove admin
         """
         cls.user_admin.delete()
         super(APITestCase, cls).tearDownClass()
@@ -145,7 +145,7 @@ def create_api_test_class(
 
     def _get_recipes(self):
         """
-        Génération des recipes
+        Generation of recipes
         """
         recipes = []
         if self.recipes_data:
@@ -164,7 +164,7 @@ def create_api_test_class(
     if test_list:
         def _test_api_list(self):
             """
-            Méthode de test de la liste des éléments
+            Test method of the list of elements
             """
             items_count = model.objects.count()
             recipes = self.recipes
@@ -183,7 +183,7 @@ def create_api_test_class(
     if test_get:
         def _test_api_detail(self):
             """
-            Méthode de test du détail d'un élément
+            Test method of the detail of element
             """
             item = self.recipes[0].make()
             url = reverse(self.url_detail_api, args=[item.pk])
@@ -198,10 +198,10 @@ def create_api_test_class(
     if test_post:
         def _test_api_post(self):
             """
-            Méthode de test de création d'un élément
+            Test method of create of element
             """
             perissable = issubclass(model, PerishableEntity)
-            # Permet d'eviter l'enregistrement d'une perissable exactement à la même date
+            # Prevents the recording of a perishable on the exact same date
             if perissable:
                 start_date = now() - timedelta(days=1)
                 item = self.recipes[0].make(make_m2m=True, start_date=start_date)
@@ -227,7 +227,7 @@ def create_api_test_class(
     if test_put:
         def _test_api_put(self):
             """
-            Méthode de test de modification d'un élément
+            Test method for modifying an item
             """
             mommy_make_args = dict(make_m2m=True)
             if issubclass(model, PerishableEntity):
@@ -241,13 +241,14 @@ def create_api_test_class(
             self.client.force_authenticate(self.user_admin)
             response = self.client.put(url, data_to_put)
             self.assertEqual(response.status_code, status.HTTP_200_OK, response.data)
-            # Dans le cas des PerishableEntity, on vérifie que l'entité modifiée est en fait "périmée" et
-            # qu'une nouvelle entité est créée à la bonne date (pour l'historisation)
+            # In the case of Perishableentity, we check that the modified 
+            # entity is in fact "outdated" and that a new entity is created
+            #  at the right date (for historization)
             if issubclass(model, PerishableEntity):
-                # ancienne entité périmée => possède une date de fin
+                # old outdated entity => has an end date
                 old_item = model.objects.get(pk=item.pk)
                 self.assertIsNotNone(old_item.end_date)
-                # L'entité retournée doit être une nouvelle entité sans date de fin
+                # The returned entity must be a new entity with no end date
                 self.assertNotEqual(response.data[pk_field], item.pk)
                 self.assertIsNone(response.data['end_date'])
             else:
@@ -257,7 +258,7 @@ def create_api_test_class(
     if test_delete:
         def _test_api_delete(self):
             """
-            Méthode de test de suppression d'un élément
+            Testing method of remove the item
             """
             item = self.recipes[0].make()
             url = reverse(self.url_detail_api, args=[item.pk])
@@ -276,7 +277,7 @@ def create_api_test_class(
     if test_options:
         def _test_api_options(self):
             """
-            Methode de test de métadonnées
+            Metadata test method
             """
             url = reverse(self.url_list_api)
             response = self.client.options(url)
@@ -289,7 +290,7 @@ def create_api_test_class(
     if test_order_by:
         def _test_api_order_by(self):
             """
-            Méthode de test de tri
+            Metadata test method
             """
             if len(self.recipes) > 1:
                 for item in self.recipes:
@@ -318,14 +319,14 @@ def create_api_test_class(
     if test_filter:
         def _test_api_filter_list(self):
             """
-            Méthode de test du filtre lors d'un get list
+            Filter test method during a get list
             """
             recipes = self.recipes
             items_ids = []
             for item in recipes:
                 instance = item.make()
                 items_ids.append(str(instance.pk))
-            # Test avec résultat
+            # Test with result
             url = reverse(self.url_list_api) + '?{}__in={}'.format(pk_field, ','.join(items_ids[:2]))
             response = self.client.get(url)
             self.assertIn(response.status_code, [status.HTTP_401_UNAUTHORIZED, status.HTTP_403_FORBIDDEN])
@@ -336,7 +337,7 @@ def create_api_test_class(
             self.assertTrue(all(i.get(pk_field, None) in items_ids for i in response.get('results', [])))
             options = response.data.get('options', {})
             self.assertTrue(options.get('filters', False))
-            # Test sans résultat
+            # Test without résultat
             url = reverse(self.url_list_api) + '?' + pk_field + '=0'
             response = self.client.get(url)
             self.assertEqual(response.status_code, status.HTTP_200_OK, response.data)
@@ -345,7 +346,7 @@ def create_api_test_class(
 
         def _test_api_filter_get(self):
             """
-            Méthode de test du filtre lors d'un get unitaire
+            Filter test method during a unit get
             """
             item = self.recipes[0].make()
             url = reverse(self.url_detail_api, args=[item.pk]) + '?{}={}'.format(pk_field, item.pk)
@@ -355,7 +356,7 @@ def create_api_test_class(
             response = self.client.get(url)
             self.assertEqual(response.status_code, status.HTTP_200_OK, response.data)
             self.assertEqual(response.data.get(pk_field, None), item.pk)
-            # Test sans résultat
+            # Test without result
             url = reverse(self.url_detail_api, args=[item.pk]) + '?' + pk_field + '=0'
             response = self.client.get(url)
             self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
@@ -364,7 +365,7 @@ def create_api_test_class(
     if test_fields:
         def _test_api_fields(self):
             """
-            Méthode de test des restrictions de champ
+            Field restriction test method
             """
             item = self.recipes[0].make()
             url = reverse(self.url_detail_api, args=[item.pk]) + '?fields={}'.format(pk_field, item.pk)
@@ -380,11 +381,11 @@ def create_api_test_class(
     if test_metadata and issubclass(model, CommonModel):
         def _test_api_metadata(self):
             """
-            Méthode de test des metadata
+            Method of testing metadata
             """
             item = self.recipes[0].make()
             item.set_metadata('test_key', 'test_value')
-            # Test sans metadata
+            # Test without metadata
             url = reverse(self.url_detail_api, args=[item.pk])
             response = self.client.get(url)
             self.assertIn(response.status_code, [status.HTTP_401_UNAUTHORIZED, status.HTTP_403_FORBIDDEN])
@@ -392,7 +393,7 @@ def create_api_test_class(
             response = self.client.get(url)
             self.assertEqual(response.status_code, status.HTTP_200_OK, response.data)
             self.assertIsNone(response.data.get('metadata'))
-            # Test avec metadata
+            # Test with metadata
             url = reverse(self.url_detail_api, args=[item.pk]) + '?meta=1'
             response = self.client.get(url)
             self.assertEqual(response.status_code, status.HTTP_200_OK, response.data)
@@ -409,11 +410,11 @@ def create_api_test_class(
 
         def _test_api_simple(self):
             """
-            Méthode de test du simple
+            Simple test method
             """
             recipe, *junk = self.recipes
             item = recipe.make()
-            # Récupération submodels sans le simple
+            # Submodels recovery without the simple
             self.client.force_authenticate(self.user_admin)
             url = reverse(self.url_detail_api, args=[item.pk])
             response = self.client.get(url)
@@ -427,7 +428,7 @@ def create_api_test_class(
                         list_submodels.append(field_name)
                     elif (field.one_to_one or isinstance(field, ForeignKey)) and isinstance(field_name, dict):
                         unique_submodels.append(field_name)
-            # On vérifie qu'ils ne soient plus remontés avec le simple
+            # We check that they are no longer reassembled with the simple
             url = reverse(self.url_detail_api, args=[item.pk]) + "?simple=1"
             response = self.client.get(url)
             self.assertEqual(response.status_code, status.HTTP_200_OK)
@@ -439,19 +440,19 @@ def create_api_test_class(
     if test_silent:
         def _test_api_silent(self):
             """
-            Méthode de test du silent
+            Silent Test Method
             """
             items_count = model.objects.count()
             recipes = self.recipes
             nb_recipes = len(recipes)
             for item in recipes:
                 item.make()
-            # Test sans le silent
+            # Test without the silent
             self.client.force_authenticate(self.user_admin)
             url = reverse(self.url_list_api) + '?test_field_does_not_exist=test'
             response = self.client.get(url)
             self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
-            # Test avec le silent
+            # Test with the silent
             url = reverse(self.url_list_api) + '?test_field_does_not_exist=test&silent=1'
             response = self.client.get(url)
             self.assertEqual(response.status_code, status.HTTP_200_OK, response.data)
@@ -481,16 +482,16 @@ OPERATORS = {
 
 def create_auto_test_class(fixture, callback):
     """
-    Crée un test automatisé à partir d'une fixture complète
-    :param fixture: Chemin vers la fixture
-    :param callback: Fonction retournant les résultats à vérifier
-    :return: Classe de test
+    Creates an automated test from a complete fixture
+    :param fixture: Path to the fixture
+    :param callback: Function returning results to be verified
+    :return: Test class
     """
     import os
     import tempfile
     import decimal
 
-    # Classe de test transactionnelle supprimant la fixture à la fin
+    # Transactional test class removing fixture at end
     class AutoTest(Test):
 
         @classmethod
@@ -499,20 +500,20 @@ def create_auto_test_class(fixture, callback):
                 os.remove(fixture)
             super().tearDownClass()
 
-    # Récupération du nom depuis le fichier
+    # Recover name from file
     name, ext = os.path.splitext(os.path.basename(fixture))
     name = ''.join(x.capitalize() or '_' for x in name.split('_')) + 'TestCase'
-    # Lecture des données
+    # Read the data
     with open(fixture, 'r') as file:
         data = json_decode(file.read())
-    # Création d'une fixture temporaire à partir des modèles
+    # Creating a temporary fixture from templates
     models = data.pop('models', {})
     with tempfile.NamedTemporaryFile(mode='w', encoding='utf-8', delete=False, suffix='.json') as temp_file:
         temp_file.write(json_encode(models))
         temp_file.flush()
-    # Création de la classe de test
+    # Created test class
     test_class = type(name, (AutoTest, ), dict(data=data, fixtures=[temp_file.name]))
-    # Création des méthodes de test
+    # Created test method
     tests = data.pop('tests')
     for index, test in enumerate(tests, start=1):
         def test_method(self, test=test):
@@ -524,7 +525,7 @@ def create_auto_test_class(fixture, callback):
                     current = data
                     for field in fields:
                         current = current[field]
-                    # Conversion explicite en décimal
+                    # Explicit conversion to decimal
                     if isinstance(current, decimal.Decimal):
                         value = decimal.Decimal(str(value))
                     operator = OPERATORS.get(result.get('operator', '=='))
