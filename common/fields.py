@@ -335,7 +335,7 @@ class JsonHas(Lookup):
             rhs, rhs_params = self.process_rhs(compiler, connection)
             assert len(rhs_params) == 1, _("A string must be provided as argument")
             # assert all(isinstance(e, str) for e in rhs_params), _("Argument must be of type string")
-            params = lhs_params + rhs_params
+            params = tuple(lhs_params) + tuple(rhs_params)
             return '%s ? %s' % (lhs, rhs), params
         raise NotImplementedError(
             _("The lookup '{lookup}' is only supported in PostgreSQL").format(
