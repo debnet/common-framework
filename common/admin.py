@@ -21,7 +21,7 @@ from common.utils import get_pk_field
 
 def delete_selected_entity(modeladmin, request, queryset):
     """
-    Action de suppression dans l'administration
+    Deletion action in the administration
     """
     queryset._from_admin = True
     queryset._current_user = request.user
@@ -34,7 +34,7 @@ delete_selected_entity.short_description = delete_selected.short_description
 
 class CommonAdmin(admin.ModelAdmin):
     """
-    Configuraton de l'administration par défaut
+    Setting up the default administration
     """
 
     def get_model_perms(self, request):
@@ -84,7 +84,7 @@ class CommonAdmin(admin.ModelAdmin):
 
 class EntityAdmin(CommonAdmin):
     """
-    Configuration de l'administration par défaut
+    Setting up the default administration
     """
     actions = [delete_selected_entity]
     delete_selected_confirmation_template = 'common/delete_selected.html'
@@ -115,7 +115,7 @@ class EntityAdmin(CommonAdmin):
 
 class PerishableValidFilter(admin.SimpleListFilter):
     """
-    Filtre spécifique aux entités périssables permettant d'isoler les enregistrements valides et invalides
+    Perishable entity specific filter to isolate valid and invalid records
     """
     title = _("validité")
     parameter_name = 'valid'
@@ -136,7 +136,7 @@ class PerishableValidFilter(admin.SimpleListFilter):
 
 class PerishableEntityAdmin(EntityAdmin):
     """
-    Configuration de l'administration des entités périssables par défaut
+    Configuring Default Perishable Entity Administration
     """
 
     def save_model(self, request, obj, form, change):
@@ -175,7 +175,7 @@ class PerishableEntityAdmin(EntityAdmin):
 
 class EntityAdminInlineMixin(object):
     """
-    Mixin pour la gestion des historiques dans les inlines de l'administration
+    Mixin for the management of histories in the inlines of the administration
     """
     formset = CommonInlineFormSet
 
@@ -206,14 +206,14 @@ class EntityAdminInlineMixin(object):
 
 class EntityTabularInline(EntityAdminInlineMixin, options.TabularInline):
     """
-    Surcharge du TabularInline pour la gestion des historiques
+    Overload of Tabularinline for historical management
     """
     pass
 
 
 class EntityStackedInline(EntityAdminInlineMixin, options.StackedInline):
     """
-    Surcharge du StackedInline pour la gestion des historiques
+    Overload of StackedInline for historical management
     """
     pass
 
@@ -221,7 +221,7 @@ class EntityStackedInline(EntityAdminInlineMixin, options.StackedInline):
 @admin.register(Global)
 class GlobalAdmin(admin.ModelAdmin):
     """
-    Configuration de l'administration pour les globales
+    Administration Configuration for Global
     """
     readonly_fields = ('content_type', 'object_id', 'object_uid', )
     list_display = ('id', 'entity_url', 'content_type', 'object_id', 'object_uid', )
@@ -249,7 +249,7 @@ class GlobalAdmin(admin.ModelAdmin):
 @admin.register(MetaData)
 class MetaDataAdmin(admin.ModelAdmin):
     """
-    Configuration de l'administration pour les métadonnées
+    Administration configuration for the metadata
     """
     date_hierarchy = 'modification_date'
     readonly_fields = ('object_id', 'content_type', )
@@ -280,12 +280,12 @@ class MetaDataAdmin(admin.ModelAdmin):
 
 def restore(modeladmin, request, queryset, all_fields=False):
     """
-    Action d'annulation des modifications
-    :param modeladmin: Classe d'administration
-    :param request: Requête HTTP
-    :param queryset: Ensemble des entités sélectionnées
-    :param all_fields: Restaurer également les données non éditables ?
-    :return: Rien
+    Action to cancel changes
+    :param modeladmin: Administration class
+    :param request: HTTP request
+    :param queryset: All the entities selected
+    :param all_fields: Also restore data that cannot be edited?
+    :return: None
     """
     fail, success = 0, 0
     errors = []
@@ -315,7 +315,7 @@ restore.short_description = _("Annuler les modifications")
 
 def restore_all(modeladmin, request, queryset):
     """
-    Action d'annulation de toutes les modifications
+    Action to cancel all changes
     """
     return restore(modeladmin, request, queryset, all_fields=True)
 
@@ -326,7 +326,7 @@ restore_all.short_description = _("Annuler toutes les modifications")
 @admin.register(History)
 class HistoryAdmin(admin.ModelAdmin):
     """
-    Configuration de l'administration pour les entrées d'historique
+    Administration Configuration for History Entries
     """
     date_hierarchy = 'creation_date'
     readonly_fields = (
@@ -382,7 +382,7 @@ class HistoryAdmin(admin.ModelAdmin):
 @admin.register(HistoryField)
 class HistoryFieldAdmin(admin.ModelAdmin):
     """
-    Configuration de l'administration pour les historiques des modifications de champs
+    Administration Configuration for Field Change History
     """
     date_hierarchy = 'creation_date'
     readonly_fields = ('history', 'field_name', 'old_value', 'new_value', 'status_m2m', 'editable', 'data', )
@@ -444,7 +444,7 @@ class HistoryFieldAdmin(admin.ModelAdmin):
 @admin.register(Webhook)
 class WebhookAdmin(admin.ModelAdmin):
     """
-    Configuration de l'administration pour les web hooks
+    Administration configuration for web hooks
     """
     list_display = ('id', 'name', 'url', 'method', 'format', 'list_actions', )
     list_display_links = ('id', 'name', )
@@ -521,10 +521,10 @@ class ServiceUsageAdmin(admin.ModelAdmin):
 
 def create_admin(*args, **kwargs):
     """
-    Permet de créer une administration générique pour un ou plusieurs modèles
-    :param args: Modèle(s)
-    :param kwargs: Paramètres complémentaires ou surcharges
-    :return: Classe(s) d'administration par modèle
+    Allows you to create a generic administration for one or more models
+    :param args: Model(s)
+    :param kwargs: Additional parameters or overloads
+    :return: Administrative class(s) by model
     """
     try:
         import grappelli
