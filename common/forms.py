@@ -4,7 +4,7 @@ from django.forms.formsets import BaseFormSet, formset_factory
 from django.forms.models import (
     BaseInlineFormSet, BaseModelFormSet, ModelForm,
     modelform_factory, modelformset_factory, _get_foreign_key)
-from django.utils.translation import ugettext_lazy as _
+from django.utils.translation import gettext_lazy as _
 
 from common.models import Entity, PerishableEntity
 from common.utils import get_current_user, json_decode, json_encode
@@ -305,3 +305,54 @@ class JsonField(forms.CharField):
         if isinstance(value, JsonField.InvalidInput):
             return value
         return json_encode(value, sort_keys=True)
+
+
+class BaseFilterForm(forms.Form):
+    """
+    Classe de base pour les filtres de formulaires
+    Les lookups sous forme de fonction doivent déclarer les paramètres suivants dans cet ordre :
+        valeur, liste de sous-filtres, dictionnaire de filtres, liste des sous-filtres à exécuter un par un
+    et doivent retourner True si un distinct est nécessaire, False|None sinon
+    """
+    distinct = False
+    count = 0
+    _lookups, filled = {}, {}
+
+    @property
+    def filters(self):
+        self.count = 0
+        self.filled = {}
+        distinct = self.distinct
+        args, kwargs, largs = [], {}, []
+        for key, value in self.cleaned_data.items():
+            field = self[key]
+            is_bool = isinstance(field.field, (forms.BooleanField, forms.NullBooleanField))
+            if (not is_bool and not field.data) or (is_bool and field.data is None):
+                continue
+            if key not in self._lookups:
+                continue
+            lookup = self._lookups.get(key, None)
+            if callable(lookup):
+                distinct |= lookup(self, value, args, kwargs, largs) or False
+            elif isinstance(lookup, tuple):
+                _lookup, _distinct = lookup
+                distinct |= _distinct
+                kwargs[_lookup] = value
+            elif lookup:
+                kwargs[lookup] = value
+            if value == '' or value == field.initial:
+                continue
+            self.count += 1
+            self.filled[key] = value
+        return args, kwargs, largs, distinct
+
+    def apply(self, queryset):
+        if not self.is_valid():
+            return queryset.none()
+        fargs, fkwargs, flargs, distinct = self.filters
+        queryset = queryset.filter(*fargs, **fkwargs)
+        for flarg in flargs:
+            queryset = queryset.filter(flarg)
+        if distinct:
+            queryset = queryset.distinct()
+        return queryset

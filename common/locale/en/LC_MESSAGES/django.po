@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: PACKAGE VERSION\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2019-02-07 11:01+0000\n"
+"POT-Creation-Date: 2020-08-13 23:48+0200\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -270,9 +270,6 @@ msgstr "A dictionary must be provided as argument"
 
 msgid "A boolean must be provided as argument"
 msgstr "A boolean must be provided as argument"
-
-msgid "Lookup argument must be a boolean"
-msgstr "Lookup argument must be a boolean"
 
 #, python-format
 msgid "'%(value)s' value must be valid JSON."

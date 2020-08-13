@@ -10,7 +10,7 @@ from common.models import MetaData
 from common.utils import decimal, parsedate, str_to_bool, json_encode, patch_settings
 from django.core.exceptions import ValidationError
 from django.db import transaction
-from django.utils.translation import ugettext_lazy as _
+from django.utils.translation import gettext_lazy as _
 from openpyxl import Workbook, load_workbook
 from openpyxl.styles import Font
 from openpyxl.utils import get_column_letter

@@ -3,8 +3,8 @@ from functools import wraps
 from json import JSONDecodeError
 
 from django.conf import settings
+from django.core.exceptions import EmptyResultSet
 from django.db.models import F, Q, QuerySet, Count, Sum, Avg, Min, Max
-from django.db.models.query import EmptyResultSet
 from rest_framework import serializers, viewsets
 from rest_framework.decorators import api_view
 from rest_framework.exceptions import NotFound, ValidationError
@@ -47,19 +47,26 @@ def url_value(filter, value):
     if not isinstance(value, str):
         return value
     if filter:
-        if any(filter.endswith(lookup) for lookup in ('__in', '__range', '__any', '__all')):
+        if any(filter.endswith(lookup) for lookup in (
+                '__in', '__range', '__any', '__all',
+                '__has_keys', '__has_any_keys', '__overlap')):
             return value.split(',')
         if any(filter.endswith(lookup) for lookup in ('__isnull', '__isempty')):
             return str_to_bool(value)
-        if any(filter.endswith(lookup) for lookup in ('__hasdict', '__indict')):
+        if any(filter.endswith(lookup) for lookup in (
+                '__contains', '__contained_by',
+                '__hasdict', '__indict')):
             try:
                 return json_decode(value)
             except JSONDecodeError:
-                data = {}
-                for subvalue in value.split(','):
-                    key, val = subvalue.split(':')
-                    data[key] = val
-                return data
+                if ':' in value:
+                    data = {}
+                    for subvalue in value.split(','):
+                        key, val = subvalue.split(':')
+                        data[key] = val
+                    return data
+                elif ',' in value:
+                    return value.split(',')
     return value
 
 
@@ -152,6 +159,7 @@ def to_model_serializer(model, **metadata):
         if 'fields' not in metadata and 'exclude' not in metadata:
             metadata.update(fields='__all__')
         metadata.update(model=model)
+        metadata.update(ref_name=model._meta.object_name)
         serializer.Meta = type('Meta', (), metadata)
         return serializer
     return wrapper

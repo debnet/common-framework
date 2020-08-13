@@ -20,7 +20,7 @@ from django.dispatch import receiver
 from django.forms.models import model_to_dict as django_model_to_dict
 from django.utils.text import camel_case_to_spaces
 from django.utils.timezone import now
-from django.utils.translation import ugettext_lazy as _
+from django.utils.translation import gettext_lazy as _
 from rest_framework.renderers import JSONRenderer
 
 try:
@@ -794,8 +794,8 @@ class HistoryCommon(CommonModel):
     restoration_date = models.DateTimeField(
         blank=True, null=True, editable=False,
         verbose_name=_("dernière restauration"))
-    restored = models.NullBooleanField(
-        editable=False,
+    restored = models.BooleanField(
+        null=True, editable=False,
         verbose_name=_("restauré"))
     data = JsonField(
         blank=True, null=True, editable=False,

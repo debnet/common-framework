@@ -15,18 +15,25 @@ from decimal import ROUND_HALF_EVEN, Decimal, InvalidOperation
 from functools import lru_cache, wraps
 from importlib import import_module
 from itertools import chain, product
+from json import JSONDecoder
 from uuid import uuid4
 
+from django.apps import apps
 from django.conf import settings
+from django.core.exceptions import FieldDoesNotExist, ValidationError, NON_FIELD_ERRORS
 from django.core.files import temp
 from django.core.files.storage import FileSystemStorage
 from django.core.files.uploadedfile import TemporaryUploadedFile
 from django.core.files.uploadhandler import TemporaryFileUploadHandler
-from django.db.models import ForeignKey, OneToOneField, FieldDoesNotExist
+from django.core.mail import EmailMultiAlternatives
+from django.db.models import ForeignKey, OneToOneField
+from django.db.models.deletion import Collector
 from django.http import HttpRequest, HttpResponse
 from django.shortcuts import render
+from django.template import Context, Template
+from django.template.loader import render_to_string
 from django.utils.timezone import now
-from django.utils.translation import ugettext_lazy as _
+from django.utils.translation import gettext_lazy as _
 from django.views.decorators.csrf import csrf_exempt, csrf_protect
 from rest_framework.renderers import JSONRenderer
 from rest_framework.utils.encoders import JSONEncoder
@@ -865,6 +872,7 @@ def decimal(value=None, precision=None, rounding=ROUND_HALF_EVEN, context=None):
     :param value: Valeur
     :param precision: Précision
     :param rounding: Méthode d'arrondi
+    :param context: Contexte
     :return: Nombre décimal
     """
     if value is None or value == '':
@@ -1086,6 +1094,21 @@ class Null(object):
 null = Null()
 
 
+def to_tuple(data):
+    """
+    Transforme un dictionnaire ou une liste de dictionnaires en une série de tuples imbriqués
+    :param data: Dictionnaire ou liste de dictionnaires
+    :return: Tuple
+    """
+    if not data:
+        return tuple()
+    if isinstance(data, list):
+        return tuple(to_tuple(element) for element in data)
+    if isinstance(data, dict):
+        return tuple({key: to_tuple(value) for key, value in sorted(data.items())}.items())
+    return data
+
+
 def to_object(data, name='Context', default=None):
     """
     Transforme un dictionnaire en objet ou une liste de dictionnaire en liste d'objets
@@ -1272,16 +1295,26 @@ class JsonEncoder(JSONEncoder):
 JSONRenderer.encoder_class = JsonEncoder
 
 
+class JsonDecoder(JSONDecoder):
+    """
+    Décodeur JSON spécifique
+    """
+    def __init__(self, *args, **kwargs):
+        if 'parse_float' not in kwargs:
+            kwargs['parse_float'] = decimal
+        super().__init__(*args, **kwargs)
+
+
 # JSON serialization
 def json_encode(data, cls=None, **options):
     return json.dumps(data, cls=cls or JsonEncoder, **options)
 
 
 # JSON deserialization
-def json_decode(data, content_encoding='utf-8', **options):
+def json_decode(data, content_encoding='utf-8', cls=None, **options):
     if isinstance(data, bytes):
         data = data.decode(content_encoding)
-    return json.loads(data, parse_float=decimal, encoding=settings.DEFAULT_CHARSET, **options)
+    return json.loads(data, cls=cls or JsonDecoder, **options)
 
 
 def abort_sql(name, kill=False, using=None, timeout=None, state='active'):
@@ -1294,9 +1327,11 @@ def abort_sql(name, kill=False, using=None, timeout=None, state='active'):
     :param state: Etat des connexion à interrompre ('active' ou 'idle')
     :return: Vrai si toutes les requêtes ont été interrompues, faux sinon
     """
+    from common.fields import is_postgresql
     from django.db import connections, DEFAULT_DB_ALIAS
     connection = connections[using or DEFAULT_DB_ALIAS]
-    assert connection.vendor == 'postgresql', _("Cette fonction ne peut être utilisée que sur PostgreSQL.")
+    if not is_postgresql(connection):
+        return AssertionError(_("Cette fonction ne peut être utilisée que sur PostgreSQL."))
     with connection.cursor() as cursor:
         query = "SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE application_name = %s" if kill \
             else "SELECT pg_cancel_backend(pid) FROM pg_stat_activity WHERE application_name = %s"
@@ -1343,3 +1378,110 @@ def get_pk_field(model):
         if pk:
             return pk
     return None
+
+
+def collect_deleted_data(object):
+    """
+    Collecte les objets supprimés et modifiés en conséquence de la suppresion d'un objet donné
+    :param object: Objet supprimé
+    :return: Objets supprimés, objets modifiés
+    """
+    models = apps.get_models()
+    collector = Collector(using=object._state.db)
+    collector.collect([object])
+    deleted, changed = {}, {}
+    for model, instances in collector.data.items():
+        from_model = model._meta.auto_created
+        if from_model and from_model in models:  # Potential many-to-many
+            from_model.meta = from_model._meta  # For template
+            from_field, to_field, *_junk = model._meta.fields[1:]
+            field = next(
+                field for field in from_model.meta.many_to_many
+                if to_field and field.related_model == to_field.related_model)
+            for _instance in instances:
+                instance, value = getattr(_instance, from_field.name), getattr(_instance, to_field.name)
+                if instance == object:
+                    continue
+                changed.setdefault(from_model, {}).setdefault(instance, {}).setdefault(field, []).append(value)
+        else:
+            if model not in models:
+                continue
+            model.meta = model._meta  # For template
+            for instance in instances:
+                if instance == object:
+                    continue
+                deleted.setdefault(model, []).append(instance)
+    for model, fields in collector.field_updates.items():
+        if model not in models:
+            continue
+        model.meta = model._meta  # For template
+        for (from_field, value), instances in fields.items():
+            for instance in instances:
+                if instance in collector.data.get(model, ()):
+                    continue
+                changed.setdefault(model, {}).setdefault(instance, {}).setdefault(from_field, value)
+    return deleted, changed
+
+
+def send_mail(
+        mail_from=None, mail_to=None, mail_cc=None, mail_bcc=None, mail_reply_to=None,
+        mail_subject=None, mail_text=None, mail_html=None, mail_data=None,
+        files=None, fail_silently=False, force=False):
+    """
+    Permet d'envoyer un e-mail avec un ou plusieurs documents attachés
+    :param mail_from: Adresse e-mail de l'émetteur
+    :param mail_to: Adresse(s) e-mail de(s) récepteur(s)
+    :param mail_cc: Adresse(s) e-mail de(s) récepteur(s) en copie carbone
+    :param mail_bcc: Adresse(s) e-mail de(s) récepteur(s) en copie carbone invisible
+    :param mail_reply_to: Adresse(s) e-mail de réponse
+    :param mail_subject: Objet de l'e-mail
+    :param mail_text: Nom du template ou corps en pur-texte de l'e-mail
+    :param mail_html: Nom du template ou corps en HTML de l'e-mail
+    :param mail_data: Données pour le contenu de l'e-mail (en texte comme en HTML)
+    :param files: Liste de fichiers complémentaires à joindre dans l'e-mail (chemin absolu, mimetype)
+    :param fail_silently: Ne lève pas d'exception en cas d'erreur lors de l'envoi de l'e-mail
+    :param force: Force l'envoi de l'e-mail même si la configuration ne l'autorise pas
+    :return: Etat d'envoi de l'e-mail
+    """
+    if not force and not settings.EMAIL_ENABLED:
+        return None
+    try:
+        body_text = render_to_string(mail_text, mail_data or {})
+    except:  # noqa
+        body_text = Template(mail_text or "").render(Context(mail_data or {}))
+    try:
+        body_html = render_to_string(mail_html, mail_data or {})
+    except:  # noqa
+        body_html = Template(mail_html or "").render(Context(mail_data or {}))
+    mail = EmailMultiAlternatives(
+        from_email=mail_from,
+        to=[mail_to] if isinstance(mail_to, str) else mail_to,
+        cc=[mail_cc] if isinstance(mail_cc, str) else mail_cc,
+        bcc=[mail_bcc] if isinstance(mail_bcc, str) else mail_bcc,
+        reply_to=[mail_reply_to] if isinstance(mail_reply_to, str) else mail_reply_to,
+        subject=mail_subject or "",
+        body=body_text,
+    )
+    if mail_html:
+        mail.attach_alternative(body_html, "text/html")
+    for file, mimetype in files or []:
+        mail.attach_file(file, mimetype=mimetype)
+    return mail.send(fail_silently=fail_silently)
+
+
+def merge_validation_errors(errors):
+    """
+    Fusionne plusieurs erreurs de validation en une seule
+    :param errors: Liste d'erreurs de validation
+    :return: Erreur de validation
+    """
+    data = {}
+    for error in errors:
+        if hasattr(error, 'error_dict'):
+            for field, messages in error.error_dict.items():
+                if not isinstance(messages, ValidationError):
+                    messages = ValidationError(messages)
+                data.setdefault(field, []).extend(messages.error_list)
+        else:
+            data.setdefault(NON_FIELD_ERRORS, []).extend(error.error_list)
+    return ValidationError(data)

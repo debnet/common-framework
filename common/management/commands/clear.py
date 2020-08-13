@@ -4,7 +4,7 @@ import logging
 from django.apps import apps
 from django.core.management.base import BaseCommand
 from django.db import transaction
-from django.utils.translation import ugettext_lazy as _
+from django.utils.translation import gettext_lazy as _
 
 from common.models import Entity
 

@@ -9,7 +9,7 @@ from django.db.models import Count
 from django.urls import reverse, NoReverseMatch
 from django.utils.html import format_html
 from django.utils.text import camel_case_to_spaces, capfirst
-from django.utils.translation import ugettext_lazy as _
+from django.utils.translation import gettext_lazy as _
 
 from common.fields import JsonField, PickleField
 from common.forms import CommonInlineFormSet
@@ -519,10 +519,11 @@ class ServiceUsageAdmin(admin.ModelAdmin):
     }
 
 
-def create_admin(*args, **kwargs):
+def create_admin(*args, baseclass=None, **kwargs):
     """
     Permet de créer une administration générique pour un ou plusieurs modèles
     :param args: Modèle(s)
+    :param baseclass: Classe de base de l'administration
     :param kwargs: Paramètres complémentaires ou surcharges
     :return: Classe(s) d'administration par modèle
     """
@@ -537,8 +538,9 @@ def create_admin(*args, **kwargs):
     for model in args:
         if not model:
             continue
-        admin_superclass = PerishableEntityAdmin if issubclass(model, PerishableEntity) else \
-            EntityAdmin if issubclass(model, Entity) else CommonAdmin
+        admin_superclass = baseclass or (
+            PerishableEntityAdmin if issubclass(model, PerishableEntity) else
+            EntityAdmin if issubclass(model, Entity) else CommonAdmin)
         fk_fields = tuple(
             field for field in model._meta.get_fields()
             if isinstance(field, (models.ForeignKey, models.OneToOneField)))

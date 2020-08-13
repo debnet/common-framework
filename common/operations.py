@@ -2,7 +2,7 @@
 import logging
 
 from django.db.migrations.operations.base import Operation
-from django.utils.translation import ugettext_lazy as _
+from django.utils.translation import gettext_lazy as _
 
 
 logger = logging.getLogger(__name__)

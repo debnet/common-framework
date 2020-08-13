@@ -3,7 +3,7 @@ import socket
 
 from django.core.exceptions import PermissionDenied
 from django.urls import resolve, Resolver404
-from django.utils.translation import ugettext_lazy as _
+from django.utils.translation import gettext_lazy as _
 
 from common.models import ServiceUsage
 from common.settings import settings

@@ -367,7 +367,7 @@ def create_api_test_class(
             Méthode de test des restrictions de champ
             """
             item = self.recipes[0].make()
-            url = reverse(self.url_detail_api, args=[item.pk]) + '?fields={}'.format(pk_field, item.pk)
+            url = reverse(self.url_detail_api, args=[item.pk]) + '?fields={}'.format(pk_field)
             response = self.client.get(url)
             self.assertIn(response.status_code, [status.HTTP_401_UNAUTHORIZED, status.HTTP_403_FORBIDDEN])
             self.client.force_authenticate(self.user_admin)

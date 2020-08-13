@@ -1,7 +1,11 @@
 # coding: utf-8
+import ast
+
+from django.conf import settings
 from django.http import QueryDict
-from django.template import Library
+from django.template import Library, Node
 from django.utils.formats import localize
+from django.utils.translation import gettext as _
 
 
 register = Library()
@@ -185,9 +189,149 @@ def tag_query(context, queryset, save='', **kwargs):
     # Limite
     limit = get('limit')
     if limit:
-        limit = [int(l) for l in limit.split(',')]
+        limit = [int(lim) for lim in limit.split(',')]
         limit_inf, limit_sup = (0, limit[0]) if len(limit) == 1 else limit[:2]
         queryset = queryset[limit_inf:limit_sup]
 
     context[save] = queryset
     return ''
+
+
+class PermNode(Node):
+    """
+    Classe utilitaire pour le template tag des permissions
+    """
+    def __init__(self, nodelist, *perms, obj=None, any=False):
+        self.nodelist = nodelist
+        self.perms = perms
+        self.obj = obj
+        self.any = any
+
+    def render(self, context):
+        if not hasattr(context, 'request'):
+            return ''
+        user = context.request.user
+        valid = any(user.has_perm(perm, self.obj) for perm in self.perms) if self.any \
+            else user.has_perms(self.perms, self.obj)
+        if valid:
+            return self.nodelist.render(context)
+        return ''
+
+
+@register.tag(name='perm')
+def tag_perm(parser, token):
+    """
+    Permet d'afficher ou non un contenu en fonction des permissions de l'utilisateur connecté (toutes)
+    """
+    nodelist = parser.parse(('endperm',))
+    parser.delete_first_token()
+    args = [ast.literal_eval(bit) for bit in token.split_contents()[1:]]
+    return PermNode(nodelist, *args)
+
+
+@register.tag(name='anyperm')
+def tag_anyperm(parser, token):
+    """
+    Permet d'afficher ou non un contenu en fonction des permissions de l'utilisateur connecté (au moins une)
+    """
+    nodelist = parser.parse(('endanyperm',))
+    parser.delete_first_token()
+    args = [ast.literal_eval(bit) for bit in token.split_contents()[1:]]
+    return PermNode(nodelist, *args, any=True)
+
+
+@register.filter(name='conf')
+def filter_conf(value):
+    """
+    Retourne la valeur d'un paramètre de configuration
+    """
+    return getattr(settings, value, None)
+
+
+@register.filter(name='gather')
+def filter_gather(value, key='', sep=None):
+    """
+    Permet de rassembler des données selon une clé
+    """
+    sep = sep or _(", ")
+    if not key:
+        return sep.join(value)
+    return sep.join((v.get(key) if isinstance(v, dict) else getattr(v, key) for v in value))
+
+
+@register.filter(name='split')
+def filter_split(value, sep=' '):
+    """
+    Permet de diviser une chaîne en fonction d'un séparateur
+    """
+    return value.split(sep)
+
+
+@register.simple_tag(name='eval', takes_context=True)
+def tag_evaluate(context, text):
+    """
+    Evalue une chaîne comme un template
+    """
+    from django.template import Context, Template
+    return Template(text).render(Context(context))
+
+
+class MarkdownNode(Node):
+    """
+    Classe utilitaire pour le template tag markdown
+    """
+    def __init__(self, nodelist, *extras):
+        self.nodelist = nodelist
+        self.extras = extras
+
+    def render(self, context):
+        output = self.nodelist.render(context)
+        import markdown2
+        return markdown2.markdown(output.strip(), extras=self.extras)
+
+
+@register.tag(name='markdown')
+def tag_markdown(parser, token):
+    """
+    Permet de convertir un format markdown en HTML
+    """
+    nodelist = parser.parse(('endmarkdown',))
+    parser.delete_first_token()
+    args = [ast.literal_eval(bit) for bit in token.split_contents()[1:]]
+    return MarkdownNode(nodelist, *args)
+
+
+class ObfuscatorNode(Node):
+    """
+    Classe utilitaire pour obfusquer les données
+    """
+    def __init__(self, nodelist, key=None, *args):
+        self.nodelist = nodelist
+        self.key = key
+
+    def encode(self, data, key=''):
+        import base64
+        from itertools import cycle
+        xored = ''.join(chr(ord(x) ^ ord(y)) for (x, y) in zip(data, cycle(key)))
+        return base64.encodebytes(xored.encode()).strip().decode()
+
+    def render(self, context):
+        output = self.nodelist.render(context)
+        key = self.key or context.get('uuid')
+        encoded = self.encode(output, key)
+        return f'<div data-code="{encoded}"></div>'
+
+
+@register.tag(name='ob')
+def tag_obfuscate(parser, token):
+    """
+    Permet d'obfusquer des données
+    """
+    nodelist = parser.parse(('bo',))
+    parser.delete_first_token()
+    args = [ast.literal_eval(bit) for bit in token.split_contents()[1:]]
+    return ObfuscatorNode(nodelist, *args)
+
+
+register.filter('any', lambda value: any(value))
+register.filter('all', lambda value: all(value))

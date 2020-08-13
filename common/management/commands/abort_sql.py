@@ -3,7 +3,7 @@ import logging
 
 from common.utils import abort_sql
 from django.core.management.base import BaseCommand
-from django.utils.translation import ugettext_lazy as _
+from django.utils.translation import gettext_lazy as _
 
 
 # Logging

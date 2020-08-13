@@ -263,8 +263,10 @@ relatif à Django et dans ``common.api.utils`` pour tout ce qui est relatif à D
 * ``recursive_get_urls`` : permet de récupérer toutes les URLs d'un module
 * ``idict`` : dictionnaire donc les clés sont toujours converties dans un format uniforme
 * ``sort_dict`` : permet de trier un dictionnaire par ses clés
+* ``merge_dict`` : permet de fusionner un ou plusieurs dictionnaires imbriqués sur un autre
 * ``null`` : objet nul absolu retournant toujours une valeur nulle sans erreur
-* ``to_object`` : permet de convertir un dictionnaire ou un objet Python
+* ``to_tuple`` : permet de convertir un dictionnaire en un tuple
+* ``to_object`` : permet de convertir un dictionnaire en un objet Python
 * ``get_size`` : permet de récupérer la taille en mémoire d'un objet Python quelconque
 * ``file_is_text`` : permet de vérifier qu'un fichier est au format texte
 * ``process_file`` : permet de s'assurer qu'un fichier est bien complet et décompresse les éventuelles archives
@@ -275,6 +277,9 @@ relatif à Django et dans ``common.api.utils`` pour tout ce qui est relatif à D
 * ``json_decode`` : permet de désérialiser une chaîne de caractères JSON en objet Python
 * ``get_current_user`` : permet de récupérer l'utilisateur actuellement connecté dans la pile d'exécution
 * ``get_pk_field`` : permet de récupérer le champ de clé primaire d'un modèle en héritage concret
+* ``collect_deleted_data`` : permet de récupérer les impacts potentiels d'une suppression d'entité
+* ``send_mail`` : permet d'envoyer un email
+* ``merge_validation_errors`` : permet de fusionner plusieurs exceptions de validation en une seule
 
 ##### Autres (``common.admin``)
 
@@ -286,8 +291,7 @@ Les champs de modèle sont définis dans ``common.fields``.
 
 * ``CustomDecimalField`` : champ décimal pour éviter la représentation scientifique des nombres
 * ``PickleField`` : champ binaire pour contenir de la donnée Python brute
-* ``JsonField`` : champ pour représenter des données JSON (compatible avec les autres SGBD mais seul PostgreSQL
-supporte les requêtes sur ce type de champ)
+* ``JsonField`` : champ pour représenter des données JSON (compatible avec les autres SGBD)
 
 ### Formulaires
 
@@ -299,6 +303,7 @@ formulaires possèdent une interface de base, préfixée généralement ``Base``
 * ``CommonModelForm`` : classe de base pour représenter les formulaires issus d'entités
 * ``CommonModelFormSet`` : classe de base pour représenter les ensembles de formulaires issus d'entités
 * ``JsonField`` : champ de formulaire pour représenter les données JSON
+* ``BaseFilterForm`` : classe de base pour faciliter la création de formulaires de recherche
 * ``get_model_form`` : fonction permettant de créer un formulaire d'entité avec des imbrications
 
 # Django REST Framework

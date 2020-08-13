@@ -1,7 +1,7 @@
 # coding: utf-8
-from django.core.exceptions import FieldDoesNotExist
+from django.core.exceptions import FieldDoesNotExist, EmptyResultSet
 from django.db import ProgrammingError
-from django.db.models.query import F, EmptyResultSet, Prefetch, QuerySet
+from django.db.models.query import F, Prefetch, QuerySet
 from rest_framework import serializers
 from rest_framework import viewsets
 from rest_framework.compat import coreapi
