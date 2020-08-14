@@ -69,7 +69,6 @@
                 throw new DjangoJsError('Wrong number of argument for pattern "' + name + '"');
             }
 
-
             for (var idx = 0; idx < array.length; idx++) {
                 url += array[idx] + parts[idx + 1];
             }

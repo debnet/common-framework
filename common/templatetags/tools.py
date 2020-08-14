@@ -1,5 +1,8 @@
 # coding: utf-8
 import ast
+import base64
+import uuid
+from itertools import cycle
 
 from django.conf import settings
 from django.http import QueryDict
@@ -310,16 +313,18 @@ class ObfuscatorNode(Node):
         self.key = key
 
     def encode(self, data, key=''):
-        import base64
-        from itertools import cycle
         xored = ''.join(chr(ord(x) ^ ord(y)) for (x, y) in zip(data, cycle(key)))
         return base64.encodebytes(xored.encode()).strip().decode()
 
     def render(self, context):
         output = self.nodelist.render(context)
-        key = self.key or context.get('uuid')
-        encoded = self.encode(output, key)
-        return f'<div data-code="{encoded}"></div>'
+        if self.key:
+            encoded = self.encode(output, self.key)
+            return f'<div data-code="{encoded}"></div>'
+        else:
+            key = uuid.uuid4().hex
+            encoded = self.encode(output, key)
+            return f'<div data-key="{key}" data-code="{encoded}"></div>'
 
 
 @register.tag(name='ob')
