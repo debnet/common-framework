@@ -49,12 +49,12 @@ def filter_get(value, key):
     """
     try:
         if isinstance(value, dict):
-            return value.get(key) or value.get(int(key))
+            return value.get(str(key)) or value.get(int(key))
         elif isinstance(value, (list, tuple)):
             return value[int(key)]
         else:
             return getattr(value, key, None)
-    except ValueError:
+    except (TypeError, ValueError):
         return None
 
 
