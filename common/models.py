@@ -1266,10 +1266,10 @@ class Entity(CommonModel):
         :param force_insert: Force l'insertion même en cas de présence d'une PK ?
         """
         self.uuid = self.uuid or uuid.uuid4()
+        self._current_user = self.current_user = _current_user or self._current_user or get_current_user()
         if _force_default or self._force_default:
             return super().save(force_insert=force_insert, *args, **kwargs)
         self._ignore_log = _ignore_log or self._ignore_log
-        self._current_user = self.current_user = _current_user or self._current_user or get_current_user()
         self._reason = _reason or self._reason
         self._force_default = _force_default or self._force_default
         if force_insert:

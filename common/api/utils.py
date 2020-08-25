@@ -159,7 +159,7 @@ def to_model_serializer(model, **metadata):
         if 'fields' not in metadata and 'exclude' not in metadata:
             metadata.update(fields='__all__')
         metadata.update(model=model)
-        metadata.update(ref_name=model._meta.object_name)
+        metadata.update(ref_name=model._meta.label)
         serializer.Meta = type('Meta', (), metadata)
         return serializer
     return wrapper
@@ -484,8 +484,11 @@ def api_view_with_serializer(http_method_names=None, input_serializer=None, seri
                 return result
             if not serializer:
                 return Response(result)
-            many = isinstance(result, (list, QuerySet))
-            return Response(serializer(result, many=many, context=dict(request=request)).data)
+            try:
+                many = isinstance(result, (list, QuerySet))
+                return Response(serializer(result, many=many, context=dict(request=request)).data)
+            except:  # noqa
+                return Response(result)
 
         view = api_view(http_method_names)(inner_func)
         if input_serializer:

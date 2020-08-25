@@ -4,7 +4,6 @@ from django.db import ProgrammingError
 from django.db.models.query import F, Prefetch, QuerySet
 from rest_framework import serializers
 from rest_framework import viewsets
-from rest_framework.compat import coreapi
 from rest_framework.exceptions import ValidationError
 from rest_framework.schemas import AutoSchema
 
@@ -20,8 +19,7 @@ class CommonModelViewSet(viewsets.ModelViewSet):
     Définition commune de ModelViewSet pour l'API REST
     """
     url_params = {}
-    if coreapi:
-        schema = AutoSchema()
+    schema = AutoSchema()
 
     def get_serializer_class(self):
         # Le serializer par défaut est utilisé en cas de modification/suppression
