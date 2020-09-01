@@ -1012,7 +1012,7 @@ def sort_dict(idict):
     :param idict: Dictionnaire
     :return: Dictionnaire trié
     """
-    return json_decode(json_encode(idict, sort_keys=True), object_pairs_hook=collections.OrderedDict)
+    return json_decode(json_encode(idict), object_pairs_hook=collections.OrderedDict)
 
 
 def merge_dict(mdict, *idicts, **kwargs):
@@ -1281,6 +1281,11 @@ class JsonEncoder(JSONEncoder):
     Encodeur JSON spécifique
     """
     encoding = {}  # type : callable
+
+    def __init__(self, *args, **kwargs):
+        if 'sort_keys' not in kwargs:
+            kwargs['sort_keys'] = True
+        super().__init__(*args, **kwargs)
 
     def default(self, obj):
         for type, func in self.encoding.items():

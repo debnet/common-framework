@@ -16,7 +16,7 @@ class JsonField(Field):
         return obj
 
     def from_native(self, data):
-        return json_encode(data, sort_keys=True)
+        return json_encode(data)
 
     def to_internal_value(self, data):
         return data

@@ -48,7 +48,7 @@ def url_value(filter, value):
         return value
     if filter:
         if any(filter.endswith(lookup) for lookup in (
-                '__in', '__range', '__any', '__all',
+                '__in', '__range', '__hasany', '__hasall',
                 '__has_keys', '__has_any_keys', '__overlap')):
             return value.split(',')
         if any(filter.endswith(lookup) for lookup in ('__isnull', '__isempty')):
@@ -67,6 +67,11 @@ def url_value(filter, value):
                     return data
                 elif ',' in value:
                     return value.split(',')
+        if value.isdigit():
+            if '.' in value:
+                return float(value)
+            elif not value.startswith('0'):
+                return int(value)
     return value
 
 

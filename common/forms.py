@@ -268,7 +268,9 @@ class JsonField(forms.CharField):
     class InvalidInput(str):
         pass
 
-    def __init__(self, **kwargs):
+    def __init__(self, encoder=None, decoder=None, **kwargs):
+        self.encoder = encoder
+        self.decoder = decoder
         kwargs.setdefault('widget', forms.Textarea)
         super().__init__(**kwargs)
 
@@ -281,7 +283,7 @@ class JsonField(forms.CharField):
         elif isinstance(value, (list, dict, int, float, JsonString)):
             return value
         try:
-            converted = json_decode(value)
+            converted = json_decode(value, cls=self.decoder)
         except ValueError:
             raise forms.ValidationError(
                 self.error_messages['invalid'],
@@ -297,14 +299,14 @@ class JsonField(forms.CharField):
         if self.disabled:
             return initial
         try:
-            return json_decode(data)
+            return json_decode(data, cls=self.decoder)
         except ValueError:
             return JsonField.InvalidInput(data)
 
     def prepare_value(self, value):
         if isinstance(value, JsonField.InvalidInput):
             return value
-        return json_encode(value, sort_keys=True)
+        return json_encode(value, cls=self.encoder)
 
 
 class BaseFilterForm(forms.Form):

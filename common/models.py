@@ -153,7 +153,7 @@ class MetaDataQuerySet(models.QuerySet):
             queryset = queryset.filter(key=key)
         if value:
             from common.utils import json_encode
-            queryset = queryset.filter(value=json_encode(value, sort_keys=True))
+            queryset = queryset.filter(value=json_encode(value))
         return queryset.select_valid(date=date, valid=valid)
 
     def select_valid(self, date=None, valid=True):
@@ -586,7 +586,7 @@ class CommonModel(models.Model):
                     data[field_name] = None
                 # Cas spécifique du champ JSON
                 elif isinstance(field, JsonField):
-                    result = value if raw else json_encode(value, sort_keys=True)
+                    result = value if raw else json_encode(value)
                     if result or not no_empty:
                         data[field_name] = result
                 # Cas spécifique du champ binaire (pickle)
