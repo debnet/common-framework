@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: PACKAGE VERSION\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2020-08-13 23:48+0200\n"
+"POT-Creation-Date: 2020-09-01 14:58+0200\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -252,24 +252,8 @@ msgstr "Impossible de récupérer les valeurs de relation correspondantes à [{}
 msgid "A JSON object"
 msgstr "Un objet JSON"
 
-msgid "Value must be a valid JSON"
+msgid "Value must be valid JSON"
 msgstr "La valeur doit être du JSON valide."
-
-msgid "A string must be provided as argument"
-msgstr "Une chaîne doit être fournie en argument"
-
-#, python-brace-format
-msgid "The lookup '{lookup}' is only supported in PostgreSQL"
-msgstr "Le lookup '{lookup}' n'est supporté que sur PostgreSQL"
-
-msgid "A list of strings must be provided as argument"
-msgstr "Une liste de chaînes doit être fournie en argument"
-
-msgid "A dictionary must be provided as argument"
-msgstr "Un dictionnaire doit être fourni en argument"
-
-msgid "A boolean must be provided as argument"
-msgstr "Un booléen doit être fourni en argument"
 
 #, python-format
 msgid "'%(value)s' value must be valid JSON."
