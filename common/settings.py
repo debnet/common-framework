@@ -12,6 +12,7 @@ class Settings:
 
     # Valeurs par défaut
     default = dict(
+        COMMON_JSONFIELD=False,
         SERVICE_USAGE=False,
         SERVICE_USAGE_DEFAULT={},
         SERVICE_USAGE_DATA={},

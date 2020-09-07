@@ -575,7 +575,7 @@ def recursive_dict_product(
         result_key = (prefix + separator + current_key).lstrip(separator)
         if ignore and key.startswith(ignore):
             result_key = key[1:]
-        if isinstance(value, list) and value and isinstance(value[0], dict):
+        elif isinstance(value, list) and value and isinstance(value[0], dict):
             # Les dictionnaire imbriqués dans des listes sont à traiter récursivement
             nested_key = result_key if long_keys else current_key
             nested_key = nested_key.rstrip('s') if current_key == key else nested_key

@@ -10,7 +10,9 @@ from django.db.models.fields import mixins
 from django.db.models import CharField, Lookup, TextField, Transform, lookups
 from django.utils.translation import gettext_lazy as _
 
+from common.settings import settings
 from common.utils import json_decode, json_encode, str_to_bool
+
 
 is_postgresql = lambda connection: connection.vendor == 'postgresql'
 is_oracle = lambda connection: connection.vendor == 'oracle'
@@ -81,7 +83,7 @@ class PickleField(models.BinaryField):
 
 
 # Substitue le champ JSON du common par la version générique introduite par Django 3.1
-if django_version < (3, 1):
+if django_version < (3, 1) or settings.COMMON_JSONFIELD:
 
     class JsonDict(dict):
         """
@@ -656,7 +658,7 @@ class JsonEmpty(Lookup):
 try:
     from model_mommy.generators import default_mapping
     default_mapping[CustomDecimalField] = default_mapping.get(models.DecimalField)
-    if django_version < (3, 1):
+    if django_version < (3, 1) or settings.COMMON_JSONFIELD:
         from django.contrib.postgres.fields import JSONField
     else:
         from django.db.models.fields.json import JSONField

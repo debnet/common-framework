@@ -1,4 +1,5 @@
 # coding: utf-8
+import ast
 from functools import wraps
 from json import JSONDecodeError
 
@@ -46,7 +47,11 @@ def url_value(filter, value):
     """
     if not isinstance(value, str):
         return value
-    if filter:
+    try:
+        value = ast.literal_eval(value)
+    except ValueError:
+        if not filter:
+            return value
         if any(filter.endswith(lookup) for lookup in (
                 '__in', '__range', '__hasany', '__hasall',
                 '__has_keys', '__has_any_keys', '__overlap')):
@@ -58,7 +63,7 @@ def url_value(filter, value):
                 '__hasdict', '__indict')):
             try:
                 return json_decode(value)
-            except JSONDecodeError:
+            except (JSONDecodeError, TypeError, ValueError):
                 if ':' in value:
                     data = {}
                     for subvalue in value.split(','):
@@ -67,11 +72,6 @@ def url_value(filter, value):
                     return data
                 elif ',' in value:
                     return value.split(',')
-        if value.isdigit():
-            if '.' in value:
-                return float(value)
-            elif not value.startswith('0'):
-                return int(value)
     return value
 
 
