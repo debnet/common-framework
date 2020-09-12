@@ -12,7 +12,7 @@ from rest_framework import status
 from rest_framework.reverse import reverse
 from rest_framework.test import APITestCase, APIRequestFactory
 
-from model_mommy.recipe import Recipe
+from model_bakery.recipe import Recipe
 from common.api.utils import create_model_serializer
 from common.models import CommonModel, Entity, PerishableEntity
 from common.utils import json_decode, json_encode, get_pk_field
@@ -207,7 +207,6 @@ def create_api_test_class(
                 item = self.recipes[0].make(make_m2m=True, start_date=start_date)
             else:
                 item = self.recipes[0].make(make_m2m=True)
-
             request = APIRequestFactory().request()
             data_to_post = self.serializer(item, context=dict(request=request)).data
             if perissable:
@@ -229,10 +228,10 @@ def create_api_test_class(
             """
             Méthode de test de modification d'un élément
             """
-            mommy_make_args = dict(make_m2m=True)
+            backery_make_args = dict(make_m2m=True)
             if issubclass(model, PerishableEntity):
-                mommy_make_args['start_date'] = now()
-            item = self.recipes[0].make(**mommy_make_args)
+                backery_make_args['start_date'] = now()
+            item = self.recipes[0].make(**backery_make_args)
             url = reverse(self.url_detail_api, args=[item.pk])
             request = APIRequestFactory().request()
             data_to_put = self.serializer(item, context=dict(request=request)).data

@@ -654,9 +654,9 @@ class JsonEmpty(Lookup):
         return '%s IS NOT NULL AND %s%s NOT IN (%s)' % (lhs, lhs, cast, rhs), self.empty_values
 
 
-# Mommy monkey-patch for CustomDecimalField and JsonField
+# Bakery monkey-patch for CustomDecimalField and JsonField
 try:
-    from model_mommy.generators import default_mapping
+    from model_bakery.generators import default_mapping
     default_mapping[CustomDecimalField] = default_mapping.get(models.DecimalField)
     if django_version < (3, 1) or settings.COMMON_JSONFIELD:
         from django.contrib.postgres.fields import JSONField

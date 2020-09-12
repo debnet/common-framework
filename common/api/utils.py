@@ -49,29 +49,37 @@ def url_value(filter, value):
         return value
     try:
         value = ast.literal_eval(value)
+        evaluated = True
     except ValueError:
-        if not filter:
-            return value
-        if any(filter.endswith(lookup) for lookup in (
-                '__in', '__range', '__hasany', '__hasall',
-                '__has_keys', '__has_any_keys', '__overlap')):
+        evaluated = False
+    if not filter:
+        return value
+    if any(filter.endswith(lookup) for lookup in (
+            '__in', '__range', '__hasany', '__hasall',
+            '__has_keys', '__has_any_keys', '__overlap')):
+        if evaluated:
+            if not isinstance(value, (tuple, list)):
+                return value,
+        else:
             return value.split(',')
-        if any(filter.endswith(lookup) for lookup in ('__isnull', '__isempty')):
-            return str_to_bool(value)
-        if any(filter.endswith(lookup) for lookup in (
-                '__contains', '__contained_by',
-                '__hasdict', '__indict')):
-            try:
-                return json_decode(value)
-            except (JSONDecodeError, TypeError, ValueError):
-                if ':' in value:
-                    data = {}
-                    for subvalue in value.split(','):
-                        key, val = subvalue.split(':')
-                        data[key] = val
-                    return data
-                elif ',' in value:
-                    return value.split(',')
+    if any(filter.endswith(lookup) for lookup in ('__isnull', '__isempty')):
+        return str_to_bool(value)
+    if any(filter.endswith(lookup) for lookup in (
+            '__contains', '__contained_by',
+            '__hasdict', '__indict')):
+        if not isinstance(value, str):
+            return value
+        try:
+            return json_decode(value)
+        except (JSONDecodeError, TypeError, ValueError):
+            if ':' in value:
+                data = {}
+                for subvalue in value.split(','):
+                    key, val = subvalue.split(':')
+                    data[key] = val
+                return data
+            elif ',' in value:
+                return value.split(',')
     return value
 
 
