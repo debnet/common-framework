@@ -50,7 +50,7 @@ def url_value(filter, value):
     try:
         value = ast.literal_eval(value)
         evaluated = True
-    except ValueError:
+    except (SyntaxError, ValueError):
         evaluated = False
     if not filter:
         return value
@@ -58,7 +58,7 @@ def url_value(filter, value):
             '__in', '__range', '__hasany', '__hasall',
             '__has_keys', '__has_any_keys', '__overlap')):
         if evaluated:
-            if not isinstance(value, (tuple, list)):
+            if not isinstance(value, (list, set, tuple)):
                 return value,
         else:
             return value.split(',')
