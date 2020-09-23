@@ -122,6 +122,7 @@ if django_version < (3, 1) or settings.COMMON_JSONFIELD:
         """
         JsonField is a generic TextField that neatly serializes/unserializes JSON objects seamlessly.
         """
+        is_django = False
         empty_strings_allowed = False
         description = _("A JSON object")
         default_error_messages = {
@@ -621,6 +622,8 @@ else:
     from django.db.models.fields.json import JSONField, HasKey, HasKeys, HasAnyKeys, DataContains, ContainedBy
 
     class JsonField(JSONField):
+        is_django = True
+
         def __init__(self, *args, **kwargs):
             if 'encoder' not in kwargs:
                 kwargs['encoder'] = JsonEncoder

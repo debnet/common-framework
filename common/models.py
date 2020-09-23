@@ -35,7 +35,7 @@ except ImportError:
 
 from common.fields import JsonField, PickleField, json_encode
 from common.settings import settings
-from common.utils import get_current_app, get_current_user, get_pk_field, merge_dict, timed_cache
+from common.utils import get_current_app, get_current_user, get_pk_field, merge_dict, timed_cache, to_tuple
 
 # Logging
 logger = logging.getLogger(__name__)
@@ -362,7 +362,7 @@ class CommonModel(models.Model):
 
     # Propriétés liées à l'historisation et au type de modèle
     _copy = {}
-    _copy_m2m = {}
+    _copy_m2m = None
     _content_type = None
 
     def validate_unique(self, exclude=None):
@@ -517,7 +517,7 @@ class CommonModel(models.Model):
                     verbose_name_plural=str(meta.verbose_name_plural) if meta.verbose_name_plural else None))
         # Type de l'entité
         if types:
-            data_type = model_to_dict(get_content_type(self), **keywords)
+            data_type = to_dict(get_content_type(self), **keywords)
             data_type.pop('_state', None)  # Non serialisable
             data.update(_content_type=data_type)
         deferred_fields = self.get_deferred_fields()
@@ -551,7 +551,7 @@ class CommonModel(models.Model):
                             data[field_name + str(_(" (IDs)") if labels else '_ids')] = result
                     # Données
                     if fks:
-                        result = [model_to_dict(v, **keywords) for v in value]
+                        result = [to_dict(v, **keywords) for v in value]
                         if result or not no_empty:
                             data[field_name] = result
                             for item in result:
@@ -576,7 +576,7 @@ class CommonModel(models.Model):
                         fk = getattr(self, field.name, None)
                         # Données
                         if fks and fk:
-                            data[field_name] = model_to_dict(fk, **keywords)
+                            data[field_name] = to_dict(fk, **keywords)
                             data[field_name].pop('_state', None)  # Non serialisable
                         # GUID (uniquement entité)
                         if uids and isinstance(fk, Entity):
@@ -584,11 +584,6 @@ class CommonModel(models.Model):
                 # Gestion des valeurs nulles (hors clés étrangères)
                 elif value is None and not no_empty:
                     data[field_name] = None
-                # Cas spécifique du champ JSON
-                elif isinstance(field, JsonField):
-                    result = value if raw else json_encode(value)
-                    if result or not no_empty:
-                        data[field_name] = result
                 # Cas spécifique du champ binaire (pickle)
                 elif isinstance(field, PickleField):
                     result = value if raw else pickle.dumps(value)
@@ -629,7 +624,11 @@ class CommonModel(models.Model):
         if extra:
             # Récupération automatique des prefetchs
             if extra is True:
-                extra = set(self.__dict__) - set(meta.model().__dict__)
+                obj = meta.model()
+                if hasattr(self, '__dict__'):
+                    extra = set(self.__dict__) - set(obj.__dict__)
+                elif hasattr(self, '__slots__'):
+                    extra = set(self.__slots__) - set(obj.__slots__)
             for field in extra:
                 if field in data:
                     continue
@@ -656,10 +655,11 @@ class CommonModel(models.Model):
                     data[field] = item
         return data
 
-    def m2m_to_dict(self, raw=False):
+    def m2m_to_dict(self, raw=False, as_dict=False, *args, **kwargs):
         """
         Retourne toutes les relations de type ManyToMany classées par attribut
-        :param raw:
+        :param raw: Récupère les instances des modèles à la place des identifiants
+        :param as_dict: Récupère les instances des modèles en tant que dictionnaires et non d'objets
         :return: Dictionnaire
         """
         data = {}
@@ -667,9 +667,11 @@ class CommonModel(models.Model):
             return data
         meta = self._meta
         for field in meta.many_to_many:
-            if raw:
-                value = field.value_from_object(self)
-                data[field.name] = value
+            if raw or as_dict:
+                values = field.value_from_object(self)
+                if as_dict:
+                    values = [to_dict(value) for value in values]
+                data[field.name] = values
             else:
                 data[field.name] = list(getattr(self, field.name).values_list('pk', flat=True))
         return data
@@ -777,7 +779,8 @@ class CommonModel(models.Model):
         :return: dict
         """
         data = self.to_dict(editables=True, types=True)
-        data.update(_copy=self._copy, _copy_m2m=self._copy_m2m)
+        copy_m2m = self.m2m_to_dict() if self._copy_m2m is None else self._copy_m2m
+        data.update(_copy=self._copy, _copy_m2m=copy_m2m)
         return data
 
     class Meta:
@@ -1170,7 +1173,7 @@ class EntityQuerySet(CommonQuerySet):
             field.name: [instance.pk for instance in instances] for (field, value), instances in value.items()
         } for key, value in collector.field_updates.items()}
         self._collector_delete = {key._meta.label: [
-            model_to_dict(value, exclude='id') for value in values
+            to_dict(value, excludes=('id', )) for value in values
         ] for key, values in collector.data.items() if key._meta.auto_created}
         deleted, _rows_count = collector.delete()
 
@@ -1304,7 +1307,7 @@ class Entity(CommonModel):
             field.name: [instance.pk for instance in instances] for (field, value), instances in value.items()
         } for key, value in collector.field_updates.items()}
         self._collector_delete = {key._meta.label: [
-            model_to_dict(value, exclude='id') for value in values
+            to_dict(value, excludes=('id', )) for value in values
         ] for key, values in collector.data.items() if key._meta.auto_created}
         for instances in collector.data.values():
             for instance in instances:
@@ -1373,7 +1376,7 @@ class Entity(CommonModel):
         """
         data = super().__json__()
         data.update(
-            _current_user=get_data_from_object(self._current_user or self.current_user),
+            _current_user=to_dict(self._current_user or self.current_user),
             _reason=self._reason, _from_admin=self._from_admin, _restore=self._restore,
             _ignore_log=self._ignore_log, _force_default=self._force_default)
         return data
@@ -1734,7 +1737,7 @@ def log_save(instance, created):
     # Vérification des changements entre les anciennes et nouvelles données
     old_data = instance._copy
     new_data = instance.to_dict(editables=True)
-    diff = set(new_data.items()) ^ set(old_data.items())
+    diff = set(to_tuple(new_data)) ^ set(to_tuple(old_data))
     if not diff:
         return
     # Sauvegarde l'historique de création ou de modification
@@ -1952,8 +1955,8 @@ def notify_changes(instance, status, status_m2m=None):
     # Différences de données entre la version précédente et la version actuelle
     diff_data_prev, diff_data_next = None, None
     if status in [History.UPDATE, History.RESTORE]:
-        old_data = instance._copy.items()
-        new_data = instance.to_dict(editables=True).items()
+        old_data = to_tuple(instance._copy)
+        new_data = to_tuple(instance.to_dict(editables=True))
         if set(new_data) ^ set(old_data):
             diff_data_prev = dict(set(old_data) - set(new_data))
             diff_data_next = dict(set(new_data) - set(old_data))
@@ -1979,7 +1982,7 @@ def notify_changes(instance, status, status_m2m=None):
         'meta': {
             'id': instance.pk,
             'uuid': getattr(instance, 'uuid', None),
-            'type': model_to_dict(get_content_type(instance)),
+            'type': to_dict(get_content_type(instance)),
             'status': status,
             'status_display': str(dict(History.LOG_STATUS).get(status, '')) or None,
             'status_m2m': status_m2m,
@@ -1994,7 +1997,7 @@ def notify_changes(instance, status, status_m2m=None):
                 'previous': diff_m2m_prev,
                 'current': diff_m2m_next,
             } if has_diff_m2m else None,
-        } if has_diff_data or has_diff_m2m else None,
+        } if (has_diff_data or has_diff_m2m) else None,
         'data': get_data(status=status, status_m2m=status_m2m),
     }
 
@@ -2200,33 +2203,46 @@ class ServiceUsage(CommonModel):
         unique_together = ('name', 'user')
 
 
-def get_object_from_data(data, from_db=False):
+def from_dict(data, model=None, content_type=None, from_db=False, _depth=0):
     """
-    Permet de construire une instance d'un modèle quelconque à partir de sa représentation JSON
+    Permet de construire une instance d'un modèle quelconque à partir de sa représentation en dictionnaire
     :param data: Dictionnaire de données
+    :param model: Modèle (facultatif)
+    :param content_type: Type de contenu (facultatif)
     :param from_db: Récupérer l'instance depuis la base de données ?
+    :param _depth: Profondeur de récursivité
     :return: Instance (si possible)
     """
-    model = None
     if not isinstance(data, dict):
         return data
+    instance = None
     if from_db and 'uuid' in data:
-        return Entity.from_uuid(data['uuid'])
-    if '_content_type' in data:
-        content_type = ContentType(**data.pop('_content_type'))
-        model = content_type.model_class()
-        pk_field = get_pk_field(model).name
-        if from_db and pk_field in data:
-            return model.objects.filter(**{pk_field: data[pk_field]}).first()
+        instance = Entity.from_uuid(data['uuid'])
+        model = instance._meta.model
+    else:
+        if content_type:
+            model = content_type.model_class()
+        elif '_content_type' in data:
+            content_type = ContentType(**data.pop('_content_type'))
+            model = content_type.model_class()
     if model:
-        instance = model()
+        if not instance:
+            pk_field = get_pk_field(model).name
+            if from_db and pk_field in data:
+                instance = model.objects.filter(
+                    **{pk_field: data[pk_field]}
+                ).first()
+            else:
+                instance = model()
         for key, value in data.items():
-            setattr(instance, key, get_object_from_data(value))
+            if key.startswith('_'):
+                continue
+            setattr(instance, key, from_dict(value, from_db=from_db, _depth=_depth + 1))
         return instance
-    return None
+    return data if _depth else None
 
 
-def get_data_from_object(instance, types=True, **options):
+def to_dict(instance, types=True, **options):
     """
     Tente d'extraire les données de l'instance d'un modèle
     :param instance: Instance
@@ -2244,10 +2260,19 @@ def get_data_from_object(instance, types=True, **options):
         data.pop('_state', None)  # Donnée non serialisable
         if types:
             content_type = ContentType.objects.get_for_model(instance)
-            data.update(_content_type=get_data_from_object(content_type, types=False))
+            data.update(_content_type=to_dict(content_type, types=False))
     elif hasattr(instance, '__dict__'):
         data = instance.__dict__
+    elif hasattr(instance, '__slots__'):
+        for key in instance.__slots__:
+            data[key] = getattr(instance, key)
+    if types and '_content_type' not in data:
+        data.update(_type=str(type(instance)))
     return data
+
+
+get_object_from_data = from_dict
+get_data_from_object = to_dict
 
 
 def model_to_dict(instance, fields=None, exclude=None, **kwargs):
@@ -2259,11 +2284,13 @@ def model_to_dict(instance, fields=None, exclude=None, **kwargs):
     :return: Dictionnaire
     """
     model = instance._meta.model
-    _includes, _excludes = fields or kwargs.pop('includes', {}) or {}, exclude or kwargs.pop('excludes', {}) or {}
-    fields = _includes.get(model) if isinstance(_includes, dict) else _includes
-    exclude = _excludes.get(model) if isinstance(_excludes, dict) else _excludes
+    includes, excludes = (
+        fields or kwargs.pop('includes', {}) or {},
+        exclude or kwargs.pop('excludes', {}) or {})
+    fields = includes.get(model) if isinstance(includes, dict) else includes
+    exclude = excludes.get(model) if isinstance(excludes, dict) else excludes
     if isinstance(instance, CommonModel):
-        data = instance.to_dict(includes=_includes, excludes=_excludes, **kwargs)
+        data = instance.to_dict(includes=includes, excludes=excludes, **kwargs)
     else:
         data = django_model_to_dict(instance, fields=fields, exclude=exclude)
         for key, value in data.items():

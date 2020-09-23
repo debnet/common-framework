@@ -263,13 +263,15 @@ def temporary_upload(folder=None):
     return decorateur
 
 
-# Objet permettant de définir un fichier à télécharger
-# file : fichier ou chemin du fichier,
-# name : nom du fichier à télécharger,
-# delete : supprimer le fichier après le téléchargement,
-# mimetype : type mime du fichier à télécharger,
-# charset : encodage du fichier à télécharger
 class DownloadFile(collections.namedtuple('DownloadFile', ['file', 'name', 'delete', 'mimetype', 'charset'])):
+    """
+    Objet permettant de définir un fichier à télécharger
+    file : fichier ou chemin du fichier,
+    name : nom du fichier à télécharger,
+    delete : supprimer le fichier après le téléchargement,
+    mimetype : type mime du fichier à télécharger,
+    charset : encodage du fichier à télécharger
+    """
     def __new__(cls, file, name, delete, mimetype=None, charset=None):
         return super(DownloadFile, cls).__new__(cls, file, name, delete, mimetype, charset)
 
@@ -1100,12 +1102,25 @@ def to_tuple(data):
     :param data: Dictionnaire ou liste de dictionnaires
     :return: Tuple
     """
-    if not data:
-        return tuple()
-    if isinstance(data, list):
+    if isinstance(data, (list, set)):
         return tuple(to_tuple(element) for element in data)
     if isinstance(data, dict):
         return tuple({key: to_tuple(value) for key, value in sorted(data.items())}.items())
+    return data
+
+
+def to_namedtuple(data, name='DictTuple'):
+    """
+    Transforme un dictionnaire ou une liste de dictionnaires en une série de tuples nommés imbriqués
+    :param data: Dictionnaire ou liste de dictionnaires
+    :param name: Nom du tuple
+    :return: Tuple nommé
+    """
+    if isinstance(data, dict):
+        subdata = {key: to_namedtuple(value, name=name) for key, value in data.items()}
+        return collections.namedtuple(name, subdata.keys())(**subdata)
+    if isinstance(data, (list, set)):
+        return to_tuple(data)
     return data
 
 
@@ -1137,6 +1152,45 @@ def to_object(data, name='Context', default=None):
     return data
 
 
+def is_namedtuple(obj):
+    """
+    Vérifie qu'un objet est un tuple nommé
+    :param obj: Objet à vérifier
+    :return: Vrai si tuple nommé sinon faux
+    """
+    _type = type(obj)
+    bases = _type.__bases__
+    if len(bases) != 1 or bases[0] != tuple:
+        return False
+    fields = getattr(_type, '_fields', None)
+    if not isinstance(fields, tuple):
+        return False
+    return all(type(i) == str for i in fields)
+
+
+def to_dict(data):
+    """
+    Transforme un tuple nommé ou une série de tuple nommés en dictionnaire
+    :param data: Tuple nommé ou ensemble de tuple nommés
+    :return: Dictionnaire
+    """
+    if isinstance(data, dict):
+        return {key: to_dict(value) for key, value in data.items()}
+    if isinstance(data, list):
+        return [to_dict(value) for value in data]
+    if is_namedtuple(data):
+        return {key: to_dict(value) for key, value in data._asdict().items()}
+    if isinstance(data, tuple):
+        return tuple(to_dict(value) for value in data)
+    return data
+
+
+dict_to_tuple = to_tuple
+dict_to_namedtuple = to_namedtuple
+dict_to_object = to_object
+namedtuple_to_dict = to_dict
+
+
 def file_is_text(file):
     """
     Vérifie qu'un fichier est au format texte et non binaire
@@ -1165,34 +1219,32 @@ def seek_end(file, count=1):
         return b''
 
 
-def get_size(obj, seen=None):
+def get_size(obj, _seen=None):
     """
     Calcule la taille en octets d'un objet Python quelconque
     :param obj: Objet
-    :param seen: Liste des objets déjà calculés (utilisé uniquement par la récursivité)
+    :param _seen: Liste des objets déjà calculés (utilisé uniquement par la récursivité)
     :return: Taille en octets de l'objet
     """
     size = sys.getsizeof(obj)
-    if seen is None:
-        seen = set()
+    if _seen is None:
+        _seen = set()
     obj_id = id(obj)
-    if obj_id in seen:
+    if obj_id in _seen:
         return 0
-    # Important mark as seen *before* entering recursion to gracefully handle
-    # self-referential objects
-    seen.add(obj_id)
+    _seen.add(obj_id)
     if hasattr(obj, '__dict__'):
         for cls in obj.__class__.__mro__:
             if '__dict__' in cls.__dict__:
                 d = cls.__dict__['__dict__']
                 if inspect.isgetsetdescriptor(d) or inspect.ismemberdescriptor(d):
-                    size += get_size(obj.__dict__, seen)
+                    size += get_size(obj.__dict__, _seen)
                 break
     if isinstance(obj, dict):
-        size += sum((get_size(v, seen) for v in obj.values()))
-        size += sum((get_size(k, seen) for k in obj.keys()))
+        size += sum((get_size(v, _seen) for v in obj.values()))
+        size += sum((get_size(k, _seen) for k in obj.keys()))
     elif hasattr(obj, '__iter__') and not isinstance(obj, (str, bytes, bytearray)):
-        size += sum((get_size(i, seen) for i in obj))
+        size += sum((get_size(i, _seen) for i in obj))
     return size
 
 
