@@ -1,6 +1,5 @@
 # coding: utf-8
 import logging
-import pickle
 import time
 import uuid
 
@@ -33,9 +32,11 @@ try:
 except ImportError:
     YAMLRenderer = None
 
-from common.fields import JsonField, PickleField, json_encode
+from common.fields import JsonField, PickleField
 from common.settings import settings
-from common.utils import get_current_app, get_current_user, get_pk_field, merge_dict, timed_cache, to_tuple
+from common.utils import (
+    base64_encode, get_current_app, get_current_user, get_pk_field,
+    json_decode, json_encode, merge_dict, timed_cache, to_tuple)
 
 # Logging
 logger = logging.getLogger(__name__)
@@ -468,7 +469,7 @@ class CommonModel(models.Model):
 
     def to_dict(self, includes=None, excludes=None,
                 editables=False, uids=False, metadata=False, names=False, types=False, display=False, labels=False,
-                fks=False, m2m=False, no_ids=False, no_empty=False, functions=None, extra=None, raw=False, **kwargs):
+                fks=False, m2m=False, no_ids=False, no_empty=False, functions=None, extra=None, raw=True, **kwargs):
         """
         Retourne la représentation d'une entité sous forme de dictionnaire
         :param includes: Attributs à inclure (liste ou dictionnaire)
@@ -586,7 +587,14 @@ class CommonModel(models.Model):
                     data[field_name] = None
                 # Cas spécifique du champ binaire (pickle)
                 elif isinstance(field, PickleField):
-                    result = value if raw else pickle.dumps(value)
+                    result = value if raw else base64_encode(value)
+                    if result or not no_empty:
+                        data[field_name] = result
+                # Cas spécifique des champs JSON
+                elif isinstance(field, JsonField):
+                    result = json_encode(value)
+                    if raw:
+                        result = json_decode(result)
                     if result or not no_empty:
                         data[field_name] = result
                 # Cas spécifique des champs fichier & image
@@ -595,8 +603,13 @@ class CommonModel(models.Model):
                     if result or not no_empty:
                         data[field_name] = result
                 # Cas spécifique pour les listes
-                elif isinstance(value, (list, set, tuple)):
-                    result = list(value) if raw else ','.join(str(val) for val in value)
+                elif isinstance(value, (list, tuple)):
+                    result = value if raw else '|'.join(str(val) for val in value)
+                    if result or not no_empty:
+                        data[field_name] = result
+                # Cas spécifique pour les ensembles
+                elif isinstance(value, (set, frozenset)):
+                    result = value if raw else '|'.join(str(val) for val in sorted(list(value)))
                     if result or not no_empty:
                         data[field_name] = result
                 elif hasattr(self, 'get_{}_json'.format(field.name)):
@@ -655,10 +668,10 @@ class CommonModel(models.Model):
                     data[field] = item
         return data
 
-    def m2m_to_dict(self, raw=False, as_dict=False, *args, **kwargs):
+    def m2m_to_dict(self, as_obj=False, as_dict=False, *args, **kwargs):
         """
         Retourne toutes les relations de type ManyToMany classées par attribut
-        :param raw: Récupère les instances des modèles à la place des identifiants
+        :param as_obj: Récupère les instances des modèles à la place des identifiants
         :param as_dict: Récupère les instances des modèles en tant que dictionnaires et non d'objets
         :return: Dictionnaire
         """
@@ -667,10 +680,10 @@ class CommonModel(models.Model):
             return data
         meta = self._meta
         for field in meta.many_to_many:
-            if raw or as_dict:
+            if as_obj or as_dict:
                 values = field.value_from_object(self)
                 if as_dict:
-                    values = [to_dict(value) for value in values]
+                    values = [to_dict(value, **kwargs) for value in values]
                 data[field.name] = values
             else:
                 data[field.name] = list(getattr(self, field.name).values_list('pk', flat=True))

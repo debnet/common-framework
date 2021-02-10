@@ -117,7 +117,7 @@ def parse_filters(filters):
                     value = F(value[1:-1].replace('.', '__'))
                 fields[key] = url_value(key, value)
             elements.append(Q(**fields))
-        else:
+        elif isinstance(filter, str):
             operator = filter.lower()
     if operator == 'or':
         q = elements.pop(0)
@@ -674,7 +674,7 @@ def api_paginate(request, queryset, serializer, pagination=None, enable_options=
                     queryset = queryset.values(*field_names)
             except Exception as error:
                 if not silent:
-                    raise ValidationError("fields: {}".format(error))
+                    raise ValidationError(dict(error="fields: {}".format(error)), code='fields')
 
         # Filtres (dans une fonction pour être appelé par les aggregations sans group_by)
         def do_filter(queryset):
@@ -682,7 +682,7 @@ def api_paginate(request, queryset, serializer, pagination=None, enable_options=
                 filters, excludes = {}, {}
                 for key, value in url_params.items():
                     key = key.replace('.', '__')
-                    if value.startswith('(') and value.endswith(')'):
+                    if value.startswith('[') and value.endswith(']'):
                         value = F(value[1:-1])
                     if key in reserved_query_params:
                         continue
@@ -704,7 +704,7 @@ def api_paginate(request, queryset, serializer, pagination=None, enable_options=
                     options['filters'] = True
             except Exception as error:
                 if not silent:
-                    raise ValidationError("filters: {}".format(error))
+                    raise ValidationError(dict(error="filters: {}".format(error)), code='filters')
                 options['filters'] = False
                 if settings.DEBUG:
                     options['filters_error'] = str(error)
@@ -732,9 +732,11 @@ def api_paginate(request, queryset, serializer, pagination=None, enable_options=
             elif aggregations:
                 queryset = do_filter(queryset)  # Filtres éventuels
                 return queryset.aggregate(**aggregations)
+        except ValidationError:
+            raise
         except Exception as error:
             if not silent:
-                raise ValidationError("aggregates: {}".format(error))
+                raise ValidationError(dict(error="aggregates: {}".format(error)), code='aggregates')
             options['aggregates'] = False
             if settings.DEBUG:
                 options['aggregates_error'] = str(error)
@@ -754,7 +756,7 @@ def api_paginate(request, queryset, serializer, pagination=None, enable_options=
             pass
         except Exception as error:
             if not silent:
-                raise ValidationError("order_by: {}".format(error))
+                raise ValidationError(dict(error="order_by: {}".format(error)), code='order_by')
             options['order_by'] = False
             if settings.DEBUG:
                 options['order_by_error'] = str(error)
@@ -773,7 +775,7 @@ def api_paginate(request, queryset, serializer, pagination=None, enable_options=
             pass
         except Exception as error:
             if not silent:
-                raise ValidationError("distinct: {}".format(error))
+                raise ValidationError(dict(error="distinct: {}".format(error)), code='distinct')
             options['distinct'] = False
             if settings.DEBUG:
                 options['distinct_error'] = str(error)

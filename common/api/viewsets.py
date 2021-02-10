@@ -107,7 +107,7 @@ class CommonModelViewSet(viewsets.ModelViewSet):
             return super().list(request, *args, **kwargs)
         except (AttributeError, FieldDoesNotExist) as error:
             self.queryset_error = error
-            raise ValidationError("fields: {}".format(error))
+            raise ValidationError(dict(error="fields: {}".format(error)), code='fields')
 
     def paginate_queryset(self, queryset):
         # Aucune pagination si toutes les données sont demandées ou qu'il ne s'agit pas d'un QuerySet
@@ -116,7 +116,7 @@ class CommonModelViewSet(viewsets.ModelViewSet):
         try:
             return super().paginate_queryset(queryset)
         except ProgrammingError as error:
-            raise ValidationError(str(error).split('\n'))
+            raise ValidationError(dict(error="page: {}".format(error)), code='page')
 
     def get_queryset(self):
         # Evite la ré-évaluation du QuerySet en cas d'erreur
@@ -197,7 +197,7 @@ class CommonModelViewSet(viewsets.ModelViewSet):
                         queryset = queryset.values(*field_names)
                 except Exception as error:
                     if not silent:
-                        raise ValidationError("fields: {}".format(error))
+                        raise ValidationError(dict(error="fields: {}".format(error)), code='fields')
             else:
                 # Récupération des métadonnées
                 metadata = str_to_bool(get_from_url_params('meta'))
@@ -222,7 +222,7 @@ class CommonModelViewSet(viewsets.ModelViewSet):
                     filters, excludes = {}, {}
                     for key, value in url_params.items():
                         key = key.replace('.', '__')
-                        if value.startswith('(') and value.endswith(')'):
+                        if value.startswith('[') and value.endswith(']'):
                             value = F(value[1:-1])
                         if key in reserved_query_params:
                             continue
@@ -244,7 +244,7 @@ class CommonModelViewSet(viewsets.ModelViewSet):
                         options['filters'] = True
                 except Exception as error:
                     if not silent:
-                        raise ValidationError("filters: {}".format(error))
+                        raise ValidationError(dict(error="filters: {}".format(error)), code='filters')
                     options['filters'] = False
                     if settings.DEBUG:
                         options['filters_error'] = str(error)
@@ -273,9 +273,11 @@ class CommonModelViewSet(viewsets.ModelViewSet):
                     elif aggregations:
                         queryset = do_filter(queryset)  # Filtres éventuels
                         return queryset.aggregate(**aggregations)
+                except ValidationError:
+                    raise
                 except Exception as error:
                     if not silent:
-                        raise ValidationError("aggregates: {}".format(error))
+                        raise ValidationError(dict(error="aggregates: {}".format(error)), code='aggregates')
                     options['aggregates'] = False
                     if settings.DEBUG:
                         options['aggregates_error'] = str(error)
@@ -295,7 +297,7 @@ class CommonModelViewSet(viewsets.ModelViewSet):
                 pass
             except Exception as error:
                 if not silent:
-                    raise ValidationError("order_by: {}".format(error))
+                    raise ValidationError(dict(error="order_by: {}".format(error)), code='order_by')
                 options['order_by'] = False
                 if settings.DEBUG:
                     options['order_by_error'] = str(error)
@@ -314,7 +316,7 @@ class CommonModelViewSet(viewsets.ModelViewSet):
                 pass
             except Exception as error:
                 if not silent:
-                    raise ValidationError("distinct: {}".format(error))
+                    raise ValidationError(dict(error="distinct: {}".format(error)), code='distinct')
                 options['distinct'] = False
                 if settings.DEBUG:
                     options['distinct_error'] = str(error)

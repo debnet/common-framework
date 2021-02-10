@@ -1,5 +1,4 @@
 # coding: utf-8
-import base64
 import decimal
 import pickle
 
@@ -11,7 +10,7 @@ from django.db.models import CharField, Lookup, TextField, Transform, lookups
 from django.utils.translation import gettext_lazy as _
 
 from common.settings import settings
-from common.utils import json_decode, json_encode, str_to_bool
+from common.utils import base64_decode, base64_encode, json_decode, json_encode, str_to_bool
 
 
 is_postgresql = lambda connection: connection.vendor == 'postgresql'
@@ -58,7 +57,7 @@ class PickleField(models.BinaryField):
         if isinstance(_value, str):
             _value = bytes(_value, encoding='utf-8')
             try:
-                _value = base64.b64decode(_value)
+                _value = base64_decode(_value)
             except Exception:
                 pass
         try:
@@ -79,7 +78,7 @@ class PickleField(models.BinaryField):
 
     def value_to_string(self, obj):
         value = self.value_from_object(obj)
-        return base64.b64encode(self.get_prep_value(value))
+        return base64_encode(self.get_prep_value(value))
 
 
 # Substitue le champ JSON du common par la version générique introduite par Django 3.1

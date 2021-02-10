@@ -1345,6 +1345,8 @@ class JsonEncoder(JSONEncoder):
                 return func(obj)
         if obj is null:
             return None
+        if isinstance(obj, bytes):
+            return base64_encode(obj)
         return super().default(obj)
 
 
