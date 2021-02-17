@@ -352,7 +352,7 @@ class HistoryAdmin(admin.ModelAdmin):
             except NoReverseMatch:
                 pass
         return format_html(obj.object_str)
-    entity_url.admin_order_field = 'entity_str'
+    entity_url.admin_order_field = 'object_str'
     entity_url.short_description = _("Entité")
 
     def fields_count(self, obj):
