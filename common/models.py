@@ -420,7 +420,9 @@ class CommonModel(models.Model):
         """
         Sauvegarde l'instance du modèle
         """
-        if not self._state.adding and not _full_update and not force_insert and self._meta.pk.name not in self.modified:
+        primary_key = get_pk_field(self)
+        pk_modified = self._meta.pk.name in self.modified or primary_key in self.modified
+        if not self._state.adding and not _full_update and not force_insert and not pk_modified:
             kwargs['update_fields'] = update_fields = set(kwargs.pop('update_fields', self.modified.keys()))
             # Les champs de date avec auto_now=True ne sont modifiés que pendant la sauvegarde
             update_fields.update([field.name for field in self._meta.fields if getattr(field, 'auto_now', None)])
@@ -599,7 +601,7 @@ class CommonModel(models.Model):
                         data[field_name] = result
                 # Cas spécifique des champs fichier & image
                 elif isinstance(field, (models.FileField, models.ImageField)):
-                    result = (value if raw else getattr(value, 'url', None)) if value else None
+                    result = (value if raw else value.name) if value else None
                     if result or not no_empty:
                         data[field_name] = result
                 # Cas spécifique pour les listes
@@ -1715,9 +1717,8 @@ def post_save_receiver(sender, instance, created, raw, *args, **kwargs):
     """
     if isinstance(instance, Entity):
         # Ajoute le point d'entrée global de l'entité
-        if not settings.IGNORE_GLOBAL and not instance._ignore_global:
-            if created and instance.uuid and not instance._meta.pk.remote_field:
-                Global.objects.create(content_type=instance.model_type, object_id=instance.pk, object_uid=instance.uuid)
+        if not settings.IGNORE_GLOBAL and not instance._ignore_global and created and instance.pk and instance.uuid:
+            Global.objects.create(content_type=instance.model_type, object_id=instance.pk, object_uid=instance.uuid)
         # Sauvegarde l'historique de modification
         if raw:
             instance._ignore_log = True
@@ -1771,7 +1772,8 @@ def log_save(instance, created):
             collector_delete=instance._collector_delete)
         instance._history = history
     # Sauvegarde les champs modifiés
-    if history.status in (History.UPDATE, History.RESTORE) and old_data.get(instance._meta.pk.name):
+    primary_key = get_pk_field(instance)
+    if history.status in (History.UPDATE, History.RESTORE) and old_data.get(primary_key.name):
         fields = []
         for key in new_data:
             old_value = old_data.get(key, None)

@@ -14,7 +14,7 @@ from rest_framework.response import Response
 
 from common.api.fields import ChoiceDisplayField, ReadOnlyObjectField
 from common.utils import (
-    get_field_by_path, get_prefetchs, get_related, json_decode, parsedate, prefetch_metadata, str_to_bool)
+    get_field_by_path, get_prefetchs, get_related, json_decode, parsedate, prefetch_metadata, str_to_bool, get_pk_field)
 
 
 # URLs dans les serializers
@@ -833,8 +833,9 @@ def api_paginate(request, queryset, serializer, pagination=None, enable_options=
         paginator.additional_data = dict(options=options)
     # Force un tri sur la clé primaire en cas de pagination
     if hasattr(queryset, 'ordered') and not queryset.ordered:
-        queryset = queryset.order_by(*(
-            getattr(queryset, '_fields', None) or (enable_options and distincts) or [queryset.model._meta.pk.name]))
+        primary_key = get_pk_field(queryset.model)
+        queryset = queryset.order_by(
+            *(getattr(queryset, '_fields', None) or (enable_options and distincts) or [primary_key.name]))
     serializer = serializer(paginator.paginate_queryset(queryset, request), context=context, many=True)
     return paginator.get_paginated_response(serializer.data)
 

@@ -11,7 +11,7 @@ from common.api.utils import AGGREGATES, CACHE_PREFIX, CACHE_TIMEOUT, RESERVED_Q
 from common.api.fields import ChoiceDisplayField, ReadOnlyObjectField
 from common.models import Entity, MetaData
 from common.settings import settings
-from common.utils import get_field_by_path, str_to_bool
+from common.utils import get_field_by_path, get_pk_field, str_to_bool
 
 
 class CommonModelViewSet(viewsets.ModelViewSet):
@@ -325,8 +325,9 @@ class CommonModelViewSet(viewsets.ModelViewSet):
             if self.paginator and hasattr(self.paginator, 'additional_data'):
                 # Force un tri sur la clé primaire en cas de pagination
                 if hasattr(queryset, 'ordered') and not queryset.ordered:
-                    queryset = queryset.order_by(*(
-                        getattr(queryset, '_fields', None) or distincts or [queryset.model._meta.pk.name]))
+                    primary_key = get_pk_field(queryset.model)
+                    queryset = queryset.order_by(
+                        *(getattr(queryset, '_fields', None) or distincts or [primary_key.name]))
                 self.paginator.additional_data = dict(options=options)
             return queryset
         except ValidationError as error:

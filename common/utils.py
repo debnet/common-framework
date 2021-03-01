@@ -9,6 +9,7 @@ import os
 import re
 import sys
 import threading
+from collections.abc import MutableMapping
 from contextlib import contextmanager
 from datetime import date, datetime, time, timedelta
 from decimal import ROUND_HALF_EVEN, Decimal, InvalidOperation
@@ -28,6 +29,7 @@ from django.core.files.uploadhandler import TemporaryFileUploadHandler
 from django.core.mail import EmailMultiAlternatives
 from django.db.models import ForeignKey, OneToOneField
 from django.db.models.deletion import Collector
+from django.db.models.fields.files import FieldFile
 from django.http import HttpRequest, HttpResponse
 from django.shortcuts import render
 from django.template import Context, Template
@@ -954,7 +956,7 @@ def recursive_get_urls(module=None, namespaces=None, attributes=None, model=None
             continue
 
 
-class CustomDict(collections.MutableMapping):
+class CustomDict(MutableMapping):
     """
     Surcouche du dictionnaire pour transformer les clés en entrée/sortie
     """
@@ -1345,6 +1347,8 @@ class JsonEncoder(JSONEncoder):
                 return func(obj)
         if obj is null:
             return None
+        if isinstance(obj, FieldFile):
+            return obj.name
         if isinstance(obj, bytes):
             return base64_encode(obj)
         return super().default(obj)
