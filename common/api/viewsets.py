@@ -132,10 +132,6 @@ class CommonModelViewSet(viewsets.ModelViewSet):
             options = dict(aggregates=None, distinct=None, filters=None, order_by=None)
             self.url_params = url_params = self.request.query_params.dict()
 
-            # Fonction de récupération des données depuis les paramètres
-            def get_from_url_params(name):
-                return url_params.get(name, '').replace('.', '__')
-
             # Mots-clés réservés dans les URLs
             default_reserved_query_params = ['format'] + ([
                 self.paginator.page_query_param,
@@ -172,11 +168,11 @@ class CommonModelViewSet(viewsets.ModelViewSet):
                 options['raw_url'] = plain_url
 
             # Erreurs silencieuses
-            silent = str_to_bool(get_from_url_params('silent'))
+            silent = str_to_bool(url_params.get('silent', ''))
 
             # Requête simplifiée et/ou extraction de champs spécifiques
-            fields = get_from_url_params('fields')
-            if str_to_bool(get_from_url_params('simple')) or fields:
+            fields = url_params.get('fields', '')
+            if str_to_bool(url_params.get('simple', '')) or fields:
                 # Supprime la récupération des relations
                 if queryset.query.select_related:
                     queryset = queryset.select_related(None).prefetch_related(None)
@@ -200,7 +196,7 @@ class CommonModelViewSet(viewsets.ModelViewSet):
                         raise ValidationError(dict(error="fields: {}".format(error)), code='fields')
             else:
                 # Récupération des métadonnées
-                metadata = str_to_bool(get_from_url_params('meta'))
+                metadata = str_to_bool(url_params.get('meta', ''))
                 if metadata and hasattr(self, 'metadata'):
                     # Permet d'éviter les conflits entre prefetch lookups identiques
                     viewset_lookups = [
@@ -237,7 +233,7 @@ class CommonModelViewSet(viewsets.ModelViewSet):
                     if excludes:
                         queryset = queryset.exclude(**excludes)
                     # Filtres génériques
-                    others = get_from_url_params('filters')
+                    others = url_params.get('filters', '')
                     if others:
                         queryset = queryset.filter(parse_filters(others))
                     if filters or others:
@@ -255,15 +251,15 @@ class CommonModelViewSet(viewsets.ModelViewSet):
                 try:
                     aggregations = {}
                     for aggregate, function in AGGREGATES.items():
-                        for field in get_from_url_params(aggregate).split(','):
+                        for field in url_params.get(aggregate, '').split(','):
                             if not field:
                                 continue
                             distinct = field.startswith(' ')
                             field = field.strip().replace('.', '__')
                             aggregations[field + '_' + aggregate] = function(field, distinct=distinct)
-                    group_by = get_from_url_params('group_by')
+                    group_by = url_params.get('group_by', '')
                     if group_by:
-                        _queryset = queryset.values(*group_by.split(','))
+                        _queryset = queryset.values(*group_by.replace('.', '__').split(','))
                         if aggregations:
                             _queryset = _queryset.annotate(**aggregations)
                         else:
@@ -287,9 +283,9 @@ class CommonModelViewSet(viewsets.ModelViewSet):
 
             # Tris
             try:
-                order_by = get_from_url_params('order_by')
+                order_by = url_params.get('order_by', '')
                 if order_by:
-                    _queryset = queryset.order_by(*order_by.split(','))
+                    _queryset = queryset.order_by(*order_by.replace('.', '__').split(','))
                     str(_queryset.query)  # Force SQL evaluation to retrieve exception
                     queryset = _queryset
                     options['order_by'] = True
@@ -305,9 +301,9 @@ class CommonModelViewSet(viewsets.ModelViewSet):
             # Distinct
             distincts = []
             try:
-                distinct = get_from_url_params('distinct')
+                distinct = url_params.get('distinct', '')
                 if distinct:
-                    distincts = distinct.split(',')
+                    distincts = distinct.replace('.', '__').split(',')
                     if str_to_bool(distinct) is not None:
                         distincts = []
                     queryset = queryset.distinct(*distincts)
