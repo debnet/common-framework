@@ -62,7 +62,8 @@ def url_value(filter, value):
                 return value,
         else:
             return value.split(',')
-    if any(filter.endswith(lookup) for lookup in ('__isnull', '__isempty')):
+    if any(filter.endswith(lookup) for lookup in (
+            '__isnull', '__isempty')):
         return str_to_bool(value)
     if any(filter.endswith(lookup) for lookup in (
             '__contains', '__contained_by',
@@ -97,7 +98,7 @@ def parse_filters(filters):
             import ast
             import re
             filters = filters.replace('\'', '\\\'').replace('\"', '\\\"')
-            filters = re.sub(r'([\w\.]+):([^,()]*)', r'{"\1":"\2"}', filters)
+            filters = re.sub(r'([\w.]+):([^,()]*)', r'{"\1":"\2"}', filters)
             filters = re.sub(r'(\w+)\(', r'("\1",', filters)
             filters = ast.literal_eval(filters)
         except Exception as exception:
@@ -119,12 +120,11 @@ def parse_filters(filters):
             elements.append(Q(**fields))
         elif isinstance(filter, str):
             operator = filter.lower()
-    q = Q()
     if operator == 'or':
         q = elements.pop(0)
         for element in elements:
             q |= element
-    elif operator in ('and', 'not'):
+    else:
         q = ~elements.pop(0) if operator == 'not' else elements.pop(0)
         for element in elements:
             q &= element
