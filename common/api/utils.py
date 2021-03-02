@@ -119,6 +119,7 @@ def parse_filters(filters):
             elements.append(Q(**fields))
         elif isinstance(filter, str):
             operator = filter.lower()
+    q = Q()
     if operator == 'or':
         q = elements.pop(0)
         for element in elements:
