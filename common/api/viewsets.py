@@ -180,7 +180,7 @@ class CommonModelViewSet(viewsets.ModelViewSet):
                 try:
                     relateds = set()
                     field_names = set()
-                    for field in fields.split(','):
+                    for field in fields.replace('.', '__').split(','):
                         if not field:
                             continue
                         field_names.add(field)
