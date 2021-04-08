@@ -223,11 +223,11 @@ class GlobalAdmin(admin.ModelAdmin):
     """
     Configuration de l'administration pour les globales
     """
-    readonly_fields = ('content_type', 'object_id', 'object_uid', )
-    list_display = ('id', 'entity_url', 'content_type', 'object_id', 'object_uid', )
-    list_display_links = ('id', )
-    list_filter = ('content_type', )
-    search_fields = ('object_uid', )
+    readonly_fields = ['content_type', 'object_id', 'object_uid', ]
+    list_display = ['id', 'entity_url', 'content_type', 'object_id', 'object_uid', ]
+    list_display_links = ['id', ]
+    list_filter = ['content_type', ]
+    search_fields = ['object_uid', ]
 
     def entity_url(self, obj):
         if obj.entity:
@@ -252,14 +252,14 @@ class MetaDataAdmin(admin.ModelAdmin):
     Configuration de l'administration pour les métadonnées
     """
     date_hierarchy = 'modification_date'
-    readonly_fields = ('object_id', 'content_type', )
-    list_display = ('id', 'entity_url', 'content_type', 'key', 'value', 'creation_date', 'modification_date',
-                    'deletion_date', )
-    list_display_links = ('id', )
-    list_filter = ('key', 'content_type', 'creation_date', 'modification_date', 'deletion_date', )
+    readonly_fields = ['object_id', 'content_type', ]
+    list_display = ['id', 'entity_url', 'content_type', 'key', 'value', 'creation_date', 'modification_date',
+                    'deletion_date', ]
+    list_display_links = ['id', ]
+    list_filter = ['key', 'content_type', 'creation_date', 'modification_date', 'deletion_date', ]
     list_select_related = True
-    ordering = ('-modification_date', )
-    search_fields = ('key', )
+    ordering = ['-modification_date', ]
+    search_fields = ['key', ]
 
     def entity_url(self, obj):
         if obj.entity:
@@ -329,17 +329,17 @@ class HistoryAdmin(admin.ModelAdmin):
     Configuration de l'administration pour les entrées d'historique
     """
     date_hierarchy = 'creation_date'
-    readonly_fields = (
+    readonly_fields = [
         'user', 'status', 'object_str', 'content_type', 'object_id', 'object_uid',
-        'admin', 'reason', 'data', 'collector_update', 'collector_delete')
-    list_display = (
+        'admin', 'reason', 'data', 'collector_update', 'collector_delete']
+    list_display = [
         'id', 'creation_date', 'user', 'status', 'entity_url', 'content_type', 'object_id', 'data_size',
-        'restoration_date', 'restored', 'admin', 'has_reason', 'fields_count', )
-    list_display_links = ('id', )
-    list_filter = ('creation_date', 'user', 'status', 'content_type', 'restoration_date', 'restored', 'admin', )
+        'restoration_date', 'restored', 'admin', 'has_reason', 'fields_count', ]
+    list_display_links = ['id', ]
+    list_filter = ['creation_date', 'user', 'status', 'content_type', 'restoration_date', 'restored', 'admin', ]
     list_select_related = True
-    ordering = ('-creation_date', )
-    search_fields = ('object_str', 'content_type', )
+    ordering = ['-creation_date', ]
+    search_fields = ['object_str', ]
     actions = [restore, restore_all]
 
     def entity_url(self, obj):
@@ -385,15 +385,15 @@ class HistoryFieldAdmin(admin.ModelAdmin):
     Configuration de l'administration pour les historiques des modifications de champs
     """
     date_hierarchy = 'creation_date'
-    readonly_fields = ('history', 'field_name', 'old_value', 'new_value', 'status_m2m', 'editable', 'data', )
-    list_display = ('id', 'creation_date', 'history_url', 'field', 'editable', 'old_inner_value', 'new_inner_value',
-                    'data_size', 'status_m2m', 'restoration_date', 'restored', )
-    list_display_links = ('id', )
-    list_filter = ('creation_date', 'history__user', 'history__content_type', 'editable', 'restoration_date',
-                   'restored', 'status_m2m', )
+    readonly_fields = ['history', 'field_name', 'old_value', 'new_value', 'status_m2m', 'editable', 'data', ]
+    list_display = ['id', 'creation_date', 'history_url', 'field', 'editable', 'old_inner_value', 'new_inner_value',
+                    'data_size', 'status_m2m', 'restoration_date', 'restored', ]
+    list_display_links = ['id', ]
+    list_filter = ['creation_date', 'history__user', 'history__content_type', 'editable', 'restoration_date',
+                   'restored', 'status_m2m', ]
     list_select_related = True
-    ordering = ('-creation_date', )
-    search_fields = ('field_name', 'history__object_str', 'history__content_type', )
+    ordering = ['-creation_date', ]
+    search_fields = ['field_name', 'history__object_str', ]
     actions = [restore]
 
     def field(self, obj):
@@ -446,12 +446,12 @@ class WebhookAdmin(admin.ModelAdmin):
     """
     Configuration de l'administration pour les web hooks
     """
-    list_display = ('id', 'name', 'url', 'method', 'format', 'list_actions', )
-    list_display_links = ('id', 'name', )
-    list_filter = ('method', 'format', 'is_create', 'is_update', 'is_delete', 'is_restore', 'is_m2m', )
-    ordering = ('name', )
-    search_fields = ('name', )
-    fieldsets = (
+    list_display = ['id', 'name', 'url', 'method', 'format', 'list_actions', ]
+    list_display_links = ['id', 'name', ]
+    list_filter = ['method', 'format', 'is_create', 'is_update', 'is_delete', 'is_restore', 'is_m2m', ]
+    ordering = ['name', ]
+    search_fields = ['name', ]
+    fieldsets = [
         (None, {
             'fields': ('name', 'url', 'format', ),
         }),
@@ -464,8 +464,8 @@ class WebhookAdmin(admin.ModelAdmin):
         (_("Types"), {
             'fields': ('types', 'is_create', 'is_update', 'is_delete', 'is_restore', 'is_m2m', ),
         }),
-    )
-    raw_id_fields = ('types', )
+    ]
+    raw_id_fields = ['types', ]
     autocomplete_lookup_fields = {
         'm2m': ('types', ),
     }
@@ -482,38 +482,38 @@ class WebhookAdmin(admin.ModelAdmin):
 
 @admin.register(ContentType)
 class ContentTypeAdmin(admin.ModelAdmin):
-    list_display = ('id', 'app_label', 'model', 'name', )
-    list_display_links = ('id', )
-    list_filter = ('app_label', 'model', )
-    ordering = ('app_label', 'model', )
-    search_fields = ('model', )
+    list_display = ['id', 'app_label', 'model', 'name', ]
+    list_display_links = ['id', ]
+    list_filter = ['app_label', 'model', ]
+    ordering = ['app_label', 'model', ]
+    search_fields = ['model', ]
 
 
 @admin.register(UserMetaData)
 class UserMetaDataAdmin(admin.ModelAdmin):
-    list_display = ('user', )
-    list_display_links = ('user', )
-    list_filter = ('user__username', )
-    ordering = ('user__username', )
-    search_fields = ('user__username', 'user__first_name', 'user__last_name', 'user__email', )
+    list_display = ['user', ]
+    list_display_links = ['user', ]
+    list_filter = ['user__username', ]
+    ordering = ['user__username', ]
+    search_fields = ['user__username', 'user__first_name', 'user__last_name', 'user__email', ]
 
 
 @admin.register(GroupMetaData)
 class GroupMetaDataAdmin(admin.ModelAdmin):
-    list_display = ('group', )
-    list_display_links = ('group', )
-    list_filter = ('group__name', )
-    ordering = ('group__name', )
-    search_fields = ('group__name', )
+    list_display = ['group', ]
+    list_display_links = ['group', ]
+    list_filter = ['group__name', ]
+    ordering = ['group__name', ]
+    search_fields = ['group__name', ]
 
 
 @admin.register(ServiceUsage)
 class ServiceUsageAdmin(admin.ModelAdmin):
-    list_display = ('name', 'user', 'count', 'address', 'date', 'limit', 'reset', 'reset_date', )
-    list_filter = ('user', 'date', 'reset_date', )
-    ordering = ('name', 'user', )
-    search_fields = ('name', 'address', )
-    raw_id_fields = ('user', )
+    list_display = ['name', 'user', 'count', 'address', 'date', 'limit', 'reset', 'reset_date', ]
+    list_filter = ['user', 'date', 'reset_date', ]
+    ordering = ['name', 'user', ]
+    search_fields = ['name', 'address', ]
+    raw_id_fields = ['user', ]
     autocomplete_lookup_fields = {
         'fk': ('user', ),
     }

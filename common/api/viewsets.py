@@ -226,7 +226,7 @@ class CommonModelViewSet(viewsets.ModelViewSet):
                             key = key[1:].strip()
                             excludes[key] = url_value(key, value)
                         else:
-                            key = key.strip()
+                            key = key[1:].strip() if key.startswith('+') else key.strip()
                             filters[key] = url_value(key, value)
                     if filters:
                         queryset = queryset.filter(**filters)
@@ -254,7 +254,8 @@ class CommonModelViewSet(viewsets.ModelViewSet):
                         for field in url_params.get(aggregate, '').split(','):
                             if not field:
                                 continue
-                            distinct = field.startswith(' ')
+                            distinct = field.startswith(' ') or field.startswith('+')
+                            field = field[1:] if distinct else field
                             field = field.strip().replace('.', '__')
                             aggregations[field + '_' + aggregate] = function(field, distinct=distinct)
                     group_by = url_params.get('group_by', '')
@@ -285,9 +286,18 @@ class CommonModelViewSet(viewsets.ModelViewSet):
             try:
                 order_by = url_params.get('order_by', '')
                 if order_by:
-                    _queryset = queryset.order_by(*order_by.replace('.', '__').split(','))
-                    str(_queryset.query)  # Force SQL evaluation to retrieve exception
-                    queryset = _queryset
+                    orders = []
+                    for order in order_by.replace('.', '__').split(','):
+                        nulls_first, nulls_last = order.endswith('<'), order.endswith('>')
+                        order = order[:-1] if nulls_first or nulls_last else order
+                        if order.startswith('-'):
+                            orders.append(F(order[1:]).desc(nulls_first=nulls_first, nulls_last=nulls_last))
+                        else:
+                            order = order[1:] if order.startswith('+') or order.startswith(' ') else order
+                            orders.append(F(order).asc(nulls_first=nulls_first, nulls_last=nulls_last))
+                    temp_queryset = queryset.order_by(*orders)
+                    str(temp_queryset.query)  # Force SQL evaluation to retrieve exception
+                    queryset = temp_queryset
                     options['order_by'] = True
             except EmptyResultSet:
                 pass

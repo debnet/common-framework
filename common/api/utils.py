@@ -5,7 +5,7 @@ from json import JSONDecodeError
 
 from django.conf import settings
 from django.core.exceptions import EmptyResultSet
-from django.db.models import F, Q, QuerySet, Count, Sum, Avg, Min, Max
+from django.db.models import F, Q, QuerySet, Count, Sum, Avg, Min, Max, StdDev, Variance
 from rest_framework import serializers, viewsets
 from rest_framework.decorators import api_view
 from rest_framework.exceptions import NotFound, ValidationError
@@ -27,6 +27,8 @@ AGGREGATES = {
     'avg': Avg,
     'min': Min,
     'max': Max,
+    'stddev': StdDev,
+    'variance': Variance,
 }
 RESERVED_QUERY_PARAMS = [
     'filters', 'fields', 'order_by', 'group_by', 'all', 'display',
@@ -687,7 +689,7 @@ def api_paginate(request, queryset, serializer, pagination=None, enable_options=
                         key = key[1:].strip()
                         excludes[key] = url_value(key, value)
                     else:
-                        key = key.strip()
+                        key = key[1:].strip() if key.startswith('+') else key.strip()
                         filters[key] = url_value(key, value)
                 if filters:
                     queryset = queryset.filter(**filters)
@@ -714,7 +716,8 @@ def api_paginate(request, queryset, serializer, pagination=None, enable_options=
                 for field in url_params.get(aggregate, '').split(','):
                     if not field:
                         continue
-                    distinct = field.startswith(' ')
+                    distinct = field.startswith(' ') or field.startswith('+')
+                    field = field[1:] if distinct else field
                     field = field.strip().replace('.', '__')
                     aggregations[field + '_' + aggregate] = function(field, distinct=distinct)
             group_by = url_params.get('group_by', '')
@@ -745,7 +748,16 @@ def api_paginate(request, queryset, serializer, pagination=None, enable_options=
         try:
             order_by = url_params.get('order_by', '')
             if order_by:
-                temp_queryset = queryset.order_by(*order_by.replace('.', '__').split(','))
+                orders = []
+                for order in order_by.replace('.', '__').split(','):
+                    nulls_first, nulls_last = order.endswith('<'), order.endswith('>')
+                    order = order[:-1] if nulls_first or nulls_last else order
+                    if order.startswith('-'):
+                        orders.append(F(order[1:]).desc(nulls_first=nulls_first, nulls_last=nulls_last))
+                    else:
+                        order = order[1:] if order.startswith('+') or order.startswith(' ') else order
+                        orders.append(F(order).asc(nulls_first=nulls_first, nulls_last=nulls_last))
+                temp_queryset = queryset.order_by(*orders)
                 str(temp_queryset.query)  # Force SQL evaluation to retrieve exception
                 queryset = temp_queryset
                 options['order_by'] = True

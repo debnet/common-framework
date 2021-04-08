@@ -108,7 +108,7 @@ def tag_query(context, queryset, save='', **kwargs):
                 key = key[1:]
                 excludes[key] = url_value(key, value)
             else:
-                key = key.strip()
+                key = key[1:].strip() if key.startswith('+') else key.strip()
                 filters[key] = url_value(key, value)
         if filters:
             queryset = queryset.filter(**filters)
@@ -135,7 +135,8 @@ def tag_query(context, queryset, save='', **kwargs):
         for field in kwargs.get(aggregate, '').split(','):
             if not field:
                 continue
-            distinct = field.startswith(' ')
+            distinct = field.startswith(' ') or field.startswith('+')
+            field = field[1:] if distinct else field
             field = field.strip().replace('.', '__')
             aggregations[field + '_' + aggregate] = function(field, distinct=distinct)
     group_by = get('group_by')
@@ -289,8 +290,12 @@ class MarkdownNode(Node):
 
     def render(self, context):
         output = self.nodelist.render(context)
-        import markdown2
-        return markdown2.markdown(output.strip(), extras=self.extras)
+        try:
+            import markdown2
+            return markdown2.markdown(output.strip(), extras=self.extras)
+        except:
+            import markdown
+            markdown.markdown(output.strip(), extensions=self.extras)
 
 
 @register.tag(name='markdown')
