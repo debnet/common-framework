@@ -219,7 +219,7 @@ class CommonModelViewSet(viewsets.ModelViewSet):
                     for key, value in url_params.items():
                         key = key.replace('.', '__')
                         if value.startswith('[') and value.endswith(']'):
-                            value = F(value[1:-1])
+                            value = F(value[1:-1].replace('.', '__'))
                         if key in reserved_query_params:
                             continue
                         if key.startswith('-'):

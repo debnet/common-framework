@@ -126,7 +126,7 @@ def metadata(request, uuid):
     """
     Liste et/ou ajoute des métadonnées sur une entité spécifique
     """
-    entity = Global.objects.entity(uuid)
+    entity = Global.objects.from_uuid(uuid)
     if not entity:
         raise NotFound(_("Entité inconnue."))
     if request.method == 'POST':

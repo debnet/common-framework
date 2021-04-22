@@ -3,6 +3,7 @@ import socket
 
 from django.core.exceptions import PermissionDenied
 from django.urls import resolve, Resolver404
+from django.utils.timezone import now
 from django.utils.translation import gettext_lazy as _
 
 from common.models import ServiceUsage
@@ -144,8 +145,22 @@ class ServiceUsageMiddleware:
                 else:
                     usage, created = ServiceUsage.objects.get_or_create(
                         name=service_name, user=request.user, defaults=defaults)
+                date = now()
                 usage.count += 1
                 usage.address = get_ip(request)
+                extra = usage.extra or dict(addresses={}, data={}, params={})
+                address = extra['addresses'].setdefault(usage.address, {})
+                address.update(date=date, method=request.method, count=address.get('count', 0) + 1)
+                for method in ('GET', 'POST'):
+                    for key, value in getattr(request, method, {}).items():
+                        if not value:
+                            continue
+                        data = extra['data'].setdefault(key, {})
+                        data.update(date=date, method=method, count=data.get('count', 0) + 1)
+                for key, value in request.resolver_match.kwargs.items():
+                    params = extra['params'].setdefault(key, {})
+                    params.update(date=date, method=request.method, count=params.get('count', 0) + 1)
+                usage.extra = extra
                 usage.save()
                 try:
                     if usage.limit and usage.limit < usage.count:

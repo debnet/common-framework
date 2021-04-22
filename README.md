@@ -33,7 +33,7 @@ enregistrée dans un référentiel global conjointement à son type. Il est donc
 ```python
 from common.models import Global
 
-entity = Global.objects.entity('4b9abebd-8157-4e49-bcae-1a7e063a9f86')
+entity = Global.objects.from_uuid('4b9abebd-8157-4e49-bcae-1a7e063a9f86')
 ```
 
 > Attention ! Les entités surchargent les méthodes de persistance par défaut de Django 
@@ -284,6 +284,25 @@ relatif à Django et dans ``common.api.utils`` pour tout ce qui est relatif à D
 ##### Autres (``common.admin``)
 
 * ``create_admin`` : permet de créer automatiquement les classes d'administration d'un modèle
+
+### Modèles
+
+Les differents utilitaires de modèles sont définis dans ``common.models``.
+
+* ``CustomGenericForeignKey`` : champ générique qui ne vide pas les propriétés de la clé si l'instance n'existe pas
+* ``CustomGenericRelation`` : relation d'une clé étrangère générique qui force la conversion de l'identifiant en texte
+* ``MetaData`` : modèle des métadonnées associées aux entités
+* ``CommonModel`` : modèle abstrait commun permettant d'accéder aux multiples utilitaires décrits précédemment
+* ``Entity`` : modèle commun avec historisation des modifications
+* ``PerishableEntity`` : même chose qu'``Entity`` mais se duplicant en cas de modification
+* ``History`` : modèle d'historique d'une entité
+* ``HistoryField`` : modèle d'historique d'un champ d'une entité
+* ``Global`` : modèle point d'entrée global des entités
+* ``Webhook`` : modèle de configuration d'un webhook
+* ``ServiceUsage`` : modèle d'un historique d'accès à une ressource du site (avec ou sans limitation)
+* ``from_dict`` : construit une instance d'un modèle à partir d'un dictionnaire
+* ``to_dict`` : appel générique transformant une instance de modèle en dictionnaire
+* ``model_to_dict`` : transforme récursivement une instance de modèle en dictionnaire
 
 ### Champs de modèles
 

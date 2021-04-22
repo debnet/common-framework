@@ -72,7 +72,7 @@ setup(
         'Topic :: Utilities'
     ],
     install_requires=[
-        'Django==3.2',
-        'djangorestframework==3.12.4',
+        'Django>=3.2',
+        'djangorestframework>=3.12.4',
     ],
 )

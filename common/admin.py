@@ -5,7 +5,7 @@ from django.contrib.admin.actions import delete_selected
 from django.contrib.admin.sites import all_sites
 from django.contrib.contenttypes.models import ContentType
 from django.db import models
-from django.db.models import Count
+from django.db.models import Count, OuterRef, Subquery
 from django.urls import reverse, NoReverseMatch
 from django.utils.html import format_html
 from django.utils.text import camel_case_to_spaces, capfirst
@@ -375,8 +375,18 @@ class HistoryAdmin(admin.ModelAdmin):
     has_reason.short_description = _("Motif")
 
     def get_queryset(self, request):
-        return super().get_queryset(request).select_related('content_type', 'user').prefetch_related('entity')\
-            .annotate(fields_count=Count('fields')).order_by('-creation_date')
+        subquery = (
+            HistoryField.objects
+            .values('history')
+            .filter(history=OuterRef('id'))
+            .annotate(count=Count('id'))
+            .values('count'))
+        return (
+            super().get_queryset(request)
+            .select_related('content_type', 'user')
+            .prefetch_related('entity')
+            .annotate(fields_count=Subquery(subquery))
+            .order_by('-creation_date'))
 
 
 @admin.register(HistoryField)
@@ -465,10 +475,9 @@ class WebhookAdmin(admin.ModelAdmin):
             'fields': ('types', 'is_create', 'is_update', 'is_delete', 'is_restore', 'is_m2m', ),
         }),
     ]
-    raw_id_fields = ['types', ]
-    autocomplete_lookup_fields = {
-        'm2m': ('types', ),
-    }
+    autocomplete_fields = (
+        'types',
+    )
 
     def list_actions(self, obj):
         actions = []
@@ -513,10 +522,9 @@ class ServiceUsageAdmin(admin.ModelAdmin):
     list_filter = ['user', 'date', 'reset_date', ]
     ordering = ['name', 'user', ]
     search_fields = ['name', 'address', ]
-    raw_id_fields = ['user', ]
-    autocomplete_lookup_fields = {
-        'fk': ('user', ),
-    }
+    autocomplete_fields = (
+        'user',
+    )
 
 
 def create_admin(*args, baseclass=None, **kwargs):

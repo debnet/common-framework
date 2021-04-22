@@ -102,13 +102,13 @@ def tag_query(context, queryset, save='', **kwargs):
             if key in reserved_keywords:
                 continue
             key = key.replace('.', '__')
-            if isinstance(value, str) and value.startswith('(') and value.endswith(')'):
-                value = F(value[1:-1])
+            if isinstance(value, str) and value.startswith('[') and value.endswith(']'):
+                value = F(value[1:-1].replace('.', '__'))
             if key.startswith('_'):
-                key = key[1:]
+                key = key[1:].strip()
                 excludes[key] = url_value(key, value)
             else:
-                key = key[1:].strip() if key.startswith('+') else key.strip()
+                key = key.strip()
                 filters[key] = url_value(key, value)
         if filters:
             queryset = queryset.filter(**filters)
@@ -332,12 +332,12 @@ class ObfuscatorNode(Node):
             return f'<div data-key="{key}" data-code="{encoded}"></div>'
 
 
-@register.tag(name='ob')
+@register.tag(name='obfuscate')
 def tag_obfuscate(parser, token):
     """
     Permet d'obfusquer des données
     """
-    nodelist = parser.parse(('bo',))
+    nodelist = parser.parse(('endobfuscate',))
     parser.delete_first_token()
     args = [ast.literal_eval(bit) for bit in token.split_contents()[1:]]
     return ObfuscatorNode(nodelist, *args)

@@ -4,7 +4,7 @@ import logging
 from django.apps import apps
 from django.core.management.base import BaseCommand
 from django.db import transaction
-from django.utils.translation import gettext_lazy as _
+from django.utils.translation import gettext as _
 
 from common.models import Entity
 
@@ -14,13 +14,13 @@ logger = logging.getLogger(__name__)
 
 
 class Command(BaseCommand):
-    help = "Supprime les données de l'application"
+    help = _("Supprime les données de l'application")
     leave_locale_alone = True
 
     def add_arguments(self, parser):
         parser.add_argument('app_label', type=str, help=_("Nom de l'application"))
-        parser.add_argument('--excludes', dest='excludes', type=str, nargs='+', help="Modèle(s) à exclure")
-        parser.add_argument('--includes', dest='includes', type=str, nargs='+', help="Modèle(s) à inclure")
+        parser.add_argument('--excludes', dest='excludes', type=str, nargs='+', help=_("Modèle(s) à exclure"))
+        parser.add_argument('--includes', dest='includes', type=str, nargs='+', help=_("Modèle(s) à inclure"))
 
     @transaction.atomic
     def handle(self, *args, app_label=None, excludes=None, includes=None, **options):

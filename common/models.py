@@ -12,8 +12,9 @@ from django.core import serializers
 from django.core.cache import cache
 from django.core.exceptions import ValidationError, FieldDoesNotExist
 from django.db import models
-from django.db.models import query, Q
+from django.db.models import query, JSONField, Q
 from django.db.models.deletion import Collector
+from django.db.models.functions import Cast
 from django.db.models.signals import m2m_changed, post_init, post_save, pre_delete, pre_save
 from django.dispatch import receiver
 from django.forms.models import model_to_dict as django_model_to_dict
@@ -123,6 +124,25 @@ class CustomGenericForeignKey(GenericForeignKey):
         setattr(instance, self.ct_field, ct)
         setattr(instance, self.fk_field, fk)
         self.set_cached_value(instance, value)
+
+
+class CustomGenericRelation(GenericRelation):
+    """
+    Surcharge de la GenericRelation qui permet de faire une jointure entre un type numérique et un type texte
+    """
+
+    def get_joining_columns(self, reverse_join=False):
+        return ()
+
+    def get_extra_restriction(self, where_class, alias, remote_alias):
+        cond = super().get_extra_restriction(where_class, alias, remote_alias)
+        from_field = self.model._meta.pk
+        to_field = self.remote_field.model._meta.get_field(self.object_id_field_name)
+        lookup = from_field.get_lookup('exact')(
+            Cast(from_field.get_col(alias), output_field=models.TextField()),
+            to_field.get_col(remote_alias))
+        cond.add(lookup, 'AND')
+        return cond
 
 
 class MetaDataQuerySet(models.QuerySet):
@@ -358,7 +378,7 @@ class CommonModel(models.Model):
     """
     Modèle commun
     """
-    metadata = GenericRelation(MetaData)
+    metadata = CustomGenericRelation(MetaData, related_query_name='%(app_label)s_%(class)s')
     objects = CommonQuerySet.as_manager()
 
     # Propriétés liées à l'historisation et au type de modèle
@@ -587,26 +607,28 @@ class CommonModel(models.Model):
                 # Gestion des valeurs nulles (hors clés étrangères)
                 elif value is None and not no_empty:
                     data[field_name] = None
+                # Cas spécifique des champs fichier & image
+                elif isinstance(field, (models.FileField, models.ImageField)):
+                    result = (value if raw else value.name) if value else None
+                    if result or not no_empty:
+                        data[field_name] = result
                 # Cas spécifique du champ binaire (pickle)
                 elif isinstance(field, PickleField):
                     result = value if raw else base64_encode(value)
                     if result or not no_empty:
                         data[field_name] = result
                 # Cas spécifique des champs JSON
-                elif isinstance(field, JsonField):
+                elif isinstance(field, (JsonField, JSONField)):
                     result = json_encode(value)
                     if raw:
                         result = json_decode(result)
                     if result or not no_empty:
                         data[field_name] = result
-                # Cas spécifique des champs fichier & image
-                elif isinstance(field, (models.FileField, models.ImageField)):
-                    result = (value if raw else value.name) if value else None
-                    if result or not no_empty:
-                        data[field_name] = result
                 # Cas spécifique pour les listes
                 elif isinstance(value, (list, tuple)):
-                    result = value if raw else '|'.join(str(val) for val in value)
+                    result = json_encode(value)
+                    if raw:
+                        result = json_decode(result)
                     if result or not no_empty:
                         data[field_name] = result
                 # Cas spécifique pour les ensembles
@@ -1100,22 +1122,22 @@ class HistoryField(HistoryCommon):
         verbose_name_plural = _("historiques de champs modifiés")
 
 
-class GlobalManager(models.Manager):
+class GlobalQuerySet(CommonQuerySet):
     """
     Manager global
     """
 
-    def entity(self, uuid):
+    def from_uuid(self, uuid):
         """
         Récupération directe d'une entité à partir de son identifiant unique
         """
         try:
-            return self.get(object_uid=uuid).entity
+            return self.prefetch_related('entity').get(object_uid=uuid).entity
         except Exception:
             return None
 
 
-class Global(models.Model):
+class Global(CommonModel):
     """
     Entité globale
     """
@@ -1131,7 +1153,7 @@ class Global(models.Model):
         unique=True, editable=False,
         verbose_name=_("UUID"))
     entity = CustomGenericForeignKey()
-    objects = GlobalManager()
+    objects = GlobalQuerySet.as_manager()
 
     def __str__(self):
         return _("({object_uid}) {content_type} #{object_id}").format(
@@ -1257,7 +1279,8 @@ class Entity(CommonModel):
         blank=True, null=True, editable=False,
         on_delete=models.SET_NULL, related_name='+',
         verbose_name=_("dernier utilisateur"))
-    globals = GenericRelation(Global)
+    histories = CustomGenericRelation(History, related_query_name='%(app_label)s_%(class)s')
+    globals = CustomGenericRelation(Global, related_query_name='%(app_label)s_%(class)s')
     objects = EntityQuerySet.as_manager()
 
     # Propriétés liées à l'historisation
@@ -1361,8 +1384,7 @@ class Entity(CommonModel):
         model_from = unique.content_type.model_class()
         model_to = field.related_model
         assert model_from == model_to, _("Unexpected model '{}' used instead of expected model '{}'.").format(
-            model_from._meta.verbose_name_raw, model_to._meta.verbose_name_raw
-        )
+            model_from._meta.verbose_name_raw, model_to._meta.verbose_name_raw)
         setattr(self, fk_field + '_id', unique.object_id)
 
     def _get_uids(self, m2m_field):
@@ -1379,8 +1401,7 @@ class Entity(CommonModel):
         model_from = uniques.first().content_type.model_class()
         model_to = field.related_model
         assert model_from == model_to, _("Unexpected model '{}' used instead of expected model '{}'.").format(
-            model_from._meta.verbose_name_raw, model_to._meta.verbose_name_raw
-        )
+            model_from._meta.verbose_name_raw, model_to._meta.verbose_name_raw)
         ids = uniques.values_list('object_id', flat=True)
         getattr(self, m2m_field).set(ids)
 
@@ -2198,6 +2219,10 @@ class ServiceUsage(CommonModel):
     date = models.DateTimeField(
         auto_now=True,
         verbose_name=_("date"))
+    extra = JsonField(
+        blank=True,
+        null=True,
+        verbose_name=_("extra"))
 
     def save(self, *args, **kwargs):
         if self.limit is not None and self.reset:

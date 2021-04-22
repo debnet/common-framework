@@ -3,7 +3,7 @@ import logging
 
 from common.utils import abort_sql
 from django.core.management.base import BaseCommand
-from django.utils.translation import gettext_lazy as _
+from django.utils.translation import gettext as _
 
 
 # Logging
@@ -11,7 +11,7 @@ logger = logging.getLogger(__name__)
 
 
 class Command(BaseCommand):
-    help = "Interrompt une ou plusieurs connexions à la base de données correspondant au nom de l'application"
+    help = _("Interrompt une ou plusieurs connexions à la base de données correspondant au nom de l'application")
     leave_locale_alone = True
 
     def add_arguments(self, parser):

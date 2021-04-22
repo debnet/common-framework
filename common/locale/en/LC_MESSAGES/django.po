@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: PACKAGE VERSION\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2020-09-01 14:58+0200\n"
+"POT-Creation-Date: 2021-04-22 15:30+0200\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -262,6 +262,9 @@ msgstr "'%(value)s' value must be valid JSON."
 msgid "Le message n'est pas correctement formaté."
 msgstr "Le message n'est pas correctement formaté."
 
+msgid "Interrompt une ou plusieurs connexions à la base de données correspondant au nom de l'application"
+msgstr "Halt one or many database connections based on application's name"
+
 msgid "Nom de l'application"
 msgstr "Application name"
 
@@ -276,6 +279,15 @@ msgstr "Maximum execution time"
 
 msgid "{} connexion(s) à la base de données interrompues(s)."
 msgstr "{} interrupted database connection(s)."
+
+msgid "Supprime les données de l'application"
+msgstr "Delete all data from models"
+
+msgid "Modèle(s) à exclure"
+msgstr "Models to exclude"
+
+msgid "Modèle(s) à inclure"
+msgstr "Models to include"
 
 msgid "{} {} supprimé(s)."
 msgstr "{} {} deleted"
@@ -593,6 +605,9 @@ msgstr "reset date"
 
 msgid "adresse"
 msgstr "address"
+
+msgid "extra"
+msgstr "extra"
 
 msgid "{} ({} : {})"
 msgstr "{} ({} : {})"
