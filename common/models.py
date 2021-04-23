@@ -2368,4 +2368,5 @@ MODELS = [
     Webhook,
     UserMetaData,
     GroupMetaData,
+    ServiceUsage,
 ]
