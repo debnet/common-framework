@@ -1,11 +1,12 @@
 # coding: utf-8
 import ast
-from functools import wraps
+from functools import partial, wraps
 from json import JSONDecodeError
 
 from django.conf import settings
 from django.core.exceptions import EmptyResultSet
-from django.db.models import F, Q, QuerySet, Count, Sum, Avg, Min, Max, StdDev, Variance
+from django.db import models
+from django.db.models import F, Q, QuerySet, Count, Sum, Avg, Min, Max, StdDev, Variance, functions
 from rest_framework import serializers, viewsets
 from rest_framework.decorators import api_view
 from rest_framework.exceptions import NotFound, ValidationError
@@ -30,14 +31,86 @@ AGGREGATES = {
     'stddev': StdDev,
     'variance': Variance,
 }
+CASTS = {
+    'bool': models.BooleanField,
+    'date': models.DateField,
+    'datetime': models.DateTimeField,
+    'decimal': models.DecimalField,
+    'float': models.FloatField,
+    'int': models.IntegerField,
+    'str': models.CharField,
+    'time': models.TimeField,
+}
+FUNCTIONS = {
+    'cast': lambda value, type='', *args: (
+        partial(functions.Cast, output_field=CASTS.get(type, models.CharField)())(value, *args)),
+    'coalesce': functions.Coalesce,
+    'greatest': functions.Greatest,
+    'least': functions.Least,
+    'nullif': functions.NullIf,
+    'extract_year': functions.ExtractIsoYear,
+    'extract_month': functions.ExtractMonth,
+    'extract_day': functions.ExtractDay,
+    'extract_week_day': functions.ExtractIsoWeekDay,
+    'extract_week': functions.ExtractWeek,
+    'extract_quarter': functions.ExtractQuarter,
+    'extract_hour': functions.ExtractHour,
+    'extract_minute': functions.ExtractMinute,
+    'extract_second': functions.ExtractSecond,
+    'trunc_year': functions.TruncYear,
+    'trunc_month': functions.TruncMonth,
+    'trunc_week': functions.TruncWeek,
+    'trunc_quarter': functions.TruncQuarter,
+    'trunc_date': functions.TruncDate,
+    'trunc_time': functions.TruncTime,
+    'trunc_day': functions.TruncDay,
+    'trunc_hour': functions.TruncHour,
+    'trunc_minute': functions.TruncMinute,
+    'trunc_second': functions.TruncSecond,
+    'abs': functions.Abs,
+    'acos': functions.ACos,
+    'asin': functions.ASin,
+    'atan': functions.ATan,
+    'atan2': functions.ATan2,
+    'ceil': functions.Ceil,
+    'cos': functions.Cos,
+    'cot': functions.Cot,
+    'degrees': functions.Degrees,
+    'exp': functions.Exp,
+    'floor': functions.Floor,
+    'ln': functions.Ln,
+    'log': functions.Log,
+    'mod': functions.Mod,
+    'radians': functions.Radians,
+    'round': functions.Round,
+    'power': functions.Power,
+    'sign': functions.Sign,
+    'sin': functions.Sin,
+    'sqrt': functions.Sqrt,
+    'tan': functions.Tan,
+    'left': functions.Left,
+    'length': functions.Length,
+    'lower': functions.Lower,
+    'lpad': functions.LPad,
+    'ltrim': functions.LTrim,
+    'md5': functions.MD5,
+    'right': functions.Right,
+    'rpad': functions.RPad,
+    'rtrim': functions.RTrim,
+    'sha1': functions.SHA1,
+    'sha224': functions.SHA224,
+    'sha256': functions.SHA256,
+    'sha384': functions.SHA384,
+    'sha512': functions.SHA512,
+    'strindex': functions.StrIndex,
+    'substr': functions.Substr,
+    'trim': functions.Trim,
+    'upper': functions.Upper,
+}
 RESERVED_QUERY_PARAMS = [
     'filters', 'fields', 'order_by', 'group_by', 'all', 'display',
     'distinct', 'silent', 'simple', 'meta', 'cache', 'timeout',
-] + list(AGGREGATES.keys())
-
-# Gestion du cache
-CACHE_PREFIX = 'api_'
-CACHE_TIMEOUT = 3600  # 1 hour
+] + list(AGGREGATES.keys()) + list(FUNCTIONS.keys())
 
 
 def url_value(filter, value):
@@ -614,7 +687,7 @@ def api_paginate(request, queryset, serializer, pagination=None, enable_options=
 
     url_params = request.query_params.dict()
     context = dict(request=request, **(context or {}))
-    options = dict(aggregates=None, distinct=None, filters=None, order_by=None)
+    options = dict(aggregates=None, annotates=None, distinct=None, filters=None, order_by=None)
 
     # Activation des options
     if enable_options:
@@ -623,7 +696,7 @@ def api_paginate(request, queryset, serializer, pagination=None, enable_options=
         cache_key = url_params.pop('cache', None)
         if cache_key:
             from django.core.cache import cache
-            cache_params = cache.get(CACHE_PREFIX + cache_key, {})
+            cache_params = cache.get(settings.API_CACHE_PREFIX + cache_key, {})
             new_url_params = {}
             new_url_params.update(**cache_params)
             new_url_params.update(**url_params)
@@ -634,9 +707,9 @@ def api_paginate(request, queryset, serializer, pagination=None, enable_options=
             if new_cache_params:
                 from django.utils.timezone import now
                 from datetime import timedelta
-                cache_timeout = int(url_params.pop('timeout', CACHE_TIMEOUT)) or None
-                cache.set(CACHE_PREFIX + cache_key, new_cache_params, timeout=cache_timeout)
-                options['cache_expires'] = now() + timedelta(seconds=cache_timeout)
+                cache_timeout = int(url_params.pop('timeout', settings.API_CACHE_TIMEOUT)) or None
+                cache.set(settings.API_CACHE_PREFIX + cache_key, new_cache_params, timeout=cache_timeout)
+                options['cache_expires'] = now() + timedelta(seconds=cache_timeout) if cache_timeout else 'never'
             cache_url = '{}?cache={}'.format(request.build_absolute_uri(request.path), cache_key)
             plain_url = cache_url
             for key, value in url_params.items():
@@ -650,30 +723,6 @@ def api_paginate(request, queryset, serializer, pagination=None, enable_options=
 
         # Erreurs silencieuses
         silent = str_to_bool(url_params.get('silent', ''))
-
-        # Extraction de champs spécifiques
-        fields = url_params.get('fields', '')
-        if fields:
-            # Supprime la récupération des relations
-            queryset = queryset.select_related(None).prefetch_related(None)
-            # Champs spécifiques
-            try:
-                relateds = set()
-                field_names = set()
-                for field in fields.replace('.', '__').split(','):
-                    if not field:
-                        continue
-                    field_names.add(field)
-                    *related, field_name = field.split('__')
-                    if related:
-                        relateds.add('__'.join(related))
-                if relateds:
-                    queryset = queryset.select_related(*relateds)
-                if field_names:
-                    queryset = queryset.values(*field_names)
-            except Exception as error:
-                if not silent:
-                    raise ValidationError(dict(error="fields: {}".format(error)), code='fields')
 
         # Filtres (dans une fonction pour être appelé par les aggregations sans group_by)
         def do_filter(queryset):
@@ -709,17 +758,58 @@ def api_paginate(request, queryset, serializer, pagination=None, enable_options=
                     options['filters_error'] = str(error)
             return queryset
 
-        # Aggregations
+        # Annotations
+        annotations = {}
         try:
-            aggregations = {}
-            for aggregate, function in AGGREGATES.items():
-                for field in url_params.get(aggregate, '').split(','):
-                    if not field:
+            for annotation, function in FUNCTIONS.items():
+                for field_name in url_params.pop(annotation, '').split(','):
+                    if not field_name:
                         continue
-                    distinct = field.startswith(' ') or field.startswith('+')
-                    field = field[1:] if distinct else field
-                    field = field.strip().replace('.', '__')
-                    aggregations[field + '_' + aggregate] = function(field, distinct=distinct)
+                    field_name, *args = field_name.split('|')
+                    function_args = []
+                    for arg in args:
+                        try:
+                            function_args.append(ast.literal_eval(arg))
+                        except (SyntaxError, ValueError):
+                            arg = arg.replace('.', '__')
+                            if any(arg.endswith(':{}'.format(cast)) for cast in CASTS):
+                                arg, *junk, cast = arg.split(':')
+                                cast = CASTS.get(cast.lower())
+                                arg = functions.Cast(arg, output_field=cast()) if cast else arg
+                            function_args.append(arg)
+                    field_name = field_name.replace('.', '__')
+                    field = field_name
+                    if any(field_name.endswith(':{}'.format(cast)) for cast in CASTS):
+                        field_name, *junk, cast = field_name.split(':')
+                        cast = CASTS.get(cast.lower())
+                        field = functions.Cast(field_name, output_field=cast()) if cast else field_name
+                    annotations[annotation + '__' + field_name] = function(field, *function_args)
+            if annotations:
+                queryset = queryset.annotate(**annotations)
+                options['annotates'] = True
+        except Exception as error:
+            if not silent:
+                raise ValidationError(dict(error="annotates: {}".format(error)), code='annotates')
+            options['annotates'] = False
+            if settings.DEBUG:
+                options['annotates_error'] = str(error)
+
+        # Aggregations
+        aggregations = {}
+        try:
+            for aggregate, function in AGGREGATES.items():
+                for field_name in url_params.get(aggregate, '').split(','):
+                    if not field_name:
+                        continue
+                    distinct = field_name.startswith(' ') or field_name.startswith('+')
+                    field_name = field_name[1:] if distinct else field_name
+                    field_name = field_name.strip().replace('.', '__')
+                    value = field_name
+                    if any(field_name.endswith(':{}'.format(cast)) for cast in CASTS):
+                        field_name, *junk, cast = field_name.split(':')
+                        cast = CASTS.get(cast.lower())
+                        value = functions.Cast(field_name, output_field=cast()) if cast else value
+                    aggregations[aggregate + '__' + field_name] = function(value, distinct=distinct)
             group_by = url_params.get('group_by', '')
             if group_by:
                 _queryset = queryset.values(*group_by.replace('.', '__').split(','))
@@ -730,6 +820,7 @@ def api_paginate(request, queryset, serializer, pagination=None, enable_options=
                 queryset = _queryset
                 options['aggregates'] = True
             elif aggregations:
+                options['aggregates'] = True
                 queryset = do_filter(queryset)  # Filtres éventuels
                 return queryset.aggregate(**aggregations)
         except ValidationError:
@@ -745,10 +836,10 @@ def api_paginate(request, queryset, serializer, pagination=None, enable_options=
         queryset = do_filter(queryset)
 
         # Tris
+        orders = []
         try:
             order_by = url_params.get('order_by', '')
             if order_by:
-                orders = []
                 for order in order_by.replace('.', '__').split(','):
                     nulls_first, nulls_last = order.endswith('<'), order.endswith('>')
                     order = order[:-1] if nulls_first or nulls_last else order
@@ -789,6 +880,30 @@ def api_paginate(request, queryset, serializer, pagination=None, enable_options=
             if settings.DEBUG:
                 options['distinct_error'] = str(error)
 
+        # Extraction de champs spécifiques
+        fields = url_params.get('fields', '')
+        if fields:
+            # Supprime la récupération des relations
+            queryset = queryset.select_related(None).prefetch_related(None)
+            # Champs spécifiques
+            try:
+                relateds = set()
+                field_names = set()
+                for field in fields.replace('.', '__').split(','):
+                    if not field:
+                        continue
+                    field_names.add(field)
+                    *related, field_name = field.split('__')
+                    if related and field not in annotations:
+                        relateds.add('__'.join(related))
+                if relateds:
+                    queryset = queryset.select_related(*relateds)
+                if field_names:
+                    queryset = queryset.values(*field_names)
+            except Exception as error:
+                if not silent:
+                    raise ValidationError(dict(error="fields: {}".format(error)), code='fields')
+
         # Fonction utilitaire d'ajout de champ au serializer
         def add_field_to_serializer(fields, field_name):
             field_name = field_name.strip()
@@ -806,15 +921,17 @@ def api_paginate(request, queryset, serializer, pagination=None, enable_options=
             for field in url_params.get(aggregate, '').split(','):
                 if not field:
                     continue
-                field_name = field.strip() + '_' + aggregate
+                field_name = aggregate + '__' + field.strip()
                 source = field_name.replace('.', '__') if '.' in field else None
                 aggregations[field_name] = serializers.ReadOnlyField(source=source)
+
         # Regroupements & aggregations
         if 'group_by' in url_params or aggregations:
             fields = {}
             for field in url_params.get('group_by', '').split(','):
                 add_field_to_serializer(fields, field)
             fields.update(aggregations)
+            fields.update(annotations)
             # Un serializer avec les données groupées est créé à la volée
             serializer = type(serializer.__name__, (serializers.Serializer, ), fields)
         # Restriction de champs
@@ -822,8 +939,12 @@ def api_paginate(request, queryset, serializer, pagination=None, enable_options=
             fields = {}
             for field in url_params.get('fields', '').split(','):
                 add_field_to_serializer(fields, field)
+            fields.update(annotations)
             # Un serializer avec restriction des champs est créé à la volée
             serializer = type(serializer.__name__, (serializers.Serializer, ), fields)
+        elif annotations:
+            serializer._declared_fields.update({
+                key: serializers.ReadOnlyField() for key, value in annotations.items()})
 
     # Fonction spécifique
     if query_func:

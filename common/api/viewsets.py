@@ -1,13 +1,16 @@
 # coding: utf-8
+import ast
+
 from django.core.exceptions import FieldDoesNotExist, EmptyResultSet
 from django.db import ProgrammingError
+from django.db.models import functions
 from django.db.models.query import F, Prefetch, QuerySet
 from rest_framework import serializers
 from rest_framework import viewsets
 from rest_framework.exceptions import ValidationError
 from rest_framework.schemas import AutoSchema
 
-from common.api.utils import AGGREGATES, CACHE_PREFIX, CACHE_TIMEOUT, RESERVED_QUERY_PARAMS, url_value, parse_filters
+from common.api.utils import AGGREGATES, CASTS, FUNCTIONS, RESERVED_QUERY_PARAMS, url_value, parse_filters
 from common.api.fields import ChoiceDisplayField, ReadOnlyObjectField
 from common.models import Entity, MetaData
 from common.settings import settings
@@ -45,13 +48,29 @@ class CommonModelViewSet(viewsets.ModelViewSet):
                 # Champ spécifique pour l'affichage de la valeur
                 fields[field_name] = ReadOnlyObjectField(source=source if '.' in field_name else None)
 
+            # Ajoute les champs d'annotation au serializer
+            annotations = {}
+            for annotation in FUNCTIONS.keys():
+                for field in url_params.get(annotation, '').split(','):
+                    if not field:
+                        continue
+                    field_name = annotation + '__' + field.strip()
+                    field_name, *args = field_name.split('|')
+                    if any(field_name.endswith(':{}'.format(cast)) for cast in CASTS):
+                        field_name, cast = field_name.split(':')
+                    source = field_name.replace('.', '__') if '.' in field else None
+                    annotations[field_name] = serializers.ReadOnlyField(source=source)
+
             # Ajoute les champs d'aggregation au serializer
             aggregations = {}
             for aggregate in AGGREGATES.keys():
                 for field in url_params.get(aggregate, '').split(','):
                     if not field:
                         continue
-                    field_name = field.strip() + '_' + aggregate
+                    field_name = aggregate + '__' + field.strip()
+                    field_name, *args = field_name.split('|')
+                    if any(field_name.endswith(':{}'.format(cast)) for cast in CASTS):
+                        field_name, cast = field_name.split(':')
                     source = field_name.replace('.', '__') if '.' in field else None
                     aggregations[field_name] = serializers.ReadOnlyField(source=source)
 
@@ -74,11 +93,19 @@ class CommonModelViewSet(viewsets.ModelViewSet):
 
             # Utilisation du serializer simplifié
             elif str_to_bool(url_params.get('simple')):
-                return getattr(self, 'simple_serializer', default_serializer)
+                serializer = getattr(self, 'simple_serializer', default_serializer)
+                serializer._declared_fields.update(annotations)
+                return serializer
 
             # Utilisation du serializer par défaut en cas de mise à jour sans altération des données
             elif self.action in ('update', 'partial_update'):
                 return default_serializer
+
+            # Ajoute les annotations au serializer par défaut
+            elif not aggregations and annotations:
+                serializer = super().get_serializer_class()
+                serializer._declared_fields.update(annotations)
+                return serializer
 
         return super().get_serializer_class()
 
@@ -129,7 +156,7 @@ class CommonModelViewSet(viewsets.ModelViewSet):
             if not isinstance(queryset, QuerySet):
                 return queryset
 
-            options = dict(aggregates=None, distinct=None, filters=None, order_by=None)
+            options = dict(aggregates=None, annotates=None, distinct=None, filters=None, order_by=None)
             self.url_params = url_params = self.request.query_params.dict()
 
             # Mots-clés réservés dans les URLs
@@ -142,7 +169,7 @@ class CommonModelViewSet(viewsets.ModelViewSet):
             cache_key = url_params.pop('cache', None)
             if cache_key:
                 from django.core.cache import cache
-                cache_params = cache.get(CACHE_PREFIX + cache_key, {})
+                cache_params = cache.get(settings.API_CACHE_PREFIX + cache_key, {})
                 new_url_params = {}
                 new_url_params.update(**cache_params)
                 new_url_params.update(**url_params)
@@ -153,9 +180,9 @@ class CommonModelViewSet(viewsets.ModelViewSet):
                 if new_cache_params:
                     from django.utils.timezone import now
                     from datetime import timedelta
-                    cache_timeout = int(url_params.pop('timeout', CACHE_TIMEOUT)) or None
-                    cache.set(CACHE_PREFIX + cache_key, new_cache_params, timeout=cache_timeout)
-                    options['cache_expires'] = now() + timedelta(seconds=cache_timeout)
+                    cache_timeout = int(url_params.pop('timeout', settings.API_CACHE_TIMEOUT)) or None
+                    cache.set(settings.API_CACHE_PREFIX + cache_key, new_cache_params, timeout=cache_timeout)
+                    options['cache_expires'] = now() + timedelta(seconds=cache_timeout) if cache_timeout else 'never'
                 cache_url = '{}?cache={}'.format(self.request.build_absolute_uri(self.request.path), cache_key)
                 plain_url = cache_url
                 for key, value in url_params.items():
@@ -169,48 +196,6 @@ class CommonModelViewSet(viewsets.ModelViewSet):
 
             # Erreurs silencieuses
             silent = str_to_bool(url_params.get('silent', ''))
-
-            # Requête simplifiée et/ou extraction de champs spécifiques
-            fields = url_params.get('fields', '')
-            if str_to_bool(url_params.get('simple', '')) or fields:
-                # Supprime la récupération des relations
-                if queryset.query.select_related:
-                    queryset = queryset.select_related(None).prefetch_related(None)
-                # Champs spécifiques
-                try:
-                    relateds = set()
-                    field_names = set()
-                    for field in fields.replace('.', '__').split(','):
-                        if not field:
-                            continue
-                        field_names.add(field)
-                        *related, field_name = field.split('__')
-                        if related:
-                            relateds.add('__'.join(related))
-                    if relateds:
-                        queryset = queryset.select_related(*relateds)
-                    if field_names:
-                        queryset = queryset.values(*field_names)
-                except Exception as error:
-                    if not silent:
-                        raise ValidationError(dict(error="fields: {}".format(error)), code='fields')
-            else:
-                # Récupération des métadonnées
-                metadata = str_to_bool(url_params.get('meta', ''))
-                if metadata and hasattr(self, 'metadata'):
-                    # Permet d'éviter les conflits entre prefetch lookups identiques
-                    viewset_lookups = [
-                        prefetch if isinstance(prefetch, str) else prefetch.prefetch_through
-                        for prefetch in queryset._prefetch_related_lookups]
-                    lookups_metadata = []
-                    for lookup in self.metadata or []:
-                        if isinstance(lookup, str):
-                            lookup = Prefetch(lookup)
-                        if lookup.prefetch_through not in viewset_lookups:
-                            lookups_metadata.append(lookup)
-                        lookup.queryset = MetaData.objects.select_valid()
-                    if lookups_metadata:
-                        queryset = queryset.prefetch_related(*lookups_metadata)
 
             # Filtres (dans une fonction pour être appelé par les aggregations sans group_by)
             def do_filter(queryset):
@@ -246,18 +231,59 @@ class CommonModelViewSet(viewsets.ModelViewSet):
                         options['filters_error'] = str(error)
                 return queryset
 
-            # Aggregations (uniquement sur les listes)
+            # Annotations
+            annotations = {}
+            try:
+                for annotation, function in FUNCTIONS.items():
+                    for field_name in url_params.get(annotation, '').split(','):
+                        if not field_name:
+                            continue
+                        field_name, *args = field_name.split('|')
+                        function_args = []
+                        for arg in args:
+                            try:
+                                function_args.append(ast.literal_eval(arg))
+                            except (SyntaxError, ValueError):
+                                arg = arg.replace('.', '__')
+                                if any(arg.endswith(':{}'.format(cast)) for cast in CASTS):
+                                    arg, *junk, cast = arg.split(':')
+                                    cast = CASTS.get(cast.lower())
+                                    arg = functions.Cast(arg, output_field=cast()) if cast else arg
+                                function_args.append(arg)
+                        field_name = field_name.replace('.', '__')
+                        field = field_name
+                        if any(field_name.endswith(':{}'.format(cast)) for cast in CASTS):
+                            field_name, *junk, cast = field_name.split(':')
+                            cast = CASTS.get(cast.lower())
+                            field = functions.Cast(field_name, output_field=cast()) if cast else field_name
+                        annotations[annotation + '__' + field_name] = function(field, *function_args)
+                if annotations:
+                    queryset = queryset.annotate(**annotations)
+                    options['annotates'] = True
+            except Exception as error:
+                if not silent:
+                    raise ValidationError(dict(error="annotates: {}".format(error)), code='annotates')
+                options['annotates'] = False
+                if settings.DEBUG:
+                    options['annotates_error'] = str(error)
+
+            # Aggregations
+            aggregations = {}
             if self.action == 'list':
                 try:
-                    aggregations = {}
                     for aggregate, function in AGGREGATES.items():
-                        for field in url_params.get(aggregate, '').split(','):
-                            if not field:
+                        for field_name in url_params.get(aggregate, '').split(','):
+                            if not field_name:
                                 continue
-                            distinct = field.startswith(' ') or field.startswith('+')
-                            field = field[1:] if distinct else field
-                            field = field.strip().replace('.', '__')
-                            aggregations[field + '_' + aggregate] = function(field, distinct=distinct)
+                            distinct = field_name.startswith(' ') or field_name.startswith('+')
+                            field_name = field_name[1:] if distinct else field_name
+                            field_name = field_name.strip().replace('.', '__')
+                            value = field_name
+                            if any(field_name.endswith(':{}'.format(cast)) for cast in CASTS):
+                                field_name, *junk, cast = field_name.split(':')
+                                cast = CASTS.get(cast.lower())
+                                value = functions.Cast(field_name, output_field=cast()) if cast else value
+                            aggregations[aggregate + '__' + field_name] = function(value, distinct=distinct)
                     group_by = url_params.get('group_by', '')
                     if group_by:
                         _queryset = queryset.values(*group_by.replace('.', '__').split(','))
@@ -268,6 +294,7 @@ class CommonModelViewSet(viewsets.ModelViewSet):
                         queryset = _queryset
                         options['aggregates'] = True
                     elif aggregations:
+                        options['aggregates'] = True
                         queryset = do_filter(queryset)  # Filtres éventuels
                         return queryset.aggregate(**aggregations)
                 except ValidationError:
@@ -283,10 +310,10 @@ class CommonModelViewSet(viewsets.ModelViewSet):
             queryset = do_filter(queryset)
 
             # Tris
+            orders = []
             try:
                 order_by = url_params.get('order_by', '')
                 if order_by:
-                    orders = []
                     for order in order_by.replace('.', '__').split(','):
                         nulls_first, nulls_last = order.endswith('<'), order.endswith('>')
                         order = order[:-1] if nulls_first or nulls_last else order
@@ -326,6 +353,48 @@ class CommonModelViewSet(viewsets.ModelViewSet):
                 options['distinct'] = False
                 if settings.DEBUG:
                     options['distinct_error'] = str(error)
+
+            # Requête simplifiée et/ou extraction de champs spécifiques
+            fields = url_params.get('fields', '')
+            if str_to_bool(url_params.get('simple', '')) or fields:
+                # Supprime la récupération des relations
+                if queryset.query.select_related:
+                    queryset = queryset.select_related(None).prefetch_related(None)
+                # Champs spécifiques
+                try:
+                    relateds = set()
+                    field_names = set()
+                    for field in fields.replace('.', '__').split(','):
+                        if not field:
+                            continue
+                        field_names.add(field)
+                        *related, field_name = field.split('__')
+                        if related and field not in annotations:
+                            relateds.add('__'.join(related))
+                    if relateds:
+                        queryset = queryset.select_related(*relateds)
+                    if field_names:
+                        queryset = queryset.values(*field_names)
+                except Exception as error:
+                    if not silent:
+                        raise ValidationError(dict(error="fields: {}".format(error)), code='fields')
+            else:
+                # Récupération des métadonnées
+                metadata = str_to_bool(url_params.get('meta', ''))
+                if metadata and hasattr(self, 'metadata'):
+                    # Permet d'éviter les conflits entre prefetch lookups identiques
+                    viewset_lookups = [
+                        prefetch if isinstance(prefetch, str) else prefetch.prefetch_through
+                        for prefetch in queryset._prefetch_related_lookups]
+                    lookups_metadata = []
+                    for lookup in self.metadata or []:
+                        if isinstance(lookup, str):
+                            lookup = Prefetch(lookup)
+                        if lookup.prefetch_through not in viewset_lookups:
+                            lookups_metadata.append(lookup)
+                        lookup.queryset = MetaData.objects.select_valid()
+                    if lookups_metadata:
+                        queryset = queryset.prefetch_related(*lookups_metadata)
 
             # Ajout des options de filtres/tris dans la pagination
             if self.paginator and hasattr(self.paginator, 'additional_data'):

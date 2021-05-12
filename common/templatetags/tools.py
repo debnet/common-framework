@@ -5,6 +5,7 @@ import uuid
 from itertools import cycle
 
 from django.conf import settings
+from django.db.models import functions
 from django.http import QueryDict
 from django.template import Library, Node
 from django.utils.formats import localize
@@ -79,7 +80,7 @@ def tag_query(context, queryset, save='', **kwargs):
     :param kwargs: Options de filtre/tri/etc...
     :return: Rien
     """
-    from common.api.utils import url_value, AGGREGATES
+    from common.api.utils import url_value, AGGREGATES, CASTS, FUNCTIONS
     from django.db.models import F, QuerySet
 
     if not isinstance(queryset, QuerySet):
@@ -92,7 +93,7 @@ def tag_query(context, queryset, save='', **kwargs):
     reserved_keywords = (
         'filters', 'fields', 'order_by', 'group_by', 'distinct',
         'select_related', 'prefetch_related', 'limit',
-    ) + tuple(AGGREGATES.keys())
+    ) + tuple(AGGREGATES.keys()) + tuple(FUNCTIONS.keys())
 
     # Filtres (dans une fonction pour être appelé par les aggregations sans group_by)
     def do_filter(queryset):
@@ -129,16 +130,50 @@ def tag_query(context, queryset, save='', **kwargs):
     if prefetch_related:
         queryset = queryset.prefetch_related(*prefetch_related.split(','))
 
+    # Annotations
+    annotations = {}
+    for annotation, function in FUNCTIONS.items():
+        for field_name in kwargs.get(annotation, '').split(','):
+            if not field_name:
+                continue
+            field_name, *args = field_name.split('|')
+            function_args = []
+            for arg in args:
+                try:
+                    function_args.append(ast.literal_eval(arg))
+                except (SyntaxError, ValueError):
+                    arg = arg.replace('.', '__')
+                    if any(arg.endswith(':{}'.format(cast)) for cast in CASTS):
+                        arg, *junk, cast = arg.split(':')
+                        cast = CASTS.get(cast.lower())
+                        arg = functions.Cast(arg, output_field=cast()) if cast else arg
+                    function_args.append(arg)
+            field_name = field_name.replace('.', '__')
+            field = field_name
+            if any(field_name.endswith(':{}'.format(cast)) for cast in CASTS):
+                field_name, *junk, cast = field_name.split(':')
+                cast = CASTS.get(cast.lower())
+                field = functions.Cast(field_name, output_field=cast()) if cast else field_name
+            annotations[annotation + '__' + field_name] = function(field, *function_args)
+    if annotations:
+        queryset = queryset.annotate(**annotations)
+
     # Aggregations
     aggregations = {}
     for aggregate, function in AGGREGATES.items():
-        for field in kwargs.get(aggregate, '').split(','):
-            if not field:
+        for field_name in kwargs.get(aggregate, '').split(','):
+            if not field_name:
                 continue
-            distinct = field.startswith(' ') or field.startswith('+')
-            field = field[1:] if distinct else field
-            field = field.strip().replace('.', '__')
-            aggregations[field + '_' + aggregate] = function(field, distinct=distinct)
+            distinct = field_name.startswith(' ') or field_name.startswith('+')
+            field_name = field_name[1:] if distinct else field_name
+            field_name = field_name.strip().replace('.', '__')
+            value = field_name
+            if any(field_name.endswith(':{}'.format(cast)) for cast in CASTS):
+                field_name, *junk, cast = field_name.split(':')
+                cast = CASTS.get(cast.lower())
+                value = functions.Cast(field_name, output_field=cast()) if cast else value
+            aggregations[aggregate + '__' + field_name] = function(value, distinct=distinct)
+
     group_by = get('group_by')
     if group_by:
         _queryset = queryset.values(*group_by.split(','))
@@ -293,7 +328,7 @@ class MarkdownNode(Node):
         try:
             import markdown2
             return markdown2.markdown(output.strip(), extras=self.extras)
-        except:
+        except ImportError:
             import markdown
             markdown.markdown(output.strip(), extensions=self.extras)
 

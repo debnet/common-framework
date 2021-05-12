@@ -35,7 +35,10 @@ class Settings:
         LDAP_STAFF_USERS=[],
         LDAP_ADMIN_GROUPS=[],
         LDAP_STAFF_GROUPS=[],
-        LDAP_GROUP_PREFIX=''
+        LDAP_GROUP_PREFIX='',
+        # API cache
+        API_CACHE_PREFIX='api_',
+        API_CACHE_TIMEOUT=0,
     )
 
     def __getattr__(self, item):

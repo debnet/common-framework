@@ -299,7 +299,7 @@ def download_file(function):
             mimetype, charset = mimetype or 'application/octet-stream', charset or settings.DEFAULT_CHARSET
             response = HttpResponse(file_wrapper, content_type=mimetype, charset=charset)
             response["Content-Disposition"] = "attachment; filename={0}".format(name)
-            response["Content-Type"] = f'{mimetype}; charset={charset}'
+            response["Content-Type"] = '{mimetype}; charset={charset}'.format(mimetype=mimetype, charset=charset)
             file.close()
             if delete:
                 os.unlink(file.name)
