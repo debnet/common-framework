@@ -1,4 +1,5 @@
 # coding: utf-8
+from django import VERSION as DJANGO_VERSION
 from django.contrib import admin, messages
 from django.contrib.admin import options
 from django.contrib.admin.actions import delete_selected
@@ -46,19 +47,23 @@ class CommonAdmin(admin.ModelAdmin):
         }
 
     def has_view_permission(self, request, obj=None):
-        opts = self.opts
-        code = '{}.view_{}'.format(opts.app_label, opts.model_name)
-        return request.user.has_perm(code, obj=obj)
+        if DJANGO_VERSION < (2, 1):
+            opts = self.opts
+            code = '{}.view_{}'.format(opts.app_label, opts.model_name)
+            return request.user.has_perm(code, obj=obj)
+        return super().has_view_permission(request, obj=obj)
 
     def has_change_permission(self, request, obj=None):
-        change_perm = super().has_change_permission(request, obj=obj)
-        if change_perm:
-            return change_perm
-        view_perm = self.has_view_permission(request, obj=obj)
-        if view_perm and obj:
-            return change_perm
-        self.list_editable = ()
-        return view_perm
+        if DJANGO_VERSION < (2, 1):
+            change_perm = super().has_change_permission(request, obj=obj)
+            if change_perm:
+                return change_perm
+            view_perm = self.has_view_permission(request, obj=obj)
+            if view_perm and obj:
+                return change_perm
+            self.list_editable = ()
+            return view_perm
+        return super().has_change_permission(request, obj=obj)
 
     def metadata_url(self, obj):
         count = obj.metadata.count()
