@@ -1,17 +1,18 @@
 # coding: utf-8
 import ast
+from datetime import timedelta
 
-from django.core.exceptions import FieldDoesNotExist, EmptyResultSet
+from django.core.exceptions import EmptyResultSet, FieldDoesNotExist
 from django.db import ProgrammingError
 from django.db.models import functions
 from django.db.models.query import F, Prefetch, QuerySet
-from rest_framework import serializers
-from rest_framework import viewsets
+from django.utils.timezone import now
+from rest_framework import serializers, viewsets
 from rest_framework.exceptions import ValidationError
 from rest_framework.schemas import AutoSchema
 
-from common.api.utils import AGGREGATES, CASTS, FUNCTIONS, RESERVED_QUERY_PARAMS, url_value, parse_filters
 from common.api.fields import ChoiceDisplayField, ReadOnlyObjectField
+from common.api.utils import AGGREGATES, CASTS, FUNCTIONS, RESERVED_QUERY_PARAMS, parse_filters, url_value
 from common.models import Entity, MetaData
 from common.settings import settings
 from common.utils import get_field_by_path, get_pk_field, str_to_bool
@@ -21,17 +22,18 @@ class CommonModelViewSet(viewsets.ModelViewSet):
     """
     Définition commune de ModelViewSet pour l'API REST
     """
+
     url_params = {}
     schema = AutoSchema()
 
     def get_serializer_class(self):
         # Le serializer par défaut est utilisé en cas de modification/suppression
-        default_serializer = getattr(self, 'default_serializer', None)
-        if default_serializer and self.action not in ('list', 'retrieve', 'update', 'partial_update'):
+        default_serializer = getattr(self, "default_serializer", None)
+        if default_serializer and self.action not in ("list", "retrieve", "update", "partial_update"):
             return default_serializer
 
         # Le serializer peut être substitué en fonction des paramètres d'appel de l'API
-        query_params = getattr(self.request, 'query_params', None)
+        query_params = getattr(self.request, "query_params", None)
         url_params = self.url_params or (query_params.dict() if query_params else {})
         if default_serializer:
 
@@ -40,65 +42,65 @@ class CommonModelViewSet(viewsets.ModelViewSet):
                 if not field_name:
                     return
                 field_name = field_name.strip()
-                source = field_name.replace('.', '__')
+                source = field_name.replace(".", "__")
                 # Champ spécifique en cas d'énumération
-                choices = getattr(get_field_by_path(self.queryset.model, field_name), 'flatchoices', None)
-                if choices and str_to_bool(url_params.get('display')):
-                    fields[field_name + '_display'] = ChoiceDisplayField(choices=choices, source=source)
+                choices = getattr(get_field_by_path(self.queryset.model, field_name), "flatchoices", None)
+                if choices and str_to_bool(url_params.get("display")):
+                    fields[field_name + "_display"] = ChoiceDisplayField(choices=choices, source=source)
                 # Champ spécifique pour l'affichage de la valeur
-                fields[field_name] = ReadOnlyObjectField(source=source if '.' in field_name else None)
+                fields[field_name] = ReadOnlyObjectField(source=source if "." in field_name else None)
 
             # Ajoute les champs d'annotation au serializer
             annotations = {}
             for annotation in FUNCTIONS.keys():
-                for field in url_params.get(annotation, '').split(','):
+                for field in url_params.get(annotation, "").split(","):
                     if not field:
                         continue
-                    field_name = annotation + '__' + field.strip()
-                    field_name, *args = field_name.split('|')
-                    if any(field_name.endswith(':{}'.format(cast)) for cast in CASTS):
-                        field_name, cast = field_name.split(':')
-                    source = field_name.replace('.', '__') if '.' in field else None
+                    field_name = annotation + "__" + field.strip()
+                    field_name, *args = field_name.split("|")
+                    if any(field_name.endswith(":{}".format(cast)) for cast in CASTS):
+                        field_name, cast = field_name.split(":")
+                    source = field_name.replace(".", "__") if "." in field else None
                     annotations[field_name] = serializers.ReadOnlyField(source=source)
 
             # Ajoute les champs d'aggregation au serializer
             aggregations = {}
             for aggregate in AGGREGATES.keys():
-                for field in url_params.get(aggregate, '').split(','):
+                for field in url_params.get(aggregate, "").split(","):
                     if not field:
                         continue
-                    field_name = aggregate + '__' + field.strip()
-                    field_name, *args = field_name.split('|')
-                    if any(field_name.endswith(':{}'.format(cast)) for cast in CASTS):
-                        field_name, cast = field_name.split(':')
-                    source = field_name.replace('.', '__') if '.' in field else None
+                    field_name = aggregate + "__" + field.strip()
+                    field_name, *args = field_name.split("|")
+                    if any(field_name.endswith(":{}".format(cast)) for cast in CASTS):
+                        field_name, cast = field_name.split(":")
+                    source = field_name.replace(".", "__") if "." in field else None
                     aggregations[field_name] = serializers.ReadOnlyField(source=source)
 
             # Ajoute les regroupements au serializer
-            if 'group_by' in url_params or aggregations:
+            if "group_by" in url_params or aggregations:
                 fields = {}
-                for field in url_params.get('group_by', '').split(','):
+                for field in url_params.get("group_by", "").split(","):
                     add_field_to_serializer(fields, field)
                 fields.update(aggregations)
                 # Un serializer avec les données regroupées est créé à la volée
-                return type(default_serializer.__name__, (serializers.Serializer, ), fields)
+                return type(default_serializer.__name__, (serializers.Serializer,), fields)
 
             # Ajoute la restriction des champs au serializer
-            elif 'fields' in url_params:
+            elif "fields" in url_params:
                 fields = {}
-                for field in url_params.get('fields').split(','):
+                for field in url_params.get("fields").split(","):
                     add_field_to_serializer(fields, field)
                 # Un serializer avec restriction des champs est créé à la volée
-                return type(default_serializer.__name__, (serializers.Serializer, ), fields)
+                return type(default_serializer.__name__, (serializers.Serializer,), fields)
 
             # Utilisation du serializer simplifié
-            elif str_to_bool(url_params.get('simple')):
-                serializer = getattr(self, 'simple_serializer', default_serializer)
+            elif str_to_bool(url_params.get("simple")):
+                serializer = getattr(self, "simple_serializer", default_serializer)
                 serializer._declared_fields.update(annotations)
                 return serializer
 
             # Utilisation du serializer par défaut en cas de mise à jour sans altération des données
-            elif self.action in ('update', 'partial_update'):
+            elif self.action in ("update", "partial_update"):
                 return default_serializer
 
             # Ajoute les annotations au serializer par défaut
@@ -129,25 +131,26 @@ class CommonModelViewSet(viewsets.ModelViewSet):
         queryset = self.get_queryset()
         if not isinstance(queryset, QuerySet):
             from rest_framework.response import Response
+
             return Response(queryset)
         try:
             return super().list(request, *args, **kwargs)
         except (AttributeError, FieldDoesNotExist) as error:
             self.queryset_error = error
-            raise ValidationError(dict(error="fields: {}".format(error)), code='fields')
+            raise ValidationError(dict(error="fields: {}".format(error)), code="fields")
 
     def paginate_queryset(self, queryset):
         # Aucune pagination si toutes les données sont demandées ou qu'il ne s'agit pas d'un QuerySet
-        if not isinstance(queryset, QuerySet) or str_to_bool(self.request.query_params.get('all', None)):
+        if not isinstance(queryset, QuerySet) or str_to_bool(self.request.query_params.get("all", None)):
             return None
         try:
             return super().paginate_queryset(queryset)
         except ProgrammingError as error:
-            raise ValidationError(dict(error="page: {}".format(error)), code='page')
+            raise ValidationError(dict(error="page: {}".format(error)), code="page")
 
     def get_queryset(self):
         # Evite la ré-évaluation du QuerySet en cas d'erreur
-        if getattr(self, 'queryset_error', False):
+        if getattr(self, "queryset_error", False):
             return
 
         try:
@@ -160,151 +163,150 @@ class CommonModelViewSet(viewsets.ModelViewSet):
             self.url_params = url_params = self.request.query_params.dict()
 
             # Mots-clés réservés dans les URLs
-            default_reserved_query_params = ['format'] + ([
-                self.paginator.page_query_param,
-                self.paginator.page_size_query_param] if self.paginator else [])
+            default_reserved_query_params = ["format"] + (
+                [self.paginator.page_query_param, self.paginator.page_size_query_param] if self.paginator else []
+            )
             reserved_query_params = default_reserved_query_params + RESERVED_QUERY_PARAMS
 
             # Critères de recherche dans le cache
-            cache_key = url_params.pop('cache', None)
+            cache_key = url_params.pop("cache", None)
             if cache_key:
                 from django.core.cache import cache
+
                 cache_params = cache.get(settings.API_CACHE_PREFIX + cache_key, {})
                 new_url_params = {}
                 new_url_params.update(**cache_params)
                 new_url_params.update(**url_params)
                 self.url_params = url_params = new_url_params
                 new_cache_params = {
-                    key: value for key, value in url_params.items()
-                    if key not in default_reserved_query_params}
+                    key: value for key, value in url_params.items() if key not in default_reserved_query_params
+                }
                 if new_cache_params:
-                    from django.utils.timezone import now
-                    from datetime import timedelta
-                    cache_timeout = int(url_params.pop('timeout', settings.API_CACHE_TIMEOUT)) or None
+                    cache_timeout = int(url_params.pop("timeout", settings.API_CACHE_TIMEOUT)) or None
                     cache.set(settings.API_CACHE_PREFIX + cache_key, new_cache_params, timeout=cache_timeout)
-                    options['cache_expires'] = now() + timedelta(seconds=cache_timeout) if cache_timeout else 'never'
-                cache_url = '{}?cache={}'.format(self.request.build_absolute_uri(self.request.path), cache_key)
+                    options["cache_expires"] = now() + timedelta(seconds=cache_timeout) if cache_timeout else "never"
+                cache_url = "{}?cache={}".format(self.request.build_absolute_uri(self.request.path), cache_key)
                 plain_url = cache_url
                 for key, value in url_params.items():
-                    url_param = '&{}={}'.format(key, value)
+                    url_param = "&{}={}".format(key, value)
                     if key in default_reserved_query_params:
                         cache_url += url_param
                     plain_url += url_param
-                options['cache_data'] = new_cache_params
-                options['cache_url'] = cache_url
-                options['raw_url'] = plain_url
+                options["cache_data"] = new_cache_params
+                options["cache_url"] = cache_url
+                options["raw_url"] = plain_url
 
             # Erreurs silencieuses
-            silent = str_to_bool(url_params.get('silent', ''))
+            silent = str_to_bool(url_params.get("silent", ""))
 
             # Filtres (dans une fonction pour être appelé par les aggregations sans group_by)
             def do_filter(queryset):
                 try:
                     filters, excludes = {}, {}
                     for key, value in url_params.items():
-                        key = key.replace('.', '__')
-                        if value.startswith('[') and value.endswith(']'):
-                            value = F(value[1:-1].replace('.', '__'))
+                        key = key.replace(".", "__")
+                        if value.startswith("[") and value.endswith("]"):
+                            value = F(value[1:-1].replace(".", "__"))
                         if key in reserved_query_params:
                             continue
-                        if key.startswith('-'):
+                        if key.startswith("-"):
                             key = key[1:].strip()
                             excludes[key] = url_value(key, value)
                         else:
-                            key = key[1:].strip() if key.startswith('+') else key.strip()
+                            key = key[1:].strip() if key.startswith("+") else key.strip()
                             filters[key] = url_value(key, value)
                     if filters:
                         queryset = queryset.filter(**filters)
                     if excludes:
                         queryset = queryset.exclude(**excludes)
                     # Filtres génériques
-                    others = url_params.get('filters', '')
+                    others = url_params.get("filters", "")
                     if others:
                         queryset = queryset.filter(parse_filters(others))
                     if filters or others:
-                        options['filters'] = True
+                        options["filters"] = True
                 except Exception as error:
                     if not silent:
-                        raise ValidationError(dict(error="filters: {}".format(error)), code='filters')
-                    options['filters'] = False
+                        raise ValidationError(dict(error="filters: {}".format(error)), code="filters")
+                    options["filters"] = False
                     if settings.DEBUG:
-                        options['filters_error'] = str(error)
+                        options["filters_error"] = str(error)
                 return queryset
 
             # Annotations
             annotations = {}
             try:
                 for annotation, function in FUNCTIONS.items():
-                    for field_name in url_params.get(annotation, '').split(','):
+                    for field_name in url_params.get(annotation, "").split(","):
                         if not field_name:
                             continue
-                        field_name, *args = field_name.split('|')
+                        field_name, *args = field_name.split("|")
                         function_args = []
                         for arg in args:
                             try:
                                 function_args.append(ast.literal_eval(arg))
                             except (SyntaxError, ValueError):
-                                arg = arg.replace('.', '__')
-                                if any(arg.endswith(':{}'.format(cast)) for cast in CASTS):
-                                    arg, *junk, cast = arg.split(':')
+                                arg = arg.replace(".", "__")
+                                if any(arg.endswith(":{}".format(cast)) for cast in CASTS):
+                                    arg, *junk, cast = arg.split(":")
                                     cast = CASTS.get(cast.lower())
                                     arg = functions.Cast(arg, output_field=cast()) if cast else arg
                                 function_args.append(arg)
-                        field_name = field_name.replace('.', '__')
+                        field_name = field_name.replace(".", "__")
                         field = field_name
-                        if any(field_name.endswith(':{}'.format(cast)) for cast in CASTS):
-                            field_name, *junk, cast = field_name.split(':')
+                        if any(field_name.endswith(":{}".format(cast)) for cast in CASTS):
+                            field_name, *junk, cast = field_name.split(":")
                             cast = CASTS.get(cast.lower())
                             field = functions.Cast(field_name, output_field=cast()) if cast else field_name
-                        annotations[annotation + '__' + field_name] = function(field, *function_args)
+                        annotations[annotation + "__" + field_name] = function(field, *function_args)
                 if annotations:
                     queryset = queryset.annotate(**annotations)
-                    options['annotates'] = True
+                    options["annotates"] = True
             except Exception as error:
                 if not silent:
-                    raise ValidationError(dict(error="annotates: {}".format(error)), code='annotates')
-                options['annotates'] = False
+                    raise ValidationError(dict(error="annotates: {}".format(error)), code="annotates")
+                options["annotates"] = False
                 if settings.DEBUG:
-                    options['annotates_error'] = str(error)
+                    options["annotates_error"] = str(error)
 
             # Aggregations
             aggregations = {}
-            if self.action == 'list':
+            if self.action == "list":
                 try:
                     for aggregate, function in AGGREGATES.items():
-                        for field_name in url_params.get(aggregate, '').split(','):
+                        for field_name in url_params.get(aggregate, "").split(","):
                             if not field_name:
                                 continue
-                            distinct = field_name.startswith(' ') or field_name.startswith('+')
+                            distinct = field_name.startswith(" ") or field_name.startswith("+")
                             field_name = field_name[1:] if distinct else field_name
-                            field_name = field_name.strip().replace('.', '__')
+                            field_name = field_name.strip().replace(".", "__")
                             value = field_name
-                            if any(field_name.endswith(':{}'.format(cast)) for cast in CASTS):
-                                field_name, *junk, cast = field_name.split(':')
+                            if any(field_name.endswith(":{}".format(cast)) for cast in CASTS):
+                                field_name, *junk, cast = field_name.split(":")
                                 cast = CASTS.get(cast.lower())
                                 value = functions.Cast(field_name, output_field=cast()) if cast else value
-                            aggregations[aggregate + '__' + field_name] = function(value, distinct=distinct)
-                    group_by = url_params.get('group_by', '')
+                            aggregations[aggregate + "__" + field_name] = function(value, distinct=distinct)
+                    group_by = url_params.get("group_by", "")
                     if group_by:
-                        _queryset = queryset.values(*group_by.replace('.', '__').split(','))
+                        _queryset = queryset.values(*group_by.replace(".", "__").split(","))
                         if aggregations:
                             _queryset = _queryset.annotate(**aggregations)
                         else:
                             _queryset = _queryset.distinct()
                         queryset = _queryset
-                        options['aggregates'] = True
+                        options["aggregates"] = True
                     elif aggregations:
-                        options['aggregates'] = True
+                        options["aggregates"] = True
                         queryset = do_filter(queryset)  # Filtres éventuels
                         return queryset.aggregate(**aggregations)
                 except ValidationError:
                     raise
                 except Exception as error:
                     if not silent:
-                        raise ValidationError(dict(error="aggregates: {}".format(error)), code='aggregates')
-                    options['aggregates'] = False
+                        raise ValidationError(dict(error="aggregates: {}".format(error)), code="aggregates")
+                    options["aggregates"] = False
                     if settings.DEBUG:
-                        options['aggregates_error'] = str(error)
+                        options["aggregates_error"] = str(error)
 
             # Filtres
             queryset = do_filter(queryset)
@@ -312,51 +314,51 @@ class CommonModelViewSet(viewsets.ModelViewSet):
             # Tris
             orders = []
             try:
-                order_by = url_params.get('order_by', '')
+                order_by = url_params.get("order_by", "")
                 if order_by:
-                    for order in order_by.replace('.', '__').split(','):
-                        nulls_first, nulls_last = order.endswith('<'), order.endswith('>')
+                    for order in order_by.replace(".", "__").split(","):
+                        nulls_first, nulls_last = order.endswith("<"), order.endswith(">")
                         order = order[:-1] if nulls_first or nulls_last else order
-                        if order.startswith('-'):
+                        if order.startswith("-"):
                             orders.append(F(order[1:]).desc(nulls_first=nulls_first, nulls_last=nulls_last))
                         else:
-                            order = order[1:] if order.startswith('+') or order.startswith(' ') else order
+                            order = order[1:] if order.startswith("+") or order.startswith(" ") else order
                             orders.append(F(order).asc(nulls_first=nulls_first, nulls_last=nulls_last))
                     temp_queryset = queryset.order_by(*orders)
                     str(temp_queryset.query)  # Force SQL evaluation to retrieve exception
                     queryset = temp_queryset
-                    options['order_by'] = True
+                    options["order_by"] = True
             except EmptyResultSet:
                 pass
             except Exception as error:
                 if not silent:
-                    raise ValidationError(dict(error="order_by: {}".format(error)), code='order_by')
-                options['order_by'] = False
+                    raise ValidationError(dict(error="order_by: {}".format(error)), code="order_by")
+                options["order_by"] = False
                 if settings.DEBUG:
-                    options['order_by_error'] = str(error)
+                    options["order_by_error"] = str(error)
 
             # Distinct
             distincts = []
             try:
-                distinct = url_params.get('distinct', '')
+                distinct = url_params.get("distinct", "")
                 if distinct:
-                    distincts = distinct.replace('.', '__').split(',')
+                    distincts = distinct.replace(".", "__").split(",")
                     if str_to_bool(distinct) is not None:
                         distincts = []
                     queryset = queryset.distinct(*distincts)
-                    options['distinct'] = True
+                    options["distinct"] = True
             except EmptyResultSet:
                 pass
             except Exception as error:
                 if not silent:
-                    raise ValidationError(dict(error="distinct: {}".format(error)), code='distinct')
-                options['distinct'] = False
+                    raise ValidationError(dict(error="distinct: {}".format(error)), code="distinct")
+                options["distinct"] = False
                 if settings.DEBUG:
-                    options['distinct_error'] = str(error)
+                    options["distinct_error"] = str(error)
 
             # Requête simplifiée et/ou extraction de champs spécifiques
-            fields = url_params.get('fields', '')
-            if str_to_bool(url_params.get('simple', '')) or fields:
+            fields = url_params.get("fields", "")
+            if str_to_bool(url_params.get("simple", "")) or fields:
                 # Supprime la récupération des relations
                 if queryset.query.select_related:
                     queryset = queryset.select_related(None).prefetch_related(None)
@@ -364,28 +366,29 @@ class CommonModelViewSet(viewsets.ModelViewSet):
                 try:
                     relateds = set()
                     field_names = set()
-                    for field in fields.replace('.', '__').split(','):
+                    for field in fields.replace(".", "__").split(","):
                         if not field:
                             continue
                         field_names.add(field)
-                        *related, field_name = field.split('__')
+                        *related, field_name = field.split("__")
                         if related and field not in annotations:
-                            relateds.add('__'.join(related))
+                            relateds.add("__".join(related))
                     if relateds:
                         queryset = queryset.select_related(*relateds)
                     if field_names:
                         queryset = queryset.values(*field_names)
                 except Exception as error:
                     if not silent:
-                        raise ValidationError(dict(error="fields: {}".format(error)), code='fields')
+                        raise ValidationError(dict(error="fields: {}".format(error)), code="fields")
             else:
                 # Récupération des métadonnées
-                metadata = str_to_bool(url_params.get('meta', ''))
-                if metadata and hasattr(self, 'metadata'):
+                metadata = str_to_bool(url_params.get("meta", ""))
+                if metadata and hasattr(self, "metadata"):
                     # Permet d'éviter les conflits entre prefetch lookups identiques
                     viewset_lookups = [
                         prefetch if isinstance(prefetch, str) else prefetch.prefetch_through
-                        for prefetch in queryset._prefetch_related_lookups]
+                        for prefetch in queryset._prefetch_related_lookups
+                    ]
                     lookups_metadata = []
                     for lookup in self.metadata or []:
                         if isinstance(lookup, str):
@@ -397,12 +400,13 @@ class CommonModelViewSet(viewsets.ModelViewSet):
                         queryset = queryset.prefetch_related(*lookups_metadata)
 
             # Ajout des options de filtres/tris dans la pagination
-            if self.paginator and hasattr(self.paginator, 'additional_data'):
+            if self.paginator and hasattr(self.paginator, "additional_data"):
                 # Force un tri sur la clé primaire en cas de pagination
-                if hasattr(queryset, 'ordered') and not queryset.ordered:
+                if hasattr(queryset, "ordered") and not queryset.ordered:
                     primary_key = get_pk_field(queryset.model)
                     queryset = queryset.order_by(
-                        *(getattr(queryset, '_fields', None) or distincts or [primary_key.name]))
+                        *(getattr(queryset, "_fields", None) or distincts or [primary_key.name])
+                    )
                 self.paginator.additional_data = dict(options=options)
             return queryset
         except ValidationError as error:
@@ -420,10 +424,10 @@ class UserViewSet(CommonModelViewSet):
         current_user = request.user
         if current_user.is_superuser:
             return True
-        elif self.action in ['create']:
+        elif self.action in ["create"]:
             # Autorise la création pour tout le monde
             return True
-        elif self.action in ['update', 'partial_update']:
+        elif self.action in ["update", "partial_update"]:
             # Autorise la modification de soi-même ou d'un autre utilisateur de rang inférieur
             self.kwargs.update({self.lookup_field: self.kwargs.get(self.lookup_url_kwarg or self.lookup_field, None)})
             user = self.get_object()
@@ -436,23 +440,23 @@ class UserViewSet(CommonModelViewSet):
         # Assure que l'utilisateur ne s'octroie pas des droits qu'il ne peut pas avoir
         user = self.request.user
         if not user or (not user.is_staff and not user.is_superuser):
-            data['is_active'] = True
+            data["is_active"] = True
         if not user or not user.is_staff:
-            data['is_staff'] = False
+            data["is_staff"] = False
         if not user or not user.is_superuser:
-            data['is_superuser'] = False
-        if 'groups' in data and data.get('groups'):
+            data["is_superuser"] = False
+        if "groups" in data and data.get("groups"):
             if not user:
-                data['groups'] = []
+                data["groups"] = []
             elif not user.is_superuser:
                 groups = user.groups.all()
-                data['groups'] = list(set(groups) & set(data.get('groups', [])))
-        if 'user_permissions' in data and data.get('user_permissions'):
+                data["groups"] = list(set(groups) & set(data.get("groups", [])))
+        if "user_permissions" in data and data.get("user_permissions"):
             if not user:
-                data['user_permissions'] = []
+                data["user_permissions"] = []
             elif not user.is_superuser:
                 user_permissions = user.user_permissions.all()
-                data['user_permissions'] = list(set(user_permissions) & set(data.get('user_permissions', [])))
+                data["user_permissions"] = list(set(user_permissions) & set(data.get("user_permissions", [])))
 
     def perform_create(self, serializer):
         self.check_data(serializer.validated_data)

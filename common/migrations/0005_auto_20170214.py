@@ -8,17 +8,17 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('common', '0004_auto_20161219'),
+        ("common", "0004_auto_20161219"),
     ]
 
     operations = [
         migrations.AlterField(
-            model_name='metadata',
-            name='key',
-            field=models.CharField(db_index=True, max_length=100, verbose_name='clé'),
+            model_name="metadata",
+            name="key",
+            field=models.CharField(db_index=True, max_length=100, verbose_name="clé"),
         ),
         migrations.AlterIndexTogether(
-            name='metadata',
-            index_together=set([('key', 'deletion_date')]),
+            name="metadata",
+            index_together=set([("key", "deletion_date")]),
         ),
     ]

@@ -1,13 +1,13 @@
 # coding: utf-8
 # https://github.com/ambitioninc/django-dynamic-db-router
-import threading
 import sys
+import threading
 from copy import deepcopy
 from functools import wraps
 
-from common.utils import short_identifier
-from django.db import connections, DEFAULT_DB_ALIAS
+from django.db import DEFAULT_DB_ALIAS, connections
 
+from common.utils import short_identifier
 
 # Local thread for sharing database override
 # TODO: verify local thread is not shared between asynchronous tasks or different users
@@ -21,15 +21,15 @@ class DatabaseOverrideRouter(object):
 
     def db_for_read(self, model, **hints):
         # Disabled during tests
-        if sys.argv[1:2] == ['test']:
+        if sys.argv[1:2] == ["test"]:
             return DEFAULT_DB_ALIAS
-        return getattr(local_thread, 'db_read_override', [DEFAULT_DB_ALIAS])[-1]
+        return getattr(local_thread, "db_read_override", [DEFAULT_DB_ALIAS])[-1]
 
     def db_for_write(self, model, **hints):
         # Disabled during tests
-        if sys.argv[1:2] == ['test']:
+        if sys.argv[1:2] == ["test"]:
             return DEFAULT_DB_ALIAS
-        return getattr(local_thread, 'db_write_override', [DEFAULT_DB_ALIAS])[-1]
+        return getattr(local_thread, "db_write_override", [DEFAULT_DB_ALIAS])[-1]
 
     def allow_relation(self, *args, **kwargs):
         return True
@@ -98,16 +98,16 @@ class database_override:
             self.using = using
         elif isinstance(using, dict):
             if options:
-                database_options = using['OPTIONS'] = using.get('OPTIONS', {})
+                database_options = using["OPTIONS"] = using.get("OPTIONS", {})
                 database_options.update(**options)
             self.database_alias = short_identifier()
             connections.databases[self.database_alias] = using
             self.using = self.database_alias
 
     def __enter__(self):
-        if not hasattr(local_thread, 'db_read_override'):
+        if not hasattr(local_thread, "db_read_override"):
             local_thread.db_read_override = [DEFAULT_DB_ALIAS]
-        if not hasattr(local_thread, 'db_write_override'):
+        if not hasattr(local_thread, "db_write_override"):
             local_thread.db_write_override = [DEFAULT_DB_ALIAS]
         read_db = self.using if self.read else local_thread.db_read_override[-1]
         write_db = self.using if self.write else local_thread.db_write_override[-1]
@@ -127,4 +127,5 @@ class database_override:
         def wrapper(*args, **kwargs):
             with self:
                 return func(*args, **kwargs)
+
         return wrapper

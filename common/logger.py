@@ -5,20 +5,20 @@ from collections import namedtuple
 from django.utils.timezone import now
 from django.utils.translation import gettext_lazy as _
 
-
 # Message de log personnalisé
-LogEntry = namedtuple('LogEntry', ['date', 'level', 'color', 'message'])
+LogEntry = namedtuple("LogEntry", ["date", "level", "color", "message"])
 
 
 class Logger(object):
     """
     Classe de gestion des messages d'alerte
     """
-    KEY_DEBUG = '_DEBUG'
-    KEY_INFO = '_INFO'
-    KEY_WARNING = '_WARNING'
-    KEY_ERROR = '_ERROR'
-    KEY_CRITICAL = '_CRITICAL'
+
+    KEY_DEBUG = "_DEBUG"
+    KEY_INFO = "_INFO"
+    KEY_WARNING = "_WARNING"
+    KEY_ERROR = "_ERROR"
+    KEY_CRITICAL = "_CRITICAL"
     # Clés de contextes
     CONTEXT_KEYS = {
         logging.DEBUG: KEY_DEBUG,
@@ -29,11 +29,11 @@ class Logger(object):
     }
     # Couleurs des niveaux d'alerte dans le logger
     COLORS = {
-        logging.DEBUG: 'blue',
-        logging.INFO: 'green',
-        logging.WARNING: 'orange',
-        logging.ERROR: 'red',
-        logging.CRITICAL: 'purple',
+        logging.DEBUG: "blue",
+        logging.INFO: "green",
+        logging.WARNING: "orange",
+        logging.ERROR: "red",
+        logging.CRITICAL: "purple",
     }
 
     def __init__(self, name=None, keep_messages=False):
@@ -59,10 +59,8 @@ class Logger(object):
         # Conservation du message si demandé
         if self.keep_messages:
             logentry = LogEntry(
-                date=now(),
-                level=logging.getLevelName(level),
-                color=Logger.COLORS[level],
-                message=message)
+                date=now(), level=logging.getLevelName(level), color=Logger.COLORS[level], message=message
+            )
             self.entries.append(logentry)
 
         # Ajout du message dans le contexte cible si demandé

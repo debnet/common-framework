@@ -2,9 +2,9 @@
 from django.db import models
 from rest_framework import serializers
 from rest_framework.fields import ChoiceField, Field, ReadOnlyField
-from rest_framework.relations import HyperlinkedRelatedField, HyperlinkedIdentityField
+from rest_framework.relations import HyperlinkedIdentityField, HyperlinkedRelatedField
 
-from common.utils import json_encode, recursive_get_urls, get_pk_field
+from common.utils import get_pk_field, json_encode, recursive_get_urls
 
 
 class JsonField(Field):
@@ -29,6 +29,7 @@ class QuerySetChoiceField(ChoiceField):
     """
     Surcharge d'un champ de choix se comportant comme une clé étrangère avec l'option de choisir la clé et le libellé
     """
+
     def __init__(self, model, value=None, label=None, filters=None, order_by=None, **kwargs):
         self.model = model
         self.value = value
@@ -68,25 +69,26 @@ class ReadOnlyObjectField(ReadOnlyField):
 
     def to_representation(self, value):
         url = None
-        if getattr(value, 'url', None):
+        if getattr(value, "url", None):
             url = value.url
-        elif isinstance(value, dict) and 'url' in value:
-            url = value.get('url')
+        elif isinstance(value, dict) and "url" in value:
+            url = value.get("url")
         if url:
-            request = self.context.get('request', None)
+            request = self.context.get("request", None)
             if request is not None:
                 return request.build_absolute_uri(url)
             return url
         if not isinstance(value, models.Model):
             return value
         pk_field = get_pk_field(value).name
-        return value.to_dict() if hasattr(value, 'to_dict') else getattr(value, pk_field, value)
+        return value.to_dict() if hasattr(value, "to_dict") else getattr(value, pk_field, value)
 
 
 class CustomHyperlinkedField:
     """
     Surcharge des méthodes pour les champs identifiants par URL
     """
+
     urls_for_model = {}
     pk_field = None
 
@@ -95,7 +97,7 @@ class CustomHyperlinkedField:
         return str(obj.pk)
 
     def get_url(self, obj, view_name, request, format):
-        if not hasattr(obj, 'pk') or obj.pk in (None, ''):
+        if not hasattr(obj, "pk") or obj.pk in (None, ""):
             return None
 
         try:
@@ -103,7 +105,7 @@ class CustomHyperlinkedField:
             model = self.parent.Meta.model._meta.get_field(self.field_name).related_model
         except Exception:
             # Récupération du modèle lié au QuerySet
-            model = getattr(getattr(self, 'queryset', None), 'model', None) or type(obj)
+            model = getattr(getattr(self, "queryset", None), "model", None) or type(obj)
 
         # Tente de récupérer l'URL dans les APIs qui correspondent exactement au modèle ciblé
         urls = self.urls_for_model[model] = self.urls_for_model.get(model) or list(recursive_get_urls(model=model))
@@ -141,11 +143,11 @@ class AsymetricRelatedField(serializers.PrimaryKeyRelatedField):
     @classmethod
     def from_serializer(cls, serializer, name=None):
         if name is None:
-            item = serializer.Meta.model \
-                if isinstance(serializer, serializers.ModelSerializer) \
-                else serializer.__class__
-            name = '{}AsymetricAutoField'.format(item.__name__)
-        return type(name, (cls, ), {"serializer_class": serializer})
+            item = (
+                serializer.Meta.model if isinstance(serializer, serializers.ModelSerializer) else serializer.__class__
+            )
+            name = "{}AsymetricAutoField".format(item.__name__)
+        return type(name, (cls,), {"serializer_class": serializer})
 
     # Surcharge permettant de récupérer l'objet serialisé (et non juste l'identifiant)
     def to_representation(self, value):

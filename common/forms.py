@@ -2,8 +2,13 @@
 from django import forms
 from django.forms.formsets import BaseFormSet, formset_factory
 from django.forms.models import (
-    BaseInlineFormSet, BaseModelFormSet, ModelForm,
-    modelform_factory, modelformset_factory, _get_foreign_key)
+    BaseInlineFormSet,
+    BaseModelFormSet,
+    ModelForm,
+    _get_foreign_key,
+    modelform_factory,
+    modelformset_factory,
+)
 from django.utils.translation import gettext_lazy as _
 
 from common.models import Entity, PerishableEntity
@@ -27,13 +32,13 @@ class CommonForm(object):
         super().__init__(*args, **kwargs)
 
     def construct_inlines(self, data=None, files=None, context=None, **kwargs):
-        if not hasattr(self, '_inlines'):
+        if not hasattr(self, "_inlines"):
             return
         self.inlines = []
         for inline in self._inlines:
-            meta = getattr(getattr(inline, 'model', None), '_meta', None)
-            instance = getattr(self, 'instance', None)
-            prefix = getattr(inline, 'prefix', getattr(meta, 'model_name', None))
+            meta = getattr(getattr(inline, "model", None), "_meta", None)
+            instance = getattr(self, "instance", None)
+            prefix = getattr(inline, "prefix", getattr(meta, "model_name", None))
             inline = inline(data, files, instance=instance, prefix=prefix, context=context, **kwargs)
             self.inlines.append(inline)
         return self.inlines
@@ -101,8 +106,12 @@ class CommonModelForm(CommonForm, ModelForm):
         for inline in self.inlines:
             inline.instance = instance
             inline.save(
-                commit=commit, _ignore_log=self._ignore_log, _current_user=self._current_user,
-                _reason=self._reason, _force_default=self._force_default)
+                commit=commit,
+                _ignore_log=self._ignore_log,
+                _current_user=self._current_user,
+                _reason=self._reason,
+                _force_default=self._force_default,
+            )
         return instance
 
     def is_valid(self):
@@ -144,14 +153,19 @@ class CommonBaseModelFormSet(CommonBaseFormSet):
             instance._current_user = self._current_user
             instance._reason = self._reason
             instance._force_default = self._force_default or self._from_admin
-            if hasattr(self, 'fk'):
+            if hasattr(self, "fk"):
                 pk_value = getattr(self.instance, self.fk.remote_field.field_name)
-                setattr(instance, self.fk.get_attname(), getattr(pk_value, 'pk', pk_value))
+                setattr(instance, self.fk.get_attname(), getattr(pk_value, "pk", pk_value))
         instance = super().save(commit=commit)
         for inline in self.inlines:
             inline.instance = instance
-            inline.save(commit=commit, _ignore_log=self._ignore_log, _current_user=self._current_user,
-                        _reason=self._reason, _force_default=self._force_default)
+            inline.save(
+                commit=commit,
+                _ignore_log=self._ignore_log,
+                _current_user=self._current_user,
+                _reason=self._reason,
+                _force_default=self._force_default,
+            )
         return instance
 
     def clean(self):
@@ -217,8 +231,15 @@ def get_model_formset(model, form=None, formset=None, **kwargs):
 
 
 def get_model_form(
-        base_model=None, base_form=None, inline_models=None, inline_forms=None, inline_options=None,
-        common_options=None, formset=False, **kwargs):
+    base_model=None,
+    base_form=None,
+    inline_models=None,
+    inline_forms=None,
+    inline_options=None,
+    common_options=None,
+    formset=False,
+    **kwargs
+):
     """
     Permet de construire d'un coup un formulaire de modèle et ses sous-formulaires éventuels
     Les listes `inline_models`, `inline_forms` et `inline_kwargs` doivent être de même taille et dans le même ordre
@@ -232,6 +253,7 @@ def get_model_form(
     :return: Formulaire principal et ses sous-formulaires
     """
     from itertools import zip_longest
+
     common_options = common_options or {}
     inline_models, inline_forms, inline_options = inline_models or [], inline_forms or [], inline_options or []
     inlines = []
@@ -242,7 +264,7 @@ def get_model_form(
         options.update(common_options)
         fk = _get_foreign_key(base_model, model)
         if fk.unique:
-            options['max_num'] = 1
+            options["max_num"] = 1
         inline = get_model_formset(model, form=form, formset=CommonInlineFormSet, **options)
         inline.fk = fk
         inlines.append(inline)
@@ -262,7 +284,7 @@ class JsonField(forms.CharField):
     """
 
     default_error_messages = {
-        'invalid': _("'%(value)s' value must be valid JSON."),
+        "invalid": _("'%(value)s' value must be valid JSON."),
     }
 
     class InvalidInput(str):
@@ -271,13 +293,14 @@ class JsonField(forms.CharField):
     def __init__(self, encoder=None, decoder=None, **kwargs):
         self.encoder = encoder
         self.decoder = decoder
-        kwargs.setdefault('widget', forms.Textarea)
+        kwargs.setdefault("widget", forms.Textarea)
         super().__init__(**kwargs)
 
     def to_python(self, value):
         if self.disabled:
             return value
         from common.fields import JsonString
+
         if value in self.empty_values:
             return None
         elif isinstance(value, (list, dict, int, float, JsonString)):
@@ -286,9 +309,9 @@ class JsonField(forms.CharField):
             converted = json_decode(value, cls=self.decoder)
         except ValueError:
             raise forms.ValidationError(
-                self.error_messages['invalid'],
-                code='invalid',
-                params={'value': value},
+                self.error_messages["invalid"],
+                code="invalid",
+                params={"value": value},
             )
         if isinstance(converted, str):
             return JsonString(converted)
@@ -316,6 +339,7 @@ class BaseFilterForm(forms.Form):
         valeur, liste de sous-filtres, dictionnaire de filtres, liste des sous-filtres à exécuter un par un
     et doivent retourner True si un distinct est nécessaire, False|None sinon
     """
+
     distinct = False
     count = 0
     _lookups, filled = {}, {}
@@ -342,7 +366,7 @@ class BaseFilterForm(forms.Form):
                 kwargs[_lookup] = value
             elif lookup:
                 kwargs[lookup] = value
-            if value == '' or value == field.initial:
+            if value == "" or value == field.initial:
                 continue
             self.count += 1
             self.filled[key] = value

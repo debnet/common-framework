@@ -4,9 +4,11 @@ from django.contrib.admin.models import LogEntry
 from django.contrib.auth import get_user_model
 from django.contrib.auth.models import Group, Permission
 from django.contrib.contenttypes.models import ContentType
+
 try:
     from rest_framework.authtoken.models import Token
-    assert 'rest_framework.authtoken' in settings.INSTALLED_APPS
+
+    assert "rest_framework.authtoken" in settings.INSTALLED_APPS
 except (AssertionError, ImportError):
     Token = None
 
@@ -14,8 +16,7 @@ from common.api.permissions import CurrentUserPermissions
 from common.api.serializers import UserSerializer
 from common.api.utils import create_api, disable_relation_fields
 from common.api.viewsets import UserViewSet
-from common.models import MODELS, MetaData, GroupMetaData, UserMetaData
-
+from common.models import MODELS, GroupMetaData, MetaData, UserMetaData
 
 # Modèle utilisateur courant
 User = get_user_model()
@@ -26,7 +27,7 @@ VIEWSETS = {}
 
 # Héritages des serializers et viewsets
 SERIALIZERS_BASE = {
-    User: (UserSerializer, ),
+    User: (UserSerializer,),
     Group: (),
     UserMetaData: (),
     GroupMetaData: (),
@@ -36,7 +37,7 @@ SERIALIZERS_BASE = {
     Token: (),
 }
 VIEWSETS_BASE = {
-    User: (UserViewSet, ),
+    User: (UserViewSet,),
 }
 
 # Données complémentaires à ajouter aux serializers et viewsets
@@ -62,12 +63,14 @@ CONFIGS = {
 DEFAULT_CONFIG = dict(depth=1)
 
 # Précise les filtres à appliquer sur les permissions spécifiques par utilisateur
-CurrentUserPermissions.filters.update({
-    User: lambda request: dict(id=request.user.pk),
-    Group: lambda request: dict(user=request.user),
-    UserMetaData: lambda request: dict(user=request.user),
-    GroupMetaData: lambda request: dict(group__user=request.user),
-})
+CurrentUserPermissions.filters.update(
+    {
+        User: lambda request: dict(id=request.user.pk),
+        Group: lambda request: dict(user=request.user),
+        UserMetaData: lambda request: dict(user=request.user),
+        GroupMetaData: lambda request: dict(group__user=request.user),
+    }
+)
 
 # Désactive les listes déroulantes sur les champs de relations
 disable_relation_fields(User, Group, Permission, ContentType, LogEntry, Token, *MODELS)

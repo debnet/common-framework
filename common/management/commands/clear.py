@@ -8,7 +8,6 @@ from django.utils.translation import gettext as _
 
 from common.models import Entity
 
-
 # Logging
 logger = logging.getLogger(__name__)
 
@@ -18,9 +17,9 @@ class Command(BaseCommand):
     leave_locale_alone = True
 
     def add_arguments(self, parser):
-        parser.add_argument('app_label', type=str, help=_("Nom de l'application"))
-        parser.add_argument('--excludes', dest='excludes', type=str, nargs='+', help=_("Modèle(s) à exclure"))
-        parser.add_argument('--includes', dest='includes', type=str, nargs='+', help=_("Modèle(s) à inclure"))
+        parser.add_argument("app_label", type=str, help=_("Nom de l'application"))
+        parser.add_argument("--excludes", dest="excludes", type=str, nargs="+", help=_("Modèle(s) à exclure"))
+        parser.add_argument("--includes", dest="includes", type=str, nargs="+", help=_("Modèle(s) à inclure"))
 
     @transaction.atomic
     def handle(self, *args, app_label=None, excludes=None, includes=None, **options):

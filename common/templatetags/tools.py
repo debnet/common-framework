@@ -11,24 +11,23 @@ from django.template import Library, Node
 from django.utils.formats import localize
 from django.utils.translation import gettext as _
 
-
 register = Library()
 
 
-@register.filter(name='meta')
+@register.filter(name="meta")
 def filter_meta(instance, key):
     """
     Récupération d'une métadonnée sur une instance
     :param key: Clé
     :return: Valeur
     """
-    if hasattr(instance, 'get_metadata'):
+    if hasattr(instance, "get_metadata"):
         return instance.get_metadata(key)
     return None
 
 
-@register.filter(name='parsedate')
-def filter_parsedate(value, options=''):
+@register.filter(name="parsedate")
+def filter_parsedate(value, options=""):
     """
     Parse une date ou un datetime dans n'importe quel format
     :param value: Date ou datetime au format texte
@@ -36,11 +35,12 @@ def filter_parsedate(value, options=''):
     :return: Date ou datetime
     """
     from common.utils import parsedate
+
     options = QueryDict(options)
     return parsedate(value, **options)
 
 
-@register.filter(name='get')
+@register.filter(name="get")
 def filter_get(value, key):
     """
     Permet de récupérer une valeur depuis un objet quelconque
@@ -59,7 +59,7 @@ def filter_get(value, key):
         return None
 
 
-@register.filter(name='localize')
+@register.filter(name="localize")
 def filter_localize(value, use_l10n=None):
     """
     Localise une valeur brute
@@ -70,8 +70,8 @@ def filter_localize(value, use_l10n=None):
     return localize(value, use_l10n=use_l10n) or value
 
 
-@register.simple_tag(name='query', takes_context=True)
-def tag_query(context, queryset, save='', **kwargs):
+@register.simple_tag(name="query", takes_context=True)
+def tag_query(context, queryset, save="", **kwargs):
     """
     Permet de faire des opérations complémentaires sur un QuerySet
     :param context: Contexte local
@@ -80,20 +80,31 @@ def tag_query(context, queryset, save='', **kwargs):
     :param kwargs: Options de filtre/tri/etc...
     :return: Rien
     """
-    from common.api.utils import url_value, AGGREGATES, CASTS, FUNCTIONS
     from django.db.models import F, QuerySet
+
+    from common.api.utils import AGGREGATES, CASTS, FUNCTIONS, url_value
 
     if not isinstance(queryset, QuerySet):
         return queryset
 
     # Fonction de récupération des données depuis les paramètres
     def get(name):
-        return kwargs.get(name, '').replace('.', '__').replace(' ', '')
+        return kwargs.get(name, "").replace(".", "__").replace(" ", "")
 
     reserved_keywords = (
-        'filters', 'fields', 'order_by', 'group_by', 'distinct',
-        'select_related', 'prefetch_related', 'limit',
-    ) + tuple(AGGREGATES.keys()) + tuple(FUNCTIONS.keys())
+        (
+            "filters",
+            "fields",
+            "order_by",
+            "group_by",
+            "distinct",
+            "select_related",
+            "prefetch_related",
+            "limit",
+        )
+        + tuple(AGGREGATES.keys())
+        + tuple(FUNCTIONS.keys())
+    )
 
     # Filtres (dans une fonction pour être appelé par les aggregations sans group_by)
     def do_filter(queryset):
@@ -102,10 +113,10 @@ def tag_query(context, queryset, save='', **kwargs):
         for key, value in kwargs.items():
             if key in reserved_keywords:
                 continue
-            key = key.replace('.', '__')
-            if isinstance(value, str) and value.startswith('[') and value.endswith(']'):
-                value = F(value[1:-1].replace('.', '__'))
-            if key.startswith('_'):
+            key = key.replace(".", "__")
+            if isinstance(value, str) and value.startswith("[") and value.endswith("]"):
+                value = F(value[1:-1].replace(".", "__"))
+            if key.startswith("_"):
                 key = key[1:].strip()
                 excludes[key] = url_value(key, value)
             else:
@@ -116,67 +127,68 @@ def tag_query(context, queryset, save='', **kwargs):
         if excludes:
             queryset = queryset.exclude(**excludes)
         # Filtres génériques
-        others = kwargs.get('filters', None)
+        others = kwargs.get("filters", None)
         if others:
             from common.api.utils import parse_filters
+
             queryset = queryset.filter(parse_filters(others))
         return queryset
 
     # Jointures
-    select_related = get('select_related')
+    select_related = get("select_related")
     if select_related:
-        queryset = queryset.select_related(*select_related.split(','))
-    prefetch_related = get('prefetch_related')
+        queryset = queryset.select_related(*select_related.split(","))
+    prefetch_related = get("prefetch_related")
     if prefetch_related:
-        queryset = queryset.prefetch_related(*prefetch_related.split(','))
+        queryset = queryset.prefetch_related(*prefetch_related.split(","))
 
     # Annotations
     annotations = {}
     for annotation, function in FUNCTIONS.items():
-        for field_name in kwargs.get(annotation, '').split(','):
+        for field_name in kwargs.get(annotation, "").split(","):
             if not field_name:
                 continue
-            field_name, *args = field_name.split('|')
+            field_name, *args = field_name.split("|")
             function_args = []
             for arg in args:
                 try:
                     function_args.append(ast.literal_eval(arg))
                 except (SyntaxError, ValueError):
-                    arg = arg.replace('.', '__')
-                    if any(arg.endswith(':{}'.format(cast)) for cast in CASTS):
-                        arg, *junk, cast = arg.split(':')
+                    arg = arg.replace(".", "__")
+                    if any(arg.endswith(":{}".format(cast)) for cast in CASTS):
+                        arg, *junk, cast = arg.split(":")
                         cast = CASTS.get(cast.lower())
                         arg = functions.Cast(arg, output_field=cast()) if cast else arg
                     function_args.append(arg)
-            field_name = field_name.replace('.', '__')
+            field_name = field_name.replace(".", "__")
             field = field_name
-            if any(field_name.endswith(':{}'.format(cast)) for cast in CASTS):
-                field_name, *junk, cast = field_name.split(':')
+            if any(field_name.endswith(":{}".format(cast)) for cast in CASTS):
+                field_name, *junk, cast = field_name.split(":")
                 cast = CASTS.get(cast.lower())
                 field = functions.Cast(field_name, output_field=cast()) if cast else field_name
-            annotations[annotation + '__' + field_name] = function(field, *function_args)
+            annotations[annotation + "__" + field_name] = function(field, *function_args)
     if annotations:
         queryset = queryset.annotate(**annotations)
 
     # Aggregations
     aggregations = {}
     for aggregate, function in AGGREGATES.items():
-        for field_name in kwargs.get(aggregate, '').split(','):
+        for field_name in kwargs.get(aggregate, "").split(","):
             if not field_name:
                 continue
-            distinct = field_name.startswith(' ') or field_name.startswith('+')
+            distinct = field_name.startswith(" ") or field_name.startswith("+")
             field_name = field_name[1:] if distinct else field_name
-            field_name = field_name.strip().replace('.', '__')
+            field_name = field_name.strip().replace(".", "__")
             value = field_name
-            if any(field_name.endswith(':{}'.format(cast)) for cast in CASTS):
-                field_name, *junk, cast = field_name.split(':')
+            if any(field_name.endswith(":{}".format(cast)) for cast in CASTS):
+                field_name, *junk, cast = field_name.split(":")
                 cast = CASTS.get(cast.lower())
                 value = functions.Cast(field_name, output_field=cast()) if cast else value
-            aggregations[aggregate + '__' + field_name] = function(value, distinct=distinct)
+            aggregations[aggregate + "__" + field_name] = function(value, distinct=distinct)
 
-    group_by = get('group_by')
+    group_by = get("group_by")
     if group_by:
-        _queryset = queryset.values(*group_by.split(','))
+        _queryset = queryset.values(*group_by.split(","))
         if aggregations:
             _queryset = _queryset.annotate(**aggregations)
         else:
@@ -190,56 +202,57 @@ def tag_query(context, queryset, save='', **kwargs):
     queryset = do_filter(queryset)
 
     # Extraction de champs spécifiques
-    fields = get('fields')
+    fields = get("fields")
     if fields:
         # Supprime la récupération des relations
         queryset = queryset.select_related(None).prefetch_related(None)
         # Champs spécifiques
         relateds = set()
         field_names = set()
-        for field in fields.split(','):
+        for field in fields.split(","):
             if not field:
                 continue
             field_names.add(field)
-            *related, field_name = field.split('__')
+            *related, field_name = field.split("__")
             if related:
-                relateds.add('__'.join(related))
+                relateds.add("__".join(related))
         if relateds:
             queryset = queryset.select_related(*relateds)
         if field_names:
             queryset = queryset.values_list(*field_names, named=True)
 
     # Tris
-    order_by = get('order_by')
+    order_by = get("order_by")
     if order_by:
-        _queryset = queryset.order_by(*order_by.split(','))
+        _queryset = queryset.order_by(*order_by.split(","))
         str(_queryset.query)  # Force SQL evaluation to retrieve exception
         queryset = _queryset
 
     # Distinct
-    distinct = get('distinct')
+    distinct = get("distinct")
     if distinct:
         if distinct is True:
             distincts = ()
         else:
-            distincts = distinct.split(',')
+            distincts = distinct.split(",")
         queryset = queryset.distinct(*distincts)
 
     # Limite
-    limit = get('limit')
+    limit = get("limit")
     if limit:
-        limit = [int(lim) for lim in limit.split(',')]
+        limit = [int(lim) for lim in limit.split(",")]
         limit_inf, limit_sup = (0, limit[0]) if len(limit) == 1 else limit[:2]
         queryset = queryset[limit_inf:limit_sup]
 
     context[save] = queryset
-    return ''
+    return ""
 
 
 class PermNode(Node):
     """
     Classe utilitaire pour le template tag des permissions
     """
+
     def __init__(self, nodelist, *perms, obj=None, any=False):
         self.nodelist = nodelist
         self.perms = perms
@@ -247,39 +260,42 @@ class PermNode(Node):
         self.any = any
 
     def render(self, context):
-        if not hasattr(context, 'request'):
-            return ''
+        if not hasattr(context, "request"):
+            return ""
         user = context.request.user
-        valid = any(user.has_perm(perm, self.obj) for perm in self.perms) if self.any \
+        valid = (
+            any(user.has_perm(perm, self.obj) for perm in self.perms)
+            if self.any
             else user.has_perms(self.perms, self.obj)
+        )
         if valid:
             return self.nodelist.render(context)
-        return ''
+        return ""
 
 
-@register.tag(name='perm')
+@register.tag(name="perm")
 def tag_perm(parser, token):
     """
     Permet d'afficher ou non un contenu en fonction des permissions de l'utilisateur connecté (toutes)
     """
-    nodelist = parser.parse(('endperm',))
+    nodelist = parser.parse(("endperm",))
     parser.delete_first_token()
     args = [ast.literal_eval(bit) for bit in token.split_contents()[1:]]
     return PermNode(nodelist, *args)
 
 
-@register.tag(name='anyperm')
+@register.tag(name="anyperm")
 def tag_anyperm(parser, token):
     """
     Permet d'afficher ou non un contenu en fonction des permissions de l'utilisateur connecté (au moins une)
     """
-    nodelist = parser.parse(('endanyperm',))
+    nodelist = parser.parse(("endanyperm",))
     parser.delete_first_token()
     args = [ast.literal_eval(bit) for bit in token.split_contents()[1:]]
     return PermNode(nodelist, *args, any=True)
 
 
-@register.filter(name='conf')
+@register.filter(name="conf")
 def filter_conf(value):
     """
     Retourne la valeur d'un paramètre de configuration
@@ -287,8 +303,8 @@ def filter_conf(value):
     return getattr(settings, value, None)
 
 
-@register.filter(name='gather')
-def filter_gather(value, key='', sep=None):
+@register.filter(name="gather")
+def filter_gather(value, key="", sep=None):
     """
     Permet de rassembler des données selon une clé
     """
@@ -298,20 +314,21 @@ def filter_gather(value, key='', sep=None):
     return sep.join((v.get(key) if isinstance(v, dict) else getattr(v, key) for v in value))
 
 
-@register.filter(name='split')
-def filter_split(value, sep=' '):
+@register.filter(name="split")
+def filter_split(value, sep=" "):
     """
     Permet de diviser une chaîne en fonction d'un séparateur
     """
     return value.split(sep)
 
 
-@register.simple_tag(name='eval', takes_context=True)
+@register.simple_tag(name="eval", takes_context=True)
 def tag_evaluate(context, text):
     """
     Evalue une chaîne comme un template
     """
     from django.template import Context, Template
+
     return Template(text).render(Context(context))
 
 
@@ -319,6 +336,7 @@ class MarkdownNode(Node):
     """
     Classe utilitaire pour le template tag markdown
     """
+
     def __init__(self, nodelist, *extras):
         self.nodelist = nodelist
         self.extras = extras
@@ -327,18 +345,20 @@ class MarkdownNode(Node):
         output = self.nodelist.render(context)
         try:
             import markdown2
+
             return markdown2.markdown(output.strip(), extras=self.extras)
         except ImportError:
             import markdown
+
             markdown.markdown(output.strip(), extensions=self.extras)
 
 
-@register.tag(name='markdown')
+@register.tag(name="markdown")
 def tag_markdown(parser, token):
     """
     Permet de convertir un format markdown en HTML
     """
-    nodelist = parser.parse(('endmarkdown',))
+    nodelist = parser.parse(("endmarkdown",))
     parser.delete_first_token()
     args = [ast.literal_eval(bit) for bit in token.split_contents()[1:]]
     return MarkdownNode(nodelist, *args)
@@ -348,12 +368,13 @@ class ObfuscatorNode(Node):
     """
     Classe utilitaire pour obfusquer les données
     """
+
     def __init__(self, nodelist, key=None, *args):
         self.nodelist = nodelist
         self.key = key
 
-    def encode(self, data, key=''):
-        xored = ''.join(chr(ord(x) ^ ord(y)) for (x, y) in zip(data, cycle(key)))
+    def encode(self, data, key=""):
+        xored = "".join(chr(ord(x) ^ ord(y)) for (x, y) in zip(data, cycle(key)))
         return base64.encodebytes(xored.encode()).strip().decode()
 
     def render(self, context):
@@ -367,16 +388,16 @@ class ObfuscatorNode(Node):
             return f'<div data-key="{key}" data-code="{encoded}"></div>'
 
 
-@register.tag(name='obfuscate')
+@register.tag(name="obfuscate")
 def tag_obfuscate(parser, token):
     """
     Permet d'obfusquer des données
     """
-    nodelist = parser.parse(('endobfuscate',))
+    nodelist = parser.parse(("endobfuscate",))
     parser.delete_first_token()
     args = [ast.literal_eval(bit) for bit in token.split_contents()[1:]]
     return ObfuscatorNode(nodelist, *args)
 
 
-register.filter('any', lambda value: any(value))
-register.filter('all', lambda value: all(value))
+register.filter("any", lambda value: any(value))
+register.filter("all", lambda value: all(value))

@@ -13,6 +13,7 @@ class Settings:
     # Valeurs par défaut
     default = dict(
         COMMON_JSONFIELD=False,
+        HISTORY_DATE_HIERARCHY=True,
         SERVICE_USAGE=False,
         SERVICE_USAGE_DEFAULT={},
         SERVICE_USAGE_DATA={},
@@ -22,22 +23,22 @@ class Settings:
         NOTIFY_CHANGES=False,
         NOTIFY_OPTIONS={},
         WEBSOCKET_ENABLED=False,
-        WEBSOCKET_URL='',
-        FRONTEND_SECRET_KEY='',
+        WEBSOCKET_URL="",
+        FRONTEND_SECRET_KEY="",
         # LDAP
         LDAP_ENABLE=False,
-        LDAP_LOGIN='',
-        LDAP_HOST='',
-        LDAP_BASE='',
-        LDAP_FILTER='',
+        LDAP_LOGIN="",
+        LDAP_HOST="",
+        LDAP_BASE="",
+        LDAP_FILTER="",
         LDAP_ATTRIBUTES=[],
         LDAP_ADMIN_USERS=[],
         LDAP_STAFF_USERS=[],
         LDAP_ADMIN_GROUPS=[],
         LDAP_STAFF_GROUPS=[],
-        LDAP_GROUP_PREFIX='',
+        LDAP_GROUP_PREFIX="",
         # API cache
-        API_CACHE_PREFIX='api_',
+        API_CACHE_PREFIX="api_",
         API_CACHE_TIMEOUT=0,
     )
 

@@ -12,14 +12,14 @@ from common.utils import json_encode, render_to
 
 
 @never_cache
-@render_to('common/cache.html')
+@render_to("common/cache.html")
 @login_required
 def view_cache(request):
     """
     Cache
     """
     value = None
-    key = request.GET.get('key', None)
+    key = request.GET.get("key", None)
     if key:
         value = cache.get(key)
         try:
@@ -27,23 +27,23 @@ def view_cache(request):
             value = json_encode(value, indent=4)
         except (TypeError, ValueError):
             pass
-    if hasattr(cache, 'keys'):
+    if hasattr(cache, "keys"):
         for key in request.POST:
             cache.delete_pattern(key)
-        keys = sorted(cache.keys('*'))
+        keys = sorted(cache.keys("*"))
     else:
         for key in request.POST:
             cache.delete(key)
-        keys = sorted((key.split(':')[-1] for key in cache._cache.keys()))
+        keys = sorted((key.split(":")[-1] for key in cache._cache.keys()))
 
     return {
-        'keys': keys,
-        'value': value or None,
+        "keys": keys,
+        "value": value or None,
     }
 
 
 @never_cache
-@render_to('common/scripts.js', content_type='text/javascript')
+@render_to("common/scripts.js", content_type="text/javascript")
 def scripts(request):
     """
     Scripts communs:
@@ -57,14 +57,14 @@ def scripts(request):
         context[key] = value
 
     return {
-        'urls': json_encode(get_urls(request).data),
-        'user': json_encode(user_infos(request).data),
-        'context': json_encode(context),
+        "urls": json_encode(get_urls(request).data),
+        "user": json_encode(user_infos(request).data),
+        "context": json_encode(context),
     }
 
 
-HIDDEN_SETTINGS = re.compile('API|TOKEN|KEY|SECRET|PASS|SIGNATURE', flags=re.IGNORECASE)
-CLEANSED_SUBSTITUTE = '**********'
+HIDDEN_SETTINGS = re.compile("API|TOKEN|KEY|SECRET|PASS|SIGNATURE", flags=re.IGNORECASE)
+CLEANSED_SUBSTITUTE = "**********"
 
 
 def cleanse_setting(key, value):

@@ -6,14 +6,15 @@ class CommonModelPermissions(permissions.DjangoModelPermissions):
     """
     Permissions spécifiques pour les API RESTful
     """
+
     perms_map = {
-        'GET': ['%(app_label)s.view_%(model_name)s'],
-        'OPTIONS': [],
-        'HEAD': [],
-        'POST': ['%(app_label)s.add_%(model_name)s'],
-        'PUT': ['%(app_label)s.change_%(model_name)s'],
-        'PATCH': ['%(app_label)s.change_%(model_name)s'],
-        'DELETE': ['%(app_label)s.delete_%(model_name)s'],
+        "GET": ["%(app_label)s.view_%(model_name)s"],
+        "OPTIONS": [],
+        "HEAD": [],
+        "POST": ["%(app_label)s.add_%(model_name)s"],
+        "PUT": ["%(app_label)s.change_%(model_name)s"],
+        "PATCH": ["%(app_label)s.change_%(model_name)s"],
+        "DELETE": ["%(app_label)s.delete_%(model_name)s"],
     }
 
     def has_permission(self, request, view):
@@ -30,6 +31,7 @@ class CurrentUserPermissions(CommonModelPermissions):
     """
     Permissions spécifiques permettant de consulter les données propres à l'utilisateur connecté
     """
+
     filters = {}
 
     def has_permission(self, request, view):
@@ -41,7 +43,7 @@ class CurrentUserPermissions(CommonModelPermissions):
         if has_permission:
             return True
         model = view.queryset.model
-        if not request.user or view.action not in ['list', 'retrieve'] or model not in self.filters:
+        if not request.user or view.action not in ["list", "retrieve"] or model not in self.filters:
             return False
         view.queryset = view.get_queryset().filter(**self.filters.get(model)(request))
-        return view.queryset.exists() if view.action == 'retrieve' else True
+        return view.queryset.exists() if view.action == "retrieve" else True

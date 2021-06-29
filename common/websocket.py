@@ -3,7 +3,6 @@ import logging
 
 from common.settings import settings
 
-
 # Logging
 logger = logging.getLogger(__name__)
 
@@ -26,15 +25,15 @@ if websocket:
         """
 
         def onOpen(self):
-            logger.info('=> {}'.format(self.peer))
+            logger.info("=> {}".format(self.peer))
             self.factory.register(self)
 
         def onMessage(self, payload, isBinary):
-            logger.info('[{}] {}'.format(self.peer, payload))
+            logger.info("[{}] {}".format(self.peer, payload))
             self.factory.broadcast(payload, self)
 
         def onClose(self, wasClean, code, reason):
-            logger.info('<= {}'.format(self.peer))
+            logger.info("<= {}".format(self.peer))
 
     class BroadcastServerFactory(websocket.WebSocketServerFactory):
         """
@@ -64,6 +63,7 @@ if websocket:
         :return: Rien
         """
         import asyncio
+
         factory = BroadcastServerFactory(settings.WEBSOCKET_URL, debug=settings.WEBSOCKET_DEBUG)
         factory.protocol = BroadcastServerProtocol
         factory.setProtocolOptions()
@@ -89,6 +89,7 @@ def send_message(message):
         return
     try:
         import websocket
+
         ws = websocket.create_connection(settings.WEBSOCKET_URL)
         ws.send(message)
         ws.close()

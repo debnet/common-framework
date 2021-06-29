@@ -8,7 +8,6 @@ from django.utils.translation import gettext_lazy as _
 
 from common.settings import settings
 
-
 # Logging
 logger = logging.getLogger(__name__)
 
@@ -17,6 +16,7 @@ class LdapAuthenticationBackend(ModelBackend):
     """
     Authentification via LDAP
     """
+
     def authenticate(self, request=None, username=None, password=None, **kwargs):
         if settings.LDAP_ENABLE is False or not password:
             return None
@@ -24,6 +24,7 @@ class LdapAuthenticationBackend(ModelBackend):
         try:
             # Connexion au serveur LDAP
             import ldap3 as ldap
+
             ldap_server = ldap.Server(settings.LDAP_HOST)
 
             # Connexion de l'utilisateur dans le LDAP
@@ -34,11 +35,8 @@ class LdapAuthenticationBackend(ModelBackend):
 
                 # Récupération des informations de l'utilisateur
                 filter = settings.LDAP_FILTER.format(username=username)
-                if ldap_connection.search(
-                        settings.LDAP_BASE,
-                        filter,
-                        attributes=settings.LDAP_ATTRIBUTES):
-                    attributes = ldap_connection.response[0].get('attributes', {})
+                if ldap_connection.search(settings.LDAP_BASE, filter, attributes=settings.LDAP_ATTRIBUTES):
+                    attributes = ldap_connection.response[0].get("attributes", {})
 
                     # Création de l'utilisateur en base de données
                     User = get_user_model()
@@ -53,29 +51,30 @@ class LdapAuthenticationBackend(ModelBackend):
                             setattr(obj, name, value)
 
                     # Informations
-                    set_value(user, 'first_name', attributes['givenName'])
-                    set_value(user, 'last_name', attributes['sn'])
-                    set_value(user, 'email', attributes['mail'])
-                    set_value(user, 'is_active', True)
+                    set_value(user, "first_name", attributes["givenName"])
+                    set_value(user, "last_name", attributes["sn"])
+                    set_value(user, "email", attributes["mail"])
+                    set_value(user, "is_active", True)
 
                     # Vérification du statut de l'utilisateur
-                    set_value(user, 'is_superuser', False)
-                    set_value(user, 'is_staff', False)
-                    group_names = [group.split(',')[0].split('=')[1] for group in attributes['memberOf']]
+                    set_value(user, "is_superuser", False)
+                    set_value(user, "is_staff", False)
+                    group_names = [group.split(",")[0].split("=")[1] for group in attributes["memberOf"]]
                     if username in settings.LDAP_ADMIN_USERS or set(group_names) & set(settings.LDAP_ADMIN_GROUPS):
-                        set_value(user, 'is_superuser', True)
-                        set_value(user, 'is_staff', True)
+                        set_value(user, "is_superuser", True)
+                        set_value(user, "is_staff", True)
                     if username in settings.LDAP_STAFF_USERS or set(group_names) & set(settings.LDAP_STAFF_GROUPS):
-                        set_value(user, 'is_staff', True)
+                        set_value(user, "is_staff", True)
                     user.save()
 
                     # Récupération des groupes de l'utilisateur
-                    if hasattr(User, 'groups'):
+                    if hasattr(User, "groups"):
                         non_ldap_groups = list(user.groups.exclude(name__startswith=settings.LDAP_GROUP_PREFIX))
                         user.groups.clear()
                         for group_name in group_names:
                             group, created = Group.objects.get_or_create(
-                                name='{}{}'.format(settings.LDAP_GROUP_PREFIX, group_name))
+                                name="{}{}".format(settings.LDAP_GROUP_PREFIX, group_name)
+                            )
                             user.groups.add(group)
                         user.groups.add(*non_ldap_groups)
                     return user

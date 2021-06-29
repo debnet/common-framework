@@ -8,13 +8,13 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('common', '0003_auto_20160801'),
+        ("common", "0003_auto_20160801"),
     ]
 
     operations = [
         migrations.AlterField(
-            model_name='serviceusage',
-            name='name',
-            field=models.CharField(max_length=200, verbose_name='nom'),
+            model_name="serviceusage",
+            name="name",
+            field=models.CharField(max_length=200, verbose_name="nom"),
         ),
     ]

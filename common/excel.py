@@ -3,54 +3,53 @@ import logging
 import re
 from itertools import chain, zip_longest
 
-from django.db.models.fields.files import FieldFile
-from openpyxl.worksheet.datavalidation import DataValidation
-
-from common.models import MetaData
-from common.utils import decimal, parsedate, str_to_bool, json_encode, patch_settings
 from django.core.exceptions import ValidationError
 from django.db import transaction
+from django.db.models.fields.files import FieldFile
 from django.utils.translation import gettext_lazy as _
 from openpyxl import Workbook, load_workbook
 from openpyxl.styles import Font
 from openpyxl.utils import get_column_letter
+from openpyxl.worksheet.datavalidation import DataValidation
 
+from common.models import MetaData
+from common.utils import decimal, json_encode, parsedate, patch_settings, str_to_bool
 
 # Logging
 logger = logging.getLogger(__name__)
 
 # Types de données
 TYPES = {
-    'AutoField': _('Identifiant'),
-    'BigIntegerField': _('Nombre entier'),
-    'BinaryField': _('Données binaires'),
-    'BooleanField': _('Booléen'),
-    'CharField': _('Chaîne de caractères'),
-    'CommaSeparatedIntegerField': _('Nombres entiers séparés par des virgules'),
-    'DateField': _('Date'),
-    'DateTimeField': _('Date & heure'),
-    'DecimalField': _('Nombre décimal'),
-    'DurationField': _("Durée"),
-    'EmailField': _('E-mail'),
-    'FileField': _('Fichier'),
-    'FilePathField': _('Chemin de fichier'),
-    'FloatField': _('Nombre flottant'),
-    'ImageField': _('Image'),
-    'IntegerField': _('Nombre entier'),
-    'IPAddressField': _('Adresse IP'),
-    'GenericIPAddressField': _('Adresse IP générique'),
-    'NullBooleanField': _('Booléen à 3 états'),
-    'PositiveIntegerField': _('Nombre entier positif'),
-    'PositiveSmallIntegerField': _('Nombre entier positif'),
-    'SlugField': _('Slug'),
-    'SmallIntegerField': _('Nombre entier'),
-    'TextField': _('Texte'),
-    'TimeField': _('Heure'),
-    'URLField': _('URL'),
-    'UUIDField': _('UUID'),
-    'ForeignKey': _('Référence'),
-    'ManyToManyField': _('Références multiples'),
-    'OneToOneField': _('Référence'),
+    "AutoField": _("Identifiant"),
+    "BigIntegerField": _("Nombre entier"),
+    "BinaryField": _("Données binaires"),
+    "BooleanField": _("Booléen"),
+    "CharField": _("Chaîne de caractères"),
+    "CommaSeparatedIntegerField": _("Nombres entiers séparés par des virgules"),
+    "DateField": _("Date"),
+    "DateTimeField": _("Date & heure"),
+    "DecimalField": _("Nombre décimal"),
+    "DurationField": _("Durée"),
+    "EmailField": _("E-mail"),
+    "FileField": _("Fichier"),
+    "FilePathField": _("Chemin de fichier"),
+    "FloatField": _("Nombre flottant"),
+    "ImageField": _("Image"),
+    "IntegerField": _("Nombre entier"),
+    "IPAddressField": _("Adresse IP"),
+    "GenericIPAddressField": _("Adresse IP générique"),
+    "NullBooleanField": _("Booléen à 3 états"),
+    "PositiveIntegerField": _("Nombre entier positif"),
+    "PositiveSmallIntegerField": _("Nombre entier positif"),
+    "SlugField": _("Slug"),
+    "SmallIntegerField": _("Nombre entier"),
+    "TextField": _("Texte"),
+    "TimeField": _("Heure"),
+    "URLField": _("URL"),
+    "UUIDField": _("UUID"),
+    "ForeignKey": _("Référence"),
+    "ManyToManyField": _("Références multiples"),
+    "OneToOneField": _("Référence"),
 }
 CELL_OFFSET = 3
 
@@ -96,7 +95,7 @@ class ImportExport(object):
             headers = {}
             title = True
             for row_number, row in enumerate(worksheet.iter_rows()):
-                code_meta = ''
+                code_meta = ""
                 line = []
                 for col_number, cell in enumerate(row):
                     value = cell.value
@@ -110,7 +109,7 @@ class ImportExport(object):
                         headers[col_number] = value
                         continue
                     field = headers[col_number]
-                    if field == 'code':
+                    if field == "code":
                         if value not in metadata:
                             metadata[value] = []
                         code_meta = value
@@ -124,14 +123,16 @@ class ImportExport(object):
 
         done = []
         for model in self.models:
-            code_field = getattr(model, '_code_field', 'id')
+            code_field = getattr(model, "_code_field", "id")
             # Retrait des espaces et des caractères superflus
-            model_name = re.sub(r'[^\w]+', ' ', str(model._meta.verbose_name).lower())
+            model_name = re.sub(r"[^\w]+", " ", str(model._meta.verbose_name).lower())
             # Récupération de la feuille correspondante au modèle
             if model_name not in worksheets:
-                self.log.warning(_(
-                    "La feuille correspondant au modèle '{model_name}' "
-                    "n'a pu être trouvée dans le fichier.").format(model_name=model_name))
+                self.log.warning(
+                    _(
+                        "La feuille correspondant au modèle '{model_name}' " "n'a pu être trouvée dans le fichier."
+                    ).format(model_name=model_name)
+                )
                 continue
             worksheet = worksheets.get(model_name)
             # Récupération des champs du modèle
@@ -175,7 +176,7 @@ class ImportExport(object):
                     if field.m2m:
                         if field.related_model == model:
                             delayed = True
-                        value = [v.strip() for v in value.split(',')]
+                        value = [v.strip() for v in value.split(",")]
                         m2m[field.name] = (field.related_model, value)
                         has_data = True
                         continue
@@ -190,15 +191,15 @@ class ImportExport(object):
                         continue
                     elif field.choices:
                         choices = {str(value): str(key) for key, value in field.flatchoices}
-                        if hasattr(field, 'max_choices'):  # MultiSelectField
+                        if hasattr(field, "max_choices"):  # MultiSelectField
                             value = [choices[val] for val in choices.keys() if val in value]
                         else:
                             value = choices[value]
-                    elif type in ['DateField', 'DateTimeField']:
+                    elif type in ["DateField", "DateTimeField"]:
                         value = parsedate(value, dayfirst=True)
-                    elif type == 'DecimalField':
+                    elif type == "DecimalField":
                         value = decimal(value, precision=20)
-                    elif type == 'BooleanField':
+                    elif type == "BooleanField":
                         value = str_to_bool(value)
                     has_data = True
                     # Récupération des données existantes
@@ -266,7 +267,8 @@ class ImportExport(object):
                     meta.verbose_name.capitalize(),
                     field.verbose_name,
                     TYPES[field.get_internal_type()],
-                    field.help_text]
+                    field.help_text,
+                ]
                 if field.choices:
                     self.dropdowns[model, field.name] = [str(value) for key, value in field.flatchoices]
                 for column, data in enumerate(datas, start=1):
@@ -281,13 +283,14 @@ class ImportExport(object):
 
         # Listes déroulantes
         worksheet = workbook.create_sheet(title=str(DROPDOWN_NAME))
-        worksheet.sheet_state = 'hidden'
+        worksheet.sheet_state = "hidden"
         for row in zip_longest(*self.dropdowns.values(), fillvalue=None):
             worksheet.append(row)
         for index, key in enumerate(self.dropdowns.keys(), start=1):
             column = get_column_letter(index)
             self.dropdowns[key] = DataValidation(
-                type='list', formula1='={}!${}:${}'.format(DROPDOWN_NAME, column, column))
+                type="list", formula1="={}!${}:${}".format(DROPDOWN_NAME, column, column)
+            )
 
         # Feuille par modèle
         for model in self.models:
@@ -295,7 +298,7 @@ class ImportExport(object):
 
         # Export des métadatas
         worksheet = workbook.create_sheet(title=str(METADATA_NAME))
-        fields = [('code', 'Code'), ('cle', 'Clé'), ('valeur', 'Valeur')]
+        fields = [("code", "Code"), ("cle", "Clé"), ("valeur", "Valeur")]
         for column, (field_code, field_name) in enumerate(fields, start=1):
             cell = worksheet.cell(row=1, column=column)
             cell.value = field_name
@@ -335,7 +338,7 @@ class ImportExport(object):
         # Enregistrement des clés étrangères
         try:
             for field_name, (related, value) in fks.items():
-                code_field = getattr(related, '_code_field', 'id')
+                code_field = getattr(related, "_code_field", "id")
                 fk = cache.get(related, {}).get(value, related.objects.get(**{code_field: value}))
                 setattr(instance, field_name, fk)
         except Exception:
@@ -347,18 +350,24 @@ class ImportExport(object):
                         self.delayed_models.pop(index)
                         break
                 else:
-                    logger.error(_("Impossible de récupérer la valeur de clé étrangère "
-                                   "correspondant à [{}] pour le champ [{}] de [{}]").format(
-                        value, field_name, instance._meta.verbose_name))
+                    logger.error(
+                        _(
+                            "Impossible de récupérer la valeur de clé étrangère "
+                            "correspondant à [{}] pour le champ [{}] de [{}]"
+                        ).format(value, field_name, instance._meta.verbose_name)
+                    )
                     raise
             else:
-                logger.error(_("Impossible de récupérer la valeur de clé étrangère "
-                               "correspondant à [{}] pour le champ [{}] de [{}]").format(
-                    value, field_name, instance._meta.verbose_name))
+                logger.error(
+                    _(
+                        "Impossible de récupérer la valeur de clé étrangère "
+                        "correspondant à [{}] pour le champ [{}] de [{}]"
+                    ).format(value, field_name, instance._meta.verbose_name)
+                )
                 raise
         # Tests de validation et enregistrement de l'instance
         try:
-            code_field = getattr(instance, '_code_field', 'id')
+            code_field = getattr(instance, "_code_field", "id")
             if not self.force and not getattr(instance, code_field, None):
                 instance.validate_unique()
             if self.clean:
@@ -368,10 +377,10 @@ class ImportExport(object):
         except ValidationError as errors:
             for field, errors in errors.message_dict.items():
                 for error in errors:
-                    if field == '__all__':
+                    if field == "__all__":
                         self.log.warning(error)
                     else:
-                        self.log.warning('[{}] {}'.format(field, error))
+                        self.log.warning("[{}] {}".format(field, error))
             if not self.force:
                 raise
         # Enregistrement des métadonnées (possible qu'après l'enregistrement en base)
@@ -379,21 +388,29 @@ class ImportExport(object):
             for key, value in metadata.items():
                 instance.set_metadata(key, value)
         except Exception:
-            logger.error(_("Impossible d'ajouter la métadata [{},{}] pour l'instance '[{}]'").format(
-                key, value, instance._meta.verbose_name))
+            logger.error(
+                _("Impossible d'ajouter la métadata [{},{}] pour l'instance '[{}]'").format(
+                    key, value, instance._meta.verbose_name
+                )
+            )
             raise
         # Enregistrement des many-to-many sur l'instance (possible qu'après l'enregistrement en base)
         try:
             for field_name, (related, values) in m2m.items():
-                code_field = getattr(related, '_code_field', 'id')
-                m2ms = [cache.get(related, {}).get(value, related.objects.get(**{code_field: value})) for value in values]
+                code_field = getattr(related, "_code_field", "id")
+                m2ms = [
+                    cache.get(related, {}).get(value, related.objects.get(**{code_field: value})) for value in values
+                ]
                 getattr(instance, field_name).set(m2ms)
         except Exception:
-            logger.error(_("Impossible de récupérer les valeurs de relation "
-                           "correspondantes à [{}] pour le champ [{}] de [{}]").format(
-                ', '.join(str(v) for v in values), field_name, instance._meta.verbose_name))
+            logger.error(
+                _(
+                    "Impossible de récupérer les valeurs de relation "
+                    "correspondantes à [{}] pour le champ [{}] de [{}]"
+                ).format(", ".join(str(v) for v in values), field_name, instance._meta.verbose_name)
+            )
             raise
-        self.log.info('{} : {}'.format(instance._meta.verbose_name.capitalize(), instance))
+        self.log.info("{} : {}".format(instance._meta.verbose_name.capitalize(), instance))
         return instance
 
     def _write_model(self, workbook, model):
@@ -404,14 +421,19 @@ class ImportExport(object):
         :return: Rien
         """
         meta = model._meta
-        code_field = getattr(model, '_code_field', 'id')
-        worksheet = workbook.create_sheet(title=re.sub(r'[^\w]+', ' ', str(meta.verbose_name).capitalize()))
+        code_field = getattr(model, "_code_field", "id")
+        worksheet = workbook.create_sheet(title=re.sub(r"[^\w]+", " ", str(meta.verbose_name).capitalize()))
         widths = {}
         dropdowns = {}
         # Titres
-        fields = [(field.name, str(field.verbose_name),)
-                  for field in chain(meta.fields, meta.many_to_many)
-                  if field.name == code_field or not (field.auto_created or not (field.editable or self.non_editables))]
+        fields = [
+            (
+                field.name,
+                str(field.verbose_name),
+            )
+            for field in chain(meta.fields, meta.many_to_many)
+            if field.name == code_field or not (field.auto_created or not (field.editable or self.non_editables))
+        ]
         for column, (field_code, field_name) in enumerate(fields, start=1):
             cell = worksheet.cell(row=1, column=column)
             cell.value = field_name
@@ -428,28 +450,33 @@ class ImportExport(object):
                     continue
                 field = meta.get_field(field_code)
                 if field.many_to_many:
-                    m2m_code_field = getattr(field.related_model, '_code_field', 'id')
-                    value = ', '.join(str(v) for v in value.values_list(m2m_code_field, flat=True))
+                    m2m_code_field = getattr(field.related_model, "_code_field", "id")
+                    value = ", ".join(str(v) for v in value.values_list(m2m_code_field, flat=True))
                 elif field.related_model is not None and field.related_model is MetaData:
                     if len(element.get_metadata()) > 0:
-                        value = 'meta_{}_{}'.format(element._meta.model_name, row)
+                        value = "meta_{}_{}".format(element._meta.model_name, row)
                         self.metadata[value] = []
                         for key_meta, value_meta in element.get_metadata().items():
-                            self.metadata[value].append((key_meta, value_meta,))
+                            self.metadata[value].append(
+                                (
+                                    key_meta,
+                                    value_meta,
+                                )
+                            )
                     else:
                         continue
                 elif field.remote_field:
                     if not value:
-                        value = ''
+                        value = ""
                     else:
                         value = getattr(value, code_field, value.id)
                 elif field.choices:
-                    value = getattr(element, 'get_{}_display'.format(field_code))()
+                    value = getattr(element, "get_{}_display".format(field_code))()
                     if column not in dropdowns:
                         data_validation = dropdowns[column] = self.dropdowns[model, field_code]
                         worksheet.add_data_validation(data_validation)
                     dropdowns[column].add(worksheet["{}{}".format(get_column_letter(column), row)])
-                elif field.get_internal_type() in ['DateField', 'DateTimeField']:
+                elif field.get_internal_type() in ["DateField", "DateTimeField"]:
                     value = parsedate(value).isoformat()
                 elif isinstance(value, FieldFile):
                     value = value.name

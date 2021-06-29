@@ -4,7 +4,6 @@ import logging
 from django.db.migrations.operations.base import Operation
 from django.utils.translation import gettext_lazy as _
 
-
 logger = logging.getLogger(__name__)
 
 
@@ -12,6 +11,7 @@ class CreateFunctionUnaccent(Operation):
     """
     Création de la fonction f_unaccent dans la base de données PostgreSQL afin de pouvoir créer des index avec unaccent
     """
+
     reversible = True
 
     def state_forwards(self, app_label, state):
@@ -19,7 +19,7 @@ class CreateFunctionUnaccent(Operation):
 
     def database_forwards(self, app_label, schema_editor, from_state, to_state):
         # Applicable uniquement sur une base de données PostgreSQL
-        if schema_editor.connection.vendor != 'postgresql':
+        if schema_editor.connection.vendor != "postgresql":
             logger.error(_("L'opération ne peut s'exécuter que sur PostgreSQL."))
             return
 
@@ -30,16 +30,18 @@ class CreateFunctionUnaccent(Operation):
             logger.error(_("L'extension 'unaccent' n'est pas installée sur la base de données."))
             return
 
-        query = "CREATE OR REPLACE FUNCTION F_UNACCENT(text) " \
-                "RETURNS text AS " \
-                "$func$ " \
-                "SELECT public.unaccent('public.unaccent', UPPER($1)) " \
-                "$func$ LANGUAGE sql IMMUTABLE;"
+        query = (
+            "CREATE OR REPLACE FUNCTION F_UNACCENT(text) "
+            "RETURNS text AS "
+            "$func$ "
+            "SELECT public.unaccent('public.unaccent', UPPER($1)) "
+            "$func$ LANGUAGE sql IMMUTABLE;"
+        )
         schema_editor.execute(query)
 
     def database_backwards(self, app_label, schema_editor, from_state, to_state):
         # Applicable uniquement sur une base de données PostgreSQL
-        if schema_editor.connection.vendor != 'postgresql':
+        if schema_editor.connection.vendor != "postgresql":
             logger.error(_("L'opération ne peut s'exécuter que sur PostgreSQL."))
             return
 
@@ -50,6 +52,7 @@ class CreateIndexUnaccent(Operation):
     """
     Création d'index unaccent sur un ensemble des champs d'un modèle
     """
+
     reversible = True
 
     def __init__(self, model_name, fields):
@@ -62,7 +65,7 @@ class CreateIndexUnaccent(Operation):
     def database_forwards(self, app_label, schema_editor, from_state, to_state):
 
         # Applicable uniquement sur une base de données PostgreSQL
-        if schema_editor.connection.vendor != 'postgresql':
+        if schema_editor.connection.vendor != "postgresql":
             logger.error(_("L'opération ne peut s'exécuter que sur PostgreSQL."))
             return
 
@@ -91,36 +94,40 @@ class CreateIndexUnaccent(Operation):
         pg_trgm_installed = True
         cursor.execute("SELECT COUNT(extname) FROM pg_extension WHERE extname = 'pg_trgm';")
         if not cursor.fetchall()[0][0]:
-            logger.warning(_("L'extension 'pg_trgm' n'est pas installée sur la base de données, "
-                             "l'index de type GIN ne sera donc pas créé et seul l'index de type BTREE sera créé."))
+            logger.warning(
+                _(
+                    "L'extension 'pg_trgm' n'est pas installée sur la base de données, "
+                    "l'index de type GIN ne sera donc pas créé et seul l'index de type BTREE sera créé."
+                )
+            )
             pg_trgm_installed = False
 
         for fields in self.fields:
             # Création du nom de l'index
-            index_name = schema_editor._create_index_name(model._meta.db_table, fields, suffix='_unaccent')
+            index_name = schema_editor._create_index_name(model._meta.db_table, fields, suffix="_unaccent")
 
             # Ajout de la classe d'opérateur pour la méthode BTREE
             fields_btree = ", ".join(
-                [method_sql.format(field=field, operator_class='varchar_pattern_ops') for field in fields]
+                [method_sql.format(field=field, operator_class="varchar_pattern_ops") for field in fields]
             )
             # Création de l'index BTREE
             schema_editor.execute(
-                query.format(index_name=index_name, db_table=model._meta.db_table, fields=fields_btree, method='btree')
+                query.format(index_name=index_name, db_table=model._meta.db_table, fields=fields_btree, method="btree")
             )
 
             if pg_trgm_installed:
                 # Ajout de la classe d'opérateur pour la méthode GIN
                 fields_gin = ", ".join(
-                    [method_sql.format(field=field, operator_class='gin_trgm_ops') for field in fields]
+                    [method_sql.format(field=field, operator_class="gin_trgm_ops") for field in fields]
                 )
                 # Création de l'index GIN
                 schema_editor.execute(
-                    query.format(index_name=index_name, db_table=model._meta.db_table, fields=fields_gin, method='gin')
+                    query.format(index_name=index_name, db_table=model._meta.db_table, fields=fields_gin, method="gin")
                 )
 
     def database_backwards(self, app_label, schema_editor, from_state, to_state):
         # Applicable uniquement sur une base de données PostgreSQL
-        if schema_editor.connection.vendor != 'postgresql':
+        if schema_editor.connection.vendor != "postgresql":
             logger.error(_("L'opération ne peut s'exécuter que sur PostgreSQL."))
             return
 
@@ -132,8 +139,8 @@ class CreateIndexUnaccent(Operation):
 
         for fields in self.fields:
             # Création du nom de l'index
-            index_name = schema_editor._create_index_name(model._meta.db_table, fields, suffix='_unaccent')
+            index_name = schema_editor._create_index_name(model._meta.db_table, fields, suffix="_unaccent")
 
             # Suppression des index de la base de données
-            schema_editor.execute(query.format(index_name=index_name, method='gin'))
-            schema_editor.execute(query.format(index_name=index_name, method='btree'))
+            schema_editor.execute(query.format(index_name=index_name, method="gin"))
+            schema_editor.execute(query.format(index_name=index_name, method="btree"))

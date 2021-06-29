@@ -1,5 +1,6 @@
 # coding: utf-8
 import abc
+import ast
 import collections
 import inspect
 import json
@@ -21,7 +22,7 @@ from uuid import uuid4
 
 from django.apps import apps
 from django.conf import settings
-from django.core.exceptions import FieldDoesNotExist, ValidationError, NON_FIELD_ERRORS
+from django.core.exceptions import NON_FIELD_ERRORS, FieldDoesNotExist, ValidationError
 from django.core.files import temp
 from django.core.files.storage import FileSystemStorage
 from django.core.files.uploadedfile import TemporaryUploadedFile
@@ -39,7 +40,6 @@ from django.utils.translation import gettext_lazy as _
 from django.views.decorators.csrf import csrf_exempt, csrf_protect
 from rest_framework.renderers import JSONRenderer
 from rest_framework.utils.encoders import JSONEncoder
-
 
 # Logging
 logger = logging.getLogger(__name__)
@@ -67,8 +67,8 @@ def timed_cache(**dkwargs):
     """
 
     def _wrapper(func):
-        maxsize = dkwargs.pop('maxsize', None)
-        typed = dkwargs.pop('typed', False)
+        maxsize = dkwargs.pop("maxsize", None)
+        typed = dkwargs.pop("typed", False)
         update_delta = timedelta(**dkwargs)
         next_update = datetime.utcnow() - update_delta
         func = lru_cache(maxsize=maxsize, typed=typed)(func)
@@ -81,7 +81,9 @@ def timed_cache(**dkwargs):
                 func.cache_clear()
                 next_update = utcnow + update_delta
             return func(*args, **kwargs)
+
         return _wrapped
+
     return _wrapper
 
 
@@ -90,6 +92,7 @@ class CeleryFake:
     """
     Mock Celery pour les tâches asynchrones
     """
+
     def task(self, *dargs, **dkwargs):
         def decorator(func):
             @wraps(func)
@@ -99,6 +102,7 @@ class CeleryFake:
             wrapped.apply = lambda args=None, kwargs=None, **options: func(*(args or []), **(kwargs or {}))
             wrapped.apply_async = wrapped.apply
             return wrapped
+
         return decorator
 
 
@@ -108,15 +112,16 @@ def get_current_app():
     :return: Application Celery ou mock
     """
     try:
-        assert getattr(settings, 'CELERY_ENABLE', False)
+        assert getattr(settings, "CELERY_ENABLE", False)
         from celery import current_app
+
         return current_app
     except (AssertionError, ImportError):
         return CeleryFake()
 
 
 # Regex de date au format DMY
-DMY_DATE_REGEX = re.compile(r'^(\d{2})[^\d]?(\d{2})[^\d]?(\d{2,4})([^\d]?(\d{2})[^\d]?(\d{2})[^\d]?(\d{2}))?$')
+DMY_DATE_REGEX = re.compile(r"^(\d{2})[^\d]?(\d{2})[^\d]?(\d{2,4})([^\d]?(\d{2})[^\d]?(\d{2})[^\d]?(\d{2}))?$")
 
 
 def parsedate(input_date, start_day=False, end_day=False, date_only=False, utc=False, dmy=False, **kwargs):
@@ -142,11 +147,12 @@ def parsedate(input_date, start_day=False, end_day=False, date_only=False, utc=F
         if dmy:
             match = DMY_DATE_REGEX.match(_date)
             if match:
-                date_format = '{0}/{1}/{2}' if date_only else '{0}/{1}/{2} {4}:{5}:{6}'
+                date_format = "{0}/{1}/{2}" if date_only else "{0}/{1}/{2} {4}:{5}:{6}"
                 _date = date_format.format(*[(group or 0) for group in match.groups()])
-            kwargs['dayfirst'] = True
+            kwargs["dayfirst"] = True
         try:
             from dateutil import parser
+
             _date = parser.parse(_date, **kwargs)
         except (ImportError, ValueError, OverflowError):
             return None
@@ -157,8 +163,9 @@ def parsedate(input_date, start_day=False, end_day=False, date_only=False, utc=F
         _date = datetime.combine(_date, _time)
     try:
         import pytz
-        use_tz = getattr(settings, 'USE_TZ', None)
-        timezone = getattr(settings, 'TIME_ZONE', None)
+
+        use_tz = getattr(settings, "USE_TZ", None)
+        timezone = getattr(settings, "TIME_ZONE", None)
         if utc or not use_tz:
             timezone = pytz.utc
         elif timezone:
@@ -179,6 +186,7 @@ def timeit(name, log=logger.info):
     :param log: Logger
     :return: Decorateur
     """
+
     def decorator(func):
         @wraps(func)
         def wrapped(*args, **kwargs):
@@ -192,7 +200,9 @@ def timeit(name, log=logger.info):
             te = datetime.now()
             log(_("[{}] terminé en {} !").format(name, te - ts))
             return result
+
         return wrapped
+
     return decorator
 
 
@@ -202,6 +212,7 @@ def synchronized(lock=None):
     :param lock: Verrou externe partagé
     :return: Decorateur
     """
+
     def decorator(func):
         func.__lock__ = lock or threading.Lock()
 
@@ -209,7 +220,9 @@ def synchronized(lock=None):
         def wrapped(*args, **kwargs):
             with func.__lock__:
                 return func(*args, **kwargs)
+
         return wrapped
+
     return decorator
 
 
@@ -219,13 +232,13 @@ class TemporaryFile(TemporaryUploadedFile):
     """
 
     def __init__(self, name, content_type, size, charset, content_type_extra=None, folder=None):
-        file = temp.NamedTemporaryFile(suffix='.' + name)
+        file = temp.NamedTemporaryFile(suffix="." + name)
         super(TemporaryUploadedFile, self).__init__(file, name, content_type, size, charset, content_type_extra)
         self.folder = folder
 
     def close(self):
         if self.folder is not None:
-            file_name = '{}.{}'.format(now().strftime('%Y%m%d%H%M%S'), self._get_name())
+            file_name = "{}.{}".format(now().strftime("%Y%m%d%H%M%S"), self._get_name())
             try:
                 to = os.path.join(self.folder, file_name)
                 FileSystemStorage(location=settings.MEDIA_ROOT).save(to, self.file)
@@ -246,7 +259,8 @@ class TemporaryFileHandler(TemporaryFileUploadHandler):
     def new_file(self, file_name, *args, **kwargs):
         super(TemporaryFileUploadHandler, self).new_file(file_name, *args, **kwargs)
         self.file = TemporaryFile(
-            self.file_name, self.content_type, 0, self.charset, self.content_type_extra, folder=self.folder)
+            self.file_name, self.content_type, 0, self.charset, self.content_type_extra, folder=self.folder
+        )
 
 
 def temporary_upload(folder=None):
@@ -255,17 +269,20 @@ def temporary_upload(folder=None):
     :param folder: Nom ou chemin du repertoire cible de la sauvegarde du fichier
     :return: Méthode décorée
     """
+
     def decorateur(function):
         @wraps(function)
         @csrf_exempt
         def wrapped(request, *args, **kwargs):
             request.upload_handlers = [TemporaryFileHandler(folder=folder)]
             return csrf_protect(function)(request, *args, **kwargs)
+
         return wrapped
+
     return decorateur
 
 
-class DownloadFile(collections.namedtuple('DownloadFile', ['file', 'name', 'delete', 'mimetype', 'charset'])):
+class DownloadFile(collections.namedtuple("DownloadFile", ["file", "name", "delete", "mimetype", "charset"])):
     """
     Objet permettant de définir un fichier à télécharger
     file : fichier ou chemin du fichier,
@@ -274,6 +291,7 @@ class DownloadFile(collections.namedtuple('DownloadFile', ['file', 'name', 'dele
     mimetype : type mime du fichier à télécharger,
     charset : encodage du fichier à télécharger
     """
+
     def __new__(cls, file, name, delete, mimetype=None, charset=None):
         return super(DownloadFile, cls).__new__(cls, file, name, delete, mimetype, charset)
 
@@ -285,27 +303,31 @@ def download_file(function):
     :param function: Méthode à décorer
     :return: Méthode décorée
     """
+
     def wrapper(*args, **kwargs):
         file = function(*args, **kwargs)
         if isinstance(file, DownloadFile):
             from wsgiref.util import FileWrapper
+
             file, name, delete, mimetype, charset = file
             if isinstance(file, str):
                 from django.core.files import File
-                file = File(open(file, 'rb'))
+
+                file = File(open(file, "rb"))
             file_wrapper = FileWrapper(file)
             if not mimetype:
                 mimetype, charset = mimetypes.guess_type(name)
-            mimetype, charset = mimetype or 'application/octet-stream', charset or settings.DEFAULT_CHARSET
+            mimetype, charset = mimetype or "application/octet-stream", charset or settings.DEFAULT_CHARSET
             response = HttpResponse(file_wrapper, content_type=mimetype, charset=charset)
             response["Content-Disposition"] = "attachment; filename={0}".format(name)
-            response["Content-Type"] = '{mimetype}; charset={charset}'.format(mimetype=mimetype, charset=charset)
+            response["Content-Type"] = "{mimetype}; charset={charset}".format(mimetype=mimetype, charset=charset)
             file.close()
             if delete:
                 os.unlink(file.name)
             return response
         else:
             return file
+
     return wrapper
 
 
@@ -349,33 +371,39 @@ def render_to(template=None, content_type=None):
         return render_to_response(template_name, {'bar': bar}, context_instance=RequestContext(request))
 
     """
+
     def renderer(function):
         @wraps(function)
         def wrapper(request, *args, **kwargs):
             output = function(request, *args, **kwargs)
             if not isinstance(output, dict):
                 return output
-            tmpl = output.pop('TEMPLATE', template)
+            tmpl = output.pop("TEMPLATE", template)
             if tmpl is None:
-                template_dir = os.path.join(*function.__module__.split('.')[:-1])
+                template_dir = os.path.join(*function.__module__.split(".")[:-1])
                 tmpl = os.path.join(template_dir, function.func_name + ".html")
             # Explicit version check to avoid swallowing other exceptions
             return render(request, tmpl, output, content_type=content_type)
+
         return wrapper
+
     return renderer
 
 
 FORMAT_TYPES = {
-    'application/json': lambda response: json_encode(response),
-    'text/json': lambda response: json_encode(response),
+    "application/json": lambda response: json_encode(response),
+    "text/json": lambda response: json_encode(response),
 }
 
 try:
     import yaml
-    FORMAT_TYPES.update({
-        'application/yaml': yaml.dump,
-        'text/yaml': yaml.dump,
-    })
+
+    FORMAT_TYPES.update(
+        {
+            "application/yaml": yaml.dump,
+            "text/yaml": yaml.dump,
+        }
+    )
 except ImportError:
     pass
 
@@ -395,104 +423,108 @@ def ajax_request(func):
             news_titles = [entry.title for entry in news]
             return {'news_titles': news_titles}
     """
+
     @wraps(func)
     def wrapper(request, *args, **kwargs):
-        for accepted_type in request.META.get('HTTP_ACCEPT', '').split(','):
+        for accepted_type in request.META.get("HTTP_ACCEPT", "").split(","):
             if accepted_type in FORMAT_TYPES.keys():
                 format_type = accepted_type
                 break
         else:
-            format_type = 'application/json'
+            format_type = "application/json"
         response = func(request, *args, **kwargs)
         if not isinstance(response, HttpResponse):
-            if hasattr(settings, 'FORMAT_TYPES'):
+            if hasattr(settings, "FORMAT_TYPES"):
                 format_type_handler = settings.FORMAT_TYPES[format_type]
-                if hasattr(format_type_handler, '__call__'):
+                if hasattr(format_type_handler, "__call__"):
                     data = format_type_handler(response)
                 elif isinstance(format_type_handler, str):
-                    mod_name, func_name = format_type_handler.rsplit('.', 1)
+                    mod_name, func_name = format_type_handler.rsplit(".", 1)
                     module = __import__(mod_name, fromlist=[func_name])
                     function = getattr(module, func_name)
                     data = function(response)
             else:
                 data = FORMAT_TYPES[format_type](response)
             response = HttpResponse(data, content_type=format_type)
-            response['Content-Length'] = len(data)
+            response["Content-Length"] = len(data)
         return response
+
     return wrapper
 
 
 # Liste des built-ins considérés comme "sûrs"
-SAFE_GLOBALS = dict(__builtins__=dict(
-    abs=abs,
-    all=all,
-    any=any,
-    ascii=ascii,
-    bin=bin,
-    bool=bool,
-    bytearray=bytearray,
-    bytes=bytes,
-    # callable=callable,
-    chr=chr,
-    # classmethod=classmethod,
-    # compile=compile,
-    complex=complex,
-    delattr=delattr,
-    dict=dict,
-    # dir=dir,
-    divmod=divmod,
-    enumerate=enumerate,
-    # eval=eval,
-    # exec=exec,
-    filter=filter,
-    float=float,
-    format=format,
-    frozenset=frozenset,
-    getattr=getattr,
-    # globals=globals,
-    hasattr=hasattr,
-    hash=hash,
-    help=help,
-    hex=hex,
-    id=id,
-    # input=input,
-    int=int,
-    # isinstance=isinstance,
-    # issubclass=issubclass,
-    iter=iter,
-    len=len,
-    list=list,
-    # locals=locals,
-    map=map,
-    max=max,
-    # memoryview=memoryview,
-    min=min,
-    next=next,
-    # object=object,
-    oct=oct,
-    # open=open,
-    ord=ord,
-    pow=pow,
-    # print=print,
-    # property=property,
-    range=range,
-    repr=repr,
-    reversed=reversed,
-    round=round,
-    set=set,
-    setattr=setattr,
-    slice=slice,
-    sorted=sorted,
-    # staticmethod=staticmethod,
-    str=str,
-    sum=sum,
-    # super=super,
-    tuple=tuple,
-    # type=type,
-    # vars=vars,
-    zip=zip,
-    # __import__=__import__,
-))
+SAFE_GLOBALS = dict(
+    __builtins__=dict(
+        abs=abs,
+        all=all,
+        any=any,
+        ascii=ascii,
+        bin=bin,
+        bool=bool,
+        bytearray=bytearray,
+        bytes=bytes,
+        # callable=callable,
+        chr=chr,
+        # classmethod=classmethod,
+        # compile=compile,
+        complex=complex,
+        delattr=delattr,
+        dict=dict,
+        # dir=dir,
+        divmod=divmod,
+        enumerate=enumerate,
+        # eval=eval,
+        # exec=exec,
+        filter=filter,
+        float=float,
+        format=format,
+        frozenset=frozenset,
+        getattr=getattr,
+        # globals=globals,
+        hasattr=hasattr,
+        hash=hash,
+        help=help,
+        hex=hex,
+        id=id,
+        # input=input,
+        int=int,
+        # isinstance=isinstance,
+        # issubclass=issubclass,
+        iter=iter,
+        len=len,
+        list=list,
+        # locals=locals,
+        map=map,
+        max=max,
+        # memoryview=memoryview,
+        min=min,
+        next=next,
+        # object=object,
+        oct=oct,
+        # open=open,
+        ord=ord,
+        pow=pow,
+        # print=print,
+        # property=property,
+        range=range,
+        repr=repr,
+        reversed=reversed,
+        round=round,
+        set=set,
+        setattr=setattr,
+        slice=slice,
+        sorted=sorted,
+        # staticmethod=staticmethod,
+        str=str,
+        sum=sum,
+        # super=super,
+        tuple=tuple,
+        # type=type,
+        # vars=vars,
+        zip=zip,
+        # __import__=__import__,
+    )
+)
 
 
 def evaluate(expression, _globals=None, _locals=None, default=False):
@@ -552,7 +584,8 @@ def patch_settings(**kwargs):
 
 
 def recursive_dict_product(
-        input_dict, all_keys=None, long_keys=False, separator='_', ignore='*', auto_id='id', prefix=''):
+    input_dict, all_keys=None, long_keys=False, separator="_", ignore="*", auto_id="id", prefix=""
+):
     """
     Retourne le produit de combinaisons d'un dictionnaire (avec listes et dictionnaires imbriqués) en renommant les clés
     :param input_dict: Dictionnaire à mettre à plat
@@ -582,7 +615,7 @@ def recursive_dict_product(
         elif isinstance(value, list) and value and isinstance(value[0], dict):
             # Les dictionnaire imbriqués dans des listes sont à traiter récursivement
             nested_key = result_key if long_keys else current_key
-            nested_key = nested_key.rstrip('s') if current_key == key else nested_key
+            nested_key = nested_key.rstrip("s") if current_key == key else nested_key
             nested[nested_key] = value
             continue
         elif isinstance(value, dict):
@@ -609,7 +642,9 @@ def recursive_dict_product(
             if isinstance(nested_value, dict):
                 results = [
                     dict(r, **result)
-                    for result in recursive_dict_product(nested_value, all_keys, long_keys, separator, ignore, auto_id, nested_key)
+                    for result in recursive_dict_product(
+                        nested_value, all_keys, long_keys, separator, ignore, auto_id, nested_key
+                    )
                     for r in results
                 ]
         for result in results:
@@ -627,6 +662,7 @@ def get_choices_fields(*included_apps):
     :return: tuple contenant les choices fields triés par application
     """
     from django.apps import apps
+
     results = {}
     choices_fields = []
     included_apps = included_apps or [app.label for app in apps.get_app_configs()]
@@ -637,12 +673,22 @@ def get_choices_fields(*included_apps):
             for field in model._meta.fields:
                 if field.choices and field.choices not in choices_fields:
                     choices_fields.append(field.choices)
-                    choice_value = ' '.join([app_label, model._meta.model_name, field.name])
-                    choice_libelle = '{} ({})'.format(field.verbose_name, model._meta.verbose_name)
+                    choice_value = " ".join([app_label, model._meta.model_name, field.name])
+                    choice_libelle = "{} ({})".format(field.verbose_name, model._meta.verbose_name)
                     if app_label in results:
-                        results[app_label].append((choice_value, choice_libelle, ))
+                        results[app_label].append(
+                            (
+                                choice_value,
+                                choice_libelle,
+                            )
+                        )
                     else:
-                        results[app_label] = [(choice_value, choice_libelle, )]
+                        results[app_label] = [
+                            (
+                                choice_value,
+                                choice_libelle,
+                            )
+                        ]
 
     def ordered_choices(result):
         for valeur, libelle in sorted(result, key=lambda x: x[1]):
@@ -664,17 +710,32 @@ def prefetch_metadata(model, lookup=None, name=None):
     :param name: Nom de l'attribut (force l'évaluation, facultatif)
     :return: Liste de Prefetch
     """
-    from common.models import MetaData
     from django.db.models import Prefetch
+
+    from common.models import MetaData
+
     for field in model._meta.private_fields:
         if field.related_model is MetaData:
-            lookup = field.name if lookup is None else '{}__{}'.format(lookup, field.name)
+            lookup = field.name if lookup is None else "{}__{}".format(lookup, field.name)
             return [Prefetch(lookup, queryset=MetaData.objects.select_valid(), to_attr=name)]
     return []
 
 
-def get_prefetchs(parent, depth=1, height=1, foreign_keys=False, one_to_one=True, one_to_many=False, many_to_many=False,
-                  metadata=False, excludes=None, null=False, _model=None, _prefetch='', _level=1):
+def get_prefetchs(
+    parent,
+    depth=1,
+    height=1,
+    foreign_keys=False,
+    one_to_one=True,
+    one_to_many=False,
+    many_to_many=False,
+    metadata=False,
+    excludes=None,
+    null=False,
+    _model=None,
+    _prefetch="",
+    _level=1,
+):
     """
     Permet de récupérer récursivement tous les prefetch related d'un modèle
     :param parent: Modèle parent
@@ -700,9 +761,13 @@ def get_prefetchs(parent, depth=1, height=1, foreign_keys=False, one_to_one=True
     for field in model._meta.related_objects + model._meta.many_to_many:
         if field.name in excludes or (field.related_model in excludes):
             continue
-        if (field.one_to_one and one_to_one) or (field.one_to_many and one_to_many) or (field.many_to_many and many_to_many):
+        if (
+            (field.one_to_one and one_to_one)
+            or (field.one_to_many and one_to_many)
+            or (field.many_to_many and many_to_many)
+        ):
             accessor_name = field.get_accessor_name() if field.auto_created else field.name
-            recursive_prefetch = accessor_name if model == parent else '__'.join((_prefetch, accessor_name))
+            recursive_prefetch = accessor_name if model == parent else "__".join((_prefetch, accessor_name))
             prefetchs = None
             if model == parent or _level < depth:
                 prefetchs = get_prefetchs(
@@ -715,17 +780,19 @@ def get_prefetchs(parent, depth=1, height=1, foreign_keys=False, one_to_one=True
                     excludes=excludes,
                     _model=field.related_model,
                     _prefetch=recursive_prefetch,
-                    _level=_level + 1)
+                    _level=_level + 1,
+                )
                 results += prefetchs
             if height and not field.many_to_many:
                 for related in get_related(
-                        field.related_model,
-                        excludes=excludes,
-                        foreign_keys=foreign_keys,
-                        one_to_one=one_to_one,
-                        null=null,
-                        height=height):
-                    results.append('__'.join((recursive_prefetch, related)))
+                    field.related_model,
+                    excludes=excludes,
+                    foreign_keys=foreign_keys,
+                    one_to_one=one_to_one,
+                    null=null,
+                    height=height,
+                ):
+                    results.append("__".join((recursive_prefetch, related)))
             if metadata:
                 results.extend(prefetch_metadata(parent, lookup=recursive_prefetch))
             elif not prefetchs:
@@ -733,8 +800,18 @@ def get_prefetchs(parent, depth=1, height=1, foreign_keys=False, one_to_one=True
     return results
 
 
-def get_related(model, dest=None, excludes=None, foreign_keys=True, one_to_one=False, null=False, height=1,
-                _related='', _models=None, _level=0):
+def get_related(
+    model,
+    dest=None,
+    excludes=None,
+    foreign_keys=True,
+    one_to_one=False,
+    null=False,
+    height=1,
+    _related="",
+    _models=None,
+    _level=0,
+):
     """
     Permet de récupérer récursivement toutes les relations directes d'un modèle
     :param model: Modèle d'origine
@@ -759,13 +836,24 @@ def get_related(model, dest=None, excludes=None, foreign_keys=True, one_to_one=F
     # Clés étrangères
     if foreign_keys:
         for field in model._meta.fields:
-            if not isinstance(field, (ForeignKey, OneToOneField)) or field.name in excludes \
-                    or (field.remote_field and field.related_model in excludes) or (not null and field.null):
+            if (
+                not isinstance(field, (ForeignKey, OneToOneField))
+                or field.name in excludes
+                or (field.remote_field and field.related_model in excludes)
+                or (not null and field.null)
+            ):
                 continue
-            related_path = '__'.join((_related, field.name)) if _related else field.name
+            related_path = "__".join((_related, field.name)) if _related else field.name
             results += get_related(
-                field.related_model, dest=dest, excludes=excludes, height=height, null=null,
-                _related=related_path, _models=models, _level=_level + 1)
+                field.related_model,
+                dest=dest,
+                excludes=excludes,
+                height=height,
+                null=null,
+                _related=related_path,
+                _models=models,
+                _level=_level + 1,
+            )
     # Relations de type one-to-one
     if one_to_one:
         for field in model._meta.related_objects:
@@ -773,10 +861,17 @@ def get_related(model, dest=None, excludes=None, foreign_keys=True, one_to_one=F
                 field_name = field.get_accessor_name()
                 if field_name in excludes:
                     continue
-                related_path = '__'.join((_related, field_name)) if _related else field_name
+                related_path = "__".join((_related, field_name)) if _related else field_name
                 results += get_related(
-                    field.related_model, dest=dest, excludes=excludes, height=height, null=null,
-                    _related=related_path, _models=models, _level=_level + 1)
+                    field.related_model,
+                    dest=dest,
+                    excludes=excludes,
+                    height=height,
+                    null=null,
+                    _related=related_path,
+                    _models=models,
+                    _level=_level + 1,
+                )
     return results
 
 
@@ -801,8 +896,8 @@ def prefetch_generics(weak_queryset):
     for weak_model in weak_queryset:
         for gfk_name, gfk_field in gfks.items():
             related_content_type_id = getattr(
-                weak_model, gfk_field.model._meta.get_field(
-                    gfk_field.ct_field).get_attname())
+                weak_model, gfk_field.model._meta.get_field(gfk_field.ct_field).get_attname()
+            )
             if not related_content_type_id:
                 continue
             related_content_type = ContentType.objects.get_for_id(related_content_type_id)
@@ -819,8 +914,8 @@ def prefetch_generics(weak_queryset):
             for weak_model in weak_queryset:
                 for gfk_name, gfk_field in gfks.items():
                     related_content_type_id = getattr(
-                        weak_model, gfk_field.model._meta.get_field(
-                            gfk_field.ct_field).get_attname())
+                        weak_model, gfk_field.model._meta.get_field(gfk_field.ct_field).get_attname()
+                    )
                     if not related_content_type_id:
                         continue
                     related_content_type = ContentType.objects.get_for_id(related_content_type_id)
@@ -841,14 +936,14 @@ def get_field_by_path(model, path):
     :param path: Chemin vers le champ ciblé
     :return: Champ
     """
-    field_name, *inner_path = path.replace('__', '.').split('.')
+    field_name, *inner_path = path.replace("__", ".").split(".")
     try:
         field = model._meta.get_field(field_name)
     except FieldDoesNotExist:
         return None
     if inner_path:
         if field.related_model:
-            return get_field_by_path(field.related_model, '.'.join(inner_path))
+            return get_field_by_path(field.related_model, ".".join(inner_path))
         return field
     return field
 
@@ -860,14 +955,35 @@ def str_to_bool(value):
     :return: le booleen correspondant ou None si aucune correspondance
     """
     # Valeurs considérées comme vraies ou fausses (déclarées dans la fonction à cause du moteur i18n)
-    TRUE_VALUES = {'true', 'yes', 'y', '1', _('vrai'), _('oui'), _('o'), _('v')}
-    FALSE_VALUES = {'false', 'no', 'n', '0', _('faux'), _('non'), _('n'), _('f')}
+    TRUE_VALUES = {"true", "yes", "y", "1", _("vrai"), _("oui"), _("o"), _("v")}
+    FALSE_VALUES = {"false", "no", "n", "0", _("faux"), _("non"), _("n"), _("f")}
 
     if value is True or value is False:
         return value
     if value is None or str(value).lower() not in TRUE_VALUES | FALSE_VALUES:
         return None
     return str(value).lower() in TRUE_VALUES
+
+
+def str_to_int(value):
+    """
+    Permet de renvoyer le nombre correspondant à la valeur chaîne entrée en paramètre
+    :param value: valeur à analyser
+    :return: valeur numérique correspondante ou None sinon
+    """
+    if not value:
+        return value
+    try:
+        result = ast.literal_eval(value)
+        if isinstance(result, (int, float)):
+            return result
+    except (SyntaxError, ValueError):
+        for cast in (int, float):
+            try:
+                return cast(value)
+            except ValueError:
+                continue
+    return None
 
 
 def decimal(value=None, precision=None, rounding=ROUND_HALF_EVEN, context=None):
@@ -879,7 +995,7 @@ def decimal(value=None, precision=None, rounding=ROUND_HALF_EVEN, context=None):
     :param context: Contexte
     :return: Nombre décimal
     """
-    if value is None or value == '':
+    if value is None or value == "":
         return Decimal()
     _value = value
 
@@ -891,7 +1007,7 @@ def decimal(value=None, precision=None, rounding=ROUND_HALF_EVEN, context=None):
         return _value
 
     if isinstance(precision, int):
-        precision = Decimal('0.' + '0' * (precision - 1) + '1')
+        precision = Decimal("0." + "0" * (precision - 1) + "1")
     try:
         return Decimal(_value.quantize(precision, rounding=rounding), context=context)
     except InvalidOperation:
@@ -903,14 +1019,14 @@ def decimal_to_str(value):
     Reformate un nombre décimal en chaîne de caractères
     :param value: Valeur
     """
-    return '' if value is None else value if isinstance(value, str) else format(value, 'f').rstrip('0').rstrip('.')
+    return "" if value is None else value if isinstance(value, str) else format(value, "f").rstrip("0").rstrip(".")
 
 
 # Regex permettant d'extraire les paramètres d'une URL
-REGEX_URL_PARAMS = re.compile(r'\(\?P<([\w_]+)>[^\)]+\)')
+REGEX_URL_PARAMS = re.compile(r"\(\?P<([\w_]+)>[^\)]+\)")
 
 
-def recursive_get_urls(module=None, namespaces=None, attributes=None, model=None, _namespace=None, _current='/'):
+def recursive_get_urls(module=None, namespaces=None, attributes=None, model=None, _namespace=None, _current="/"):
     """
     Récupère les URLs d'un module
     :param module: Module à explorer
@@ -922,7 +1038,7 @@ def recursive_get_urls(module=None, namespaces=None, attributes=None, model=None
     :return: Générateur
     """
     namespaces = namespaces or []
-    attributes = attributes or ['urlpatterns', 'api_urlpatterns']
+    attributes = attributes or ["urlpatterns", "api_urlpatterns"]
 
     try:
         if not module:
@@ -937,21 +1053,26 @@ def recursive_get_urls(module=None, namespaces=None, attributes=None, model=None
 
     for pattern in patterns:
         try:
-            namespace = _namespace or getattr(pattern, 'namespace', None)
+            namespace = _namespace or getattr(pattern, "namespace", None)
             if namespaces and namespace not in namespaces:
                 continue
-            url = (_current + pattern.pattern.regex.pattern.strip('^$').replace('\\', ''))
-            url = re.sub(REGEX_URL_PARAMS, r':\1:', url).replace('?', '')
-            url = url.replace('(.+)', ':pk:')
-            if getattr(pattern.pattern, 'name', None):
-                key = '{}:{}'.format(namespace, pattern.pattern.name) if namespace else pattern.name
-                current_model = getattr(getattr(pattern.callback, 'cls', None), 'model', None)
+            url = _current + pattern.pattern.regex.pattern.strip("^$").replace("\\", "")
+            url = re.sub(REGEX_URL_PARAMS, r":\1:", url).replace("?", "")
+            url = url.replace("(.+)", ":pk:")
+            if getattr(pattern.pattern, "name", None):
+                key = "{}:{}".format(namespace, pattern.pattern.name) if namespace else pattern.name
+                current_model = getattr(getattr(pattern.callback, "cls", None), "model", None)
                 if not model or model is current_model:
                     yield key, url
-            elif getattr(pattern, 'namespace', None) and pattern.urlconf_module:
+            elif getattr(pattern, "namespace", None) and pattern.urlconf_module:
                 yield from recursive_get_urls(
-                    pattern.urlconf_module, namespaces=namespaces, attributes=attributes, model=model,
-                    _namespace=_namespace or pattern.namespace, _current=url)
+                    pattern.urlconf_module,
+                    namespaces=namespaces,
+                    attributes=attributes,
+                    model=model,
+                    _namespace=_namespace or pattern.namespace,
+                    _current=url,
+                )
         except AttributeError:
             continue
 
@@ -1043,6 +1164,7 @@ class Null(object):
     """
     Objet nul absolu
     """
+
     _instances = {}
 
     def __new__(cls, *args, **kwargs):
@@ -1111,7 +1233,7 @@ def to_tuple(data):
     return data
 
 
-def to_namedtuple(data, name='DictTuple'):
+def to_namedtuple(data, name="DictTuple"):
     """
     Transforme un dictionnaire ou une liste de dictionnaires en une série de tuples nommés imbriqués
     :param data: Dictionnaire ou liste de dictionnaires
@@ -1126,7 +1248,7 @@ def to_namedtuple(data, name='DictTuple'):
     return data
 
 
-def to_object(data, name='Context', default=None):
+def to_object(data, name="Context", default=None):
     """
     Transforme un dictionnaire en objet ou une liste de dictionnaire en liste d'objets
     :param data: Dictionnaire ou liste de dictionnaires
@@ -1134,6 +1256,7 @@ def to_object(data, name='Context', default=None):
     :param default: Valeur par défaut des attributs
     :return: Objet ou liste d'objets
     """
+
     def _getattr(s, k):
         try:
             object.__getattribute__(s, k)
@@ -1150,7 +1273,7 @@ def to_object(data, name='Context', default=None):
                 subdata[key] = to_object(value, name)
                 continue
             subdata[key] = value
-        return type(name, (dict, ), attrs)(subdata)
+        return type(name, (dict,), attrs)(subdata)
     return data
 
 
@@ -1164,7 +1287,7 @@ def is_namedtuple(obj):
     bases = _type.__bases__
     if len(bases) != 1 or bases[0] != tuple:
         return False
-    fields = getattr(_type, '_fields', None)
+    fields = getattr(_type, "_fields", None)
     if not isinstance(fields, tuple):
         return False
     return all(type(i) == str for i in fields)
@@ -1201,7 +1324,7 @@ def file_is_text(file):
     """
     textchars = bytearray([7, 8, 9, 10, 12, 13, 27]) + bytearray(range(0x20, 0x100))
     is_plaintext = lambda _bytes: not bool(_bytes.translate(None, textchars))
-    with open(file, 'rb') as f:
+    with open(file, "rb") as f:
         return is_plaintext(f.read(1024))
 
 
@@ -1213,12 +1336,12 @@ def seek_end(file, count=1):
     :return: Bytes
     """
     try:
-        with open(file, 'rb') as f:
+        with open(file, "rb") as f:
             f.seek(-count, 2)
             result = f.read()
         return result
     except OSError:
-        return b''
+        return b""
 
 
 def get_size(obj, _seen=None):
@@ -1235,17 +1358,17 @@ def get_size(obj, _seen=None):
     if obj_id in _seen:
         return 0
     _seen.add(obj_id)
-    if hasattr(obj, '__dict__'):
+    if hasattr(obj, "__dict__"):
         for cls in obj.__class__.__mro__:
-            if '__dict__' in cls.__dict__:
-                d = cls.__dict__['__dict__']
+            if "__dict__" in cls.__dict__:
+                d = cls.__dict__["__dict__"]
                 if inspect.isgetsetdescriptor(d) or inspect.ismemberdescriptor(d):
                     size += get_size(obj.__dict__, _seen)
                 break
     if isinstance(obj, dict):
         size += sum((get_size(v, _seen) for v in obj.values()))
         size += sum((get_size(k, _seen) for k in obj.keys()))
-    elif hasattr(obj, '__iter__') and not isinstance(obj, (str, bytes, bytearray)):
+    elif hasattr(obj, "__iter__") and not isinstance(obj, (str, bytes, bytearray)):
         size += sum((get_size(i, _seen) for i in obj))
     return size
 
@@ -1260,6 +1383,7 @@ def process_file(file_path, sleep=5, extract_directory=None):
     :return:
     """
     import time
+
     file_base = os.path.abspath(file_path)
     extract_directory = extract_directory or os.path.dirname(file_path)
     # Boucle tant que la copie n'est pas terminée
@@ -1277,14 +1401,16 @@ def process_file(file_path, sleep=5, extract_directory=None):
     if extension:
         extension = extension.lower()
     try:
-        if extension == '.zip':
+        if extension == ".zip":
             from zipfile import ZipFile
+
             with ZipFile(file_path) as zip:
                 zip.extractall(path=extract_directory)
             return
-        elif extension in ['.tar', '.gz', '.bz2']:
+        elif extension in [".tar", ".gz", ".bz2"]:
             import tarfile
-            tar = tarfile.open(file_path, 'r:*')
+
+            tar = tarfile.open(file_path, "r:*")
             tar.extractall()
             tar.close()
             return
@@ -1300,8 +1426,9 @@ def base64_encode(data):
     :param data: Chaîne à encoder
     :return: Chaîne encodée en base64
     """
-    from django.utils.http import urlsafe_base64_encode
     from django.utils.encoding import force_bytes
+    from django.utils.http import urlsafe_base64_encode
+
     return urlsafe_base64_encode(force_bytes(data))
 
 
@@ -1311,8 +1438,9 @@ def base64_decode(data):
     :param data: Chaîne base64 à décoder
     :return: Chaîne décodée
     """
-    from django.utils.http import urlsafe_base64_decode
     from django.utils.encoding import force_text
+    from django.utils.http import urlsafe_base64_decode
+
     return force_text(urlsafe_base64_decode(data))
 
 
@@ -1320,25 +1448,26 @@ def short_identifier():
     """
     Crée un identifiant court et (presque) unique
     """
-    alphabet = tuple('0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz')
+    alphabet = tuple("0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz")
     base = len(alphabet)
     num = uuid4().time
     digits = []
     while num > 0:
         num, rem = divmod(num, base)
         digits.append(alphabet[rem])
-    return ''.join(reversed(digits))
+    return "".join(reversed(digits))
 
 
 class JsonEncoder(JSONEncoder):
     """
     Encodeur JSON spécifique
     """
+
     encoding = {}  # type : callable
 
     def __init__(self, *args, **kwargs):
-        if 'sort_keys' not in kwargs:
-            kwargs['sort_keys'] = True
+        if "sort_keys" not in kwargs:
+            kwargs["sort_keys"] = True
         super().__init__(*args, **kwargs)
 
     def default(self, obj):
@@ -1362,9 +1491,10 @@ class JsonDecoder(JSONDecoder):
     """
     Décodeur JSON spécifique
     """
+
     def __init__(self, *args, **kwargs):
-        if 'parse_float' not in kwargs:
-            kwargs['parse_float'] = decimal
+        if "parse_float" not in kwargs:
+            kwargs["parse_float"] = decimal
         super().__init__(*args, **kwargs)
 
 
@@ -1374,13 +1504,13 @@ def json_encode(data, cls=None, **options):
 
 
 # JSON deserialization
-def json_decode(data, content_encoding='utf-8', cls=None, **options):
+def json_decode(data, content_encoding="utf-8", cls=None, **options):
     if isinstance(data, bytes):
         data = data.decode(content_encoding)
     return json.loads(data, cls=cls or JsonDecoder, **options)
 
 
-def abort_sql(name, kill=False, using=None, timeout=None, state='active'):
+def abort_sql(name, kill=False, using=None, timeout=None, state="active"):
     """
     Permet d'interrompre une ou plusieurs connexions SQL d'une application nommée
     :param name: Nom de l'application (paramètre "application_name" du client)
@@ -1390,14 +1520,19 @@ def abort_sql(name, kill=False, using=None, timeout=None, state='active'):
     :param state: Etat des connexion à interrompre ('active' ou 'idle')
     :return: Vrai si toutes les requêtes ont été interrompues, faux sinon
     """
+    from django.db import DEFAULT_DB_ALIAS, connections
+
     from common.fields import is_postgresql
-    from django.db import connections, DEFAULT_DB_ALIAS
+
     connection = connections[using or DEFAULT_DB_ALIAS]
     if not is_postgresql(connection):
         return AssertionError(_("Cette fonction ne peut être utilisée que sur PostgreSQL."))
     with connection.cursor() as cursor:
-        query = "SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE application_name = %s" if kill \
+        query = (
+            "SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE application_name = %s"
+            if kill
             else "SELECT pg_cancel_backend(pid) FROM pg_stat_activity WHERE application_name = %s"
+        )
         params = [name]
         if timeout:
             query += " AND NOW() - query_start > interval '%s seconds'"
@@ -1416,12 +1551,12 @@ def get_current_user():
     """
     for frameinfo in inspect.stack():
         frame = frameinfo.frame
-        if 'request' not in frame.f_locals:
+        if "request" not in frame.f_locals:
             continue
-        request = frame.f_locals['request']
+        request = frame.f_locals["request"]
         if not isinstance(request, HttpRequest):
             continue
-        if not hasattr(request, 'user'):
+        if not hasattr(request, "user"):
             continue
         return request.user if request.user.pk else None
     return None
@@ -1459,8 +1594,10 @@ def collect_deleted_data(object):
             from_model.meta = from_model._meta  # For template
             from_field, to_field, *_junk = model._meta.fields[1:]
             field = next(
-                field for field in from_model.meta.many_to_many
-                if to_field and field.related_model == to_field.related_model)
+                field
+                for field in from_model.meta.many_to_many
+                if to_field and field.related_model == to_field.related_model
+            )
             for _instance in instances:
                 instance, value = getattr(_instance, from_field.name), getattr(_instance, to_field.name)
                 if instance == object:
@@ -1487,9 +1624,19 @@ def collect_deleted_data(object):
 
 
 def send_mail(
-        mail_from=None, mail_to=None, mail_cc=None, mail_bcc=None, mail_reply_to=None,
-        mail_subject=None, mail_text=None, mail_html=None, mail_data=None,
-        files=None, fail_silently=False, force=False):
+    mail_from=None,
+    mail_to=None,
+    mail_cc=None,
+    mail_bcc=None,
+    mail_reply_to=None,
+    mail_subject=None,
+    mail_text=None,
+    mail_html=None,
+    mail_data=None,
+    files=None,
+    fail_silently=False,
+    force=False,
+):
     """
     Permet d'envoyer un e-mail avec un ou plusieurs documents attachés
     :param mail_from: Adresse e-mail de l'émetteur
@@ -1540,7 +1687,7 @@ def merge_validation_errors(errors):
     """
     data = {}
     for error in errors:
-        if hasattr(error, 'error_dict'):
+        if hasattr(error, "error_dict"):
             for field, messages in error.error_dict.items():
                 if not isinstance(messages, ValidationError):
                     messages = ValidationError(messages)

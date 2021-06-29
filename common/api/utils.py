@@ -6,7 +6,7 @@ from json import JSONDecodeError
 from django.conf import settings
 from django.core.exceptions import EmptyResultSet
 from django.db import models
-from django.db.models import F, Q, QuerySet, Count, Sum, Avg, Min, Max, StdDev, Variance, functions
+from django.db.models import Avg, Count, F, Max, Min, Q, QuerySet, StdDev, Sum, Variance, functions
 from rest_framework import serializers, viewsets
 from rest_framework.decorators import api_view
 from rest_framework.exceptions import NotFound, ValidationError
@@ -15,102 +15,128 @@ from rest_framework.response import Response
 
 from common.api.fields import ChoiceDisplayField, ReadOnlyObjectField
 from common.utils import (
-    get_field_by_path, get_prefetchs, get_related, json_decode, parsedate, prefetch_metadata, str_to_bool, get_pk_field)
-
+    get_field_by_path,
+    get_pk_field,
+    get_prefetchs,
+    get_related,
+    json_decode,
+    parsedate,
+    prefetch_metadata,
+    str_to_bool,
+)
 
 # URLs dans les serializers
-HYPERLINKED = settings.REST_FRAMEWORK.get('HYPERLINKED', False)
+HYPERLINKED = settings.REST_FRAMEWORK.get("HYPERLINKED", False)
 
 # Mots clés réservés dans les URLs des APIs
 AGGREGATES = {
-    'count': Count,
-    'sum': Sum,
-    'avg': Avg,
-    'min': Min,
-    'max': Max,
-    'stddev': StdDev,
-    'variance': Variance,
+    "count": Count,
+    "sum": Sum,
+    "avg": Avg,
+    "min": Min,
+    "max": Max,
+    "stddev": StdDev,
+    "variance": Variance,
 }
 CASTS = {
-    'bool': models.BooleanField,
-    'date': models.DateField,
-    'datetime': models.DateTimeField,
-    'decimal': models.DecimalField,
-    'float': models.FloatField,
-    'int': models.IntegerField,
-    'str': models.CharField,
-    'time': models.TimeField,
+    "bool": models.BooleanField,
+    "date": models.DateField,
+    "datetime": models.DateTimeField,
+    "decimal": models.DecimalField,
+    "float": models.FloatField,
+    "int": models.IntegerField,
+    "str": models.CharField,
+    "time": models.TimeField,
 }
 FUNCTIONS = {
-    'cast': lambda value, type='', *args: (
-        partial(functions.Cast, output_field=CASTS.get(type, models.CharField)())(value, *args)),
-    'coalesce': functions.Coalesce,
-    'greatest': functions.Greatest,
-    'least': functions.Least,
-    'nullif': functions.NullIf,
-    'extract_year': functions.ExtractIsoYear,
-    'extract_month': functions.ExtractMonth,
-    'extract_day': functions.ExtractDay,
-    'extract_week_day': functions.ExtractIsoWeekDay,
-    'extract_week': functions.ExtractWeek,
-    'extract_quarter': functions.ExtractQuarter,
-    'extract_hour': functions.ExtractHour,
-    'extract_minute': functions.ExtractMinute,
-    'extract_second': functions.ExtractSecond,
-    'trunc_year': functions.TruncYear,
-    'trunc_month': functions.TruncMonth,
-    'trunc_week': functions.TruncWeek,
-    'trunc_quarter': functions.TruncQuarter,
-    'trunc_date': functions.TruncDate,
-    'trunc_time': functions.TruncTime,
-    'trunc_day': functions.TruncDay,
-    'trunc_hour': functions.TruncHour,
-    'trunc_minute': functions.TruncMinute,
-    'trunc_second': functions.TruncSecond,
-    'abs': functions.Abs,
-    'acos': functions.ACos,
-    'asin': functions.ASin,
-    'atan': functions.ATan,
-    'atan2': functions.ATan2,
-    'ceil': functions.Ceil,
-    'cos': functions.Cos,
-    'cot': functions.Cot,
-    'degrees': functions.Degrees,
-    'exp': functions.Exp,
-    'floor': functions.Floor,
-    'ln': functions.Ln,
-    'log': functions.Log,
-    'mod': functions.Mod,
-    'radians': functions.Radians,
-    'round': functions.Round,
-    'power': functions.Power,
-    'sign': functions.Sign,
-    'sin': functions.Sin,
-    'sqrt': functions.Sqrt,
-    'tan': functions.Tan,
-    'left': functions.Left,
-    'length': functions.Length,
-    'lower': functions.Lower,
-    'lpad': functions.LPad,
-    'ltrim': functions.LTrim,
-    'md5': functions.MD5,
-    'right': functions.Right,
-    'rpad': functions.RPad,
-    'rtrim': functions.RTrim,
-    'sha1': functions.SHA1,
-    'sha224': functions.SHA224,
-    'sha256': functions.SHA256,
-    'sha384': functions.SHA384,
-    'sha512': functions.SHA512,
-    'strindex': functions.StrIndex,
-    'substr': functions.Substr,
-    'trim': functions.Trim,
-    'upper': functions.Upper,
+    "cast": lambda value, cast_type="", *args: (
+        partial(functions.Cast, output_field=CASTS.get(cast_type, models.CharField)())(value, *args)
+    ),
+    "coalesce": functions.Coalesce,
+    "greatest": functions.Greatest,
+    "least": functions.Least,
+    "nullif": functions.NullIf,
+    "extract_year": functions.ExtractIsoYear,
+    "extract_month": functions.ExtractMonth,
+    "extract_day": functions.ExtractDay,
+    "extract_week_day": functions.ExtractIsoWeekDay,
+    "extract_week": functions.ExtractWeek,
+    "extract_quarter": functions.ExtractQuarter,
+    "extract_hour": functions.ExtractHour,
+    "extract_minute": functions.ExtractMinute,
+    "extract_second": functions.ExtractSecond,
+    "trunc_year": functions.TruncYear,
+    "trunc_month": functions.TruncMonth,
+    "trunc_week": functions.TruncWeek,
+    "trunc_quarter": functions.TruncQuarter,
+    "trunc_date": functions.TruncDate,
+    "trunc_time": functions.TruncTime,
+    "trunc_day": functions.TruncDay,
+    "trunc_hour": functions.TruncHour,
+    "trunc_minute": functions.TruncMinute,
+    "trunc_second": functions.TruncSecond,
+    "abs": functions.Abs,
+    "acos": functions.ACos,
+    "asin": functions.ASin,
+    "atan": functions.ATan,
+    "atan2": functions.ATan2,
+    "ceil": functions.Ceil,
+    "cos": functions.Cos,
+    "cot": functions.Cot,
+    "degrees": functions.Degrees,
+    "exp": functions.Exp,
+    "floor": functions.Floor,
+    "ln": functions.Ln,
+    "log": functions.Log,
+    "mod": functions.Mod,
+    "radians": functions.Radians,
+    "round": functions.Round,
+    "power": functions.Power,
+    "sign": functions.Sign,
+    "sin": functions.Sin,
+    "sqrt": functions.Sqrt,
+    "tan": functions.Tan,
+    "left": functions.Left,
+    "length": functions.Length,
+    "lower": functions.Lower,
+    "lpad": functions.LPad,
+    "ltrim": functions.LTrim,
+    "md5": functions.MD5,
+    "ord": functions.Ord,
+    "repeat": functions.Repeat,
+    "replace": functions.Replace,
+    "reverse": functions.Reverse,
+    "right": functions.Right,
+    "rpad": functions.RPad,
+    "rtrim": functions.RTrim,
+    "sha1": functions.SHA1,
+    "sha224": functions.SHA224,
+    "sha256": functions.SHA256,
+    "sha384": functions.SHA384,
+    "sha512": functions.SHA512,
+    "strindex": functions.StrIndex,
+    "substr": functions.Substr,
+    "trim": functions.Trim,
+    "upper": functions.Upper,
 }
-RESERVED_QUERY_PARAMS = [
-    'filters', 'fields', 'order_by', 'group_by', 'all', 'display',
-    'distinct', 'silent', 'simple', 'meta', 'cache', 'timeout',
-] + list(AGGREGATES.keys()) + list(FUNCTIONS.keys())
+RESERVED_QUERY_PARAMS = (
+    [
+        "filters",
+        "fields",
+        "order_by",
+        "group_by",
+        "all",
+        "display",
+        "distinct",
+        "silent",
+        "simple",
+        "meta",
+        "cache",
+        "timeout",
+    ]
+    + list(AGGREGATES.keys())
+    + list(FUNCTIONS.keys())
+)
 
 
 def url_value(filter, value):
@@ -129,33 +155,31 @@ def url_value(filter, value):
         evaluated = False
     if not filter:
         return value
-    if any(filter.endswith(lookup) for lookup in (
-            '__in', '__range', '__hasany', '__hasall',
-            '__has_keys', '__has_any_keys', '__overlap')):
+    if any(
+        filter.endswith(lookup)
+        for lookup in ("__in", "__range", "__hasany", "__hasall", "__has_keys", "__has_any_keys", "__overlap")
+    ):
         if evaluated:
             if not isinstance(value, (list, set, tuple)):
-                return value,
+                return (value,)
         else:
-            return value.split(',')
-    if any(filter.endswith(lookup) for lookup in (
-            '__isnull', '__isempty')):
+            return value.split(",")
+    if any(filter.endswith(lookup) for lookup in ("__isnull", "__isempty")):
         return str_to_bool(value)
-    if any(filter.endswith(lookup) for lookup in (
-            '__contains', '__contained_by',
-            '__hasdict', '__indict')):
+    if any(filter.endswith(lookup) for lookup in ("__contains", "__contained_by", "__hasdict", "__indict")):
         if not isinstance(value, str):
             return value
         try:
             return json_decode(value)
         except (JSONDecodeError, TypeError, ValueError):
-            if ':' in value:
+            if ":" in value:
                 data = {}
-                for subvalue in value.split(','):
-                    key, val = subvalue.split(':')
+                for subvalue in value.split(","):
+                    key, val = subvalue.split(":")
                     data[key] = val
                 return data
-            elif ',' in value:
-                return value.split(',')
+            elif "," in value:
+                return value.split(",")
     return value
 
 
@@ -172,14 +196,15 @@ def parse_filters(filters):
         try:
             import ast
             import re
-            filters = filters.replace('\'', '\\\'').replace('\"', '\\\"')
-            filters = re.sub(r'([\w.]+):([^,()]*)', r'{"\1":"\2"}', filters)
-            filters = re.sub(r'(\w+)\(', r'("\1",', filters)
+
+            filters = filters.replace("'", "\\'").replace('"', '\\"')
+            filters = re.sub(r"([\w.]+):([^,()]*)", r'{"\1":"\2"}', filters)
+            filters = re.sub(r"(\w+)\(", r'("\1",', filters)
             filters = ast.literal_eval(filters)
         except Exception as exception:
             raise Exception("{filters}: {exception}".format(filters=filters, exception=exception))
     if isinstance(filters, dict):
-        filters = filters,
+        filters = (filters,)
     operator = None
     elements = []
     for filter in filters:
@@ -188,19 +213,19 @@ def parse_filters(filters):
         elif isinstance(filter, dict):
             fields = {}
             for key, value in filter.items():
-                key = key.strip().replace('.', '__')
-                if value.startswith('[') and value.endswith(']'):
-                    value = F(value[1:-1].replace('.', '__'))
+                key = key.strip().replace(".", "__")
+                if value.startswith("[") and value.endswith("]"):
+                    value = F(value[1:-1].replace(".", "__"))
                 fields[key] = url_value(key, value)
             elements.append(Q(**fields))
         elif isinstance(filter, str):
             operator = filter.lower()
-    if operator == 'or':
+    if operator == "or":
         q = elements.pop(0)
         for element in elements:
             q |= element
     else:
-        q = ~elements.pop(0) if operator == 'not' else elements.pop(0)
+        q = ~elements.pop(0) if operator == "not" else elements.pop(0)
         for element in elements:
             q &= element
     return q
@@ -218,39 +243,45 @@ def to_model_serializer(model, **metadata):
 
     def wrapper(serializer):
         for field in model._meta.fields:
-            if 'fields' in metadata and field.name not in metadata.get('fields', []):
+            if "fields" in metadata and field.name not in metadata.get("fields", []):
                 continue
-            if 'exclude' in metadata and field.name in metadata.get('exclude', []):
+            if "exclude" in metadata and field.name in metadata.get("exclude", []):
                 continue
 
             # Injection des identifiants de clés étrangères
             if HYPERLINKED and field.related_model:
-                serializer._declared_fields[field.name + '_id'] = serializers.ReadOnlyField()
-                if 'fields' in metadata and 'exclude' not in metadata:
-                    metadata['fields'] = list(metadata.get('fields', [])) + [field.name + '_id']
+                serializer._declared_fields[field.name + "_id"] = serializers.ReadOnlyField()
+                if "fields" in metadata and "exclude" not in metadata:
+                    metadata["fields"] = list(metadata.get("fields", [])) + [field.name + "_id"]
 
             # Injection des valeurs humaines pour les champs ayant une liste de choix
             if field.choices:
-                serializer_field_name = '{}_display'.format(field.name)
-                source_field_name = 'get_{}'.format(serializer_field_name)
+                serializer_field_name = "{}_display".format(field.name)
+                source_field_name = "get_{}".format(serializer_field_name)
                 serializer._declared_fields[serializer_field_name] = serializers.CharField(
-                    source=source_field_name, label=field.verbose_name or field.name, read_only=True)
-                if 'fields' in metadata and 'exclude' not in metadata:
-                    metadata['fields'] = list(metadata.get('fields', [])) + [serializer_field_name]
+                    source=source_field_name, label=field.verbose_name or field.name, read_only=True
+                )
+                if "fields" in metadata and "exclude" not in metadata:
+                    metadata["fields"] = list(metadata.get("fields", [])) + [serializer_field_name]
 
             # Injection des données des champs de type JSON
             if isinstance(field, ModelJsonField):
                 serializer._declared_fields[field.name] = ApiJsonField(
-                    label=field.verbose_name, help_text=field.help_text,
-                    required=not field.blank, allow_null=field.null, read_only=not field.editable)
+                    label=field.verbose_name,
+                    help_text=field.help_text,
+                    required=not field.blank,
+                    allow_null=field.null,
+                    read_only=not field.editable,
+                )
 
         # Mise à jour des métadonnées du serializer
-        if 'fields' not in metadata and 'exclude' not in metadata:
-            metadata.update(fields='__all__')
+        if "fields" not in metadata and "exclude" not in metadata:
+            metadata.update(fields="__all__")
         metadata.update(model=model)
         metadata.update(ref_name=model._meta.label)
-        serializer.Meta = type('Meta', (), metadata)
+        serializer.Meta = type("Meta", (), metadata)
         return serializer
+
     return wrapper
 
 
@@ -276,6 +307,7 @@ def to_model_viewset(model, serializer, permissions=None, queryset=None, bases=N
         viewset.default_serializer = create_model_serializer(model, bases=bases, hyperlinked=False, **metadata)
         viewset.permission_classes = permissions or [CommonModelPermissions]
         return viewset
+
     return wrapper
 
 
@@ -285,17 +317,17 @@ def excludes_many_to_many_from_serializer(serializer):
     :param serializer: Serializer (classe)
     :return: Rien
     """
-    model = getattr(serializer.Meta, 'model', None)
+    model = getattr(serializer.Meta, "model", None)
     if model is None:
         return
-    fields = getattr(serializer.Meta, 'fields', None)
-    if fields == '__all__':
+    fields = getattr(serializer.Meta, "fields", None)
+    if fields == "__all__":
         fields = None
         del serializer.Meta.fields
     if fields is None:
         serializer.Meta.exclude = list(
-            set(getattr(serializer.Meta, 'exclude', [])) |
-            {field.name for field in model._meta.many_to_many})
+            set(getattr(serializer.Meta, "exclude", [])) | {field.name for field in model._meta.many_to_many}
+        )
 
 
 def create_model_serializer(model, bases=None, attributes=None, hyperlinked=True, **metas):
@@ -309,8 +341,10 @@ def create_model_serializer(model, bases=None, attributes=None, hyperlinked=True
     :return: serializer
     """
     from common.api.serializers import CommonModelSerializer
-    serializer = type('{}GenericSerializer'.format(model._meta.object_name),
-                      (bases or (CommonModelSerializer, )), (attributes or {}))
+
+    serializer = type(
+        "{}GenericSerializer".format(model._meta.object_name), (bases or (CommonModelSerializer,)), (attributes or {})
+    )
     if not hyperlinked:
         serializer.serializer_related_field = PrimaryKeyRelatedField
     return to_model_serializer(model, **metas)(serializer)
@@ -322,6 +356,7 @@ def serializer_factory(excludes):
     :param excludes: Liste de champs à exclure du ModelSerializer
     :return: Méthode de récupération de la classe du serializer, méthode de récupération de l'instance du serializer
     """
+
     def get_serializer_class(model):
         return create_model_serializer(model, excludes=excludes.get(model, ()))
 
@@ -332,11 +367,28 @@ def serializer_factory(excludes):
 
 
 def create_model_serializer_and_viewset(
-        model, foreign_keys=True, many_to_many=False, one_to_one=True, one_to_many=False,
-        fks_in_related=False, null_fks=False,
-        serializer_base=None, viewset_base=None, serializer_data=None, viewset_data=None,
-        permissions=None, queryset=None, metas=None, exclude_related=None, depth=0, height=1,
-        _level=0, _origin=None, _field=None, **options):
+    model,
+    foreign_keys=True,
+    many_to_many=False,
+    one_to_one=True,
+    one_to_many=False,
+    fks_in_related=False,
+    null_fks=False,
+    serializer_base=None,
+    viewset_base=None,
+    serializer_data=None,
+    viewset_data=None,
+    permissions=None,
+    queryset=None,
+    metas=None,
+    exclude_related=None,
+    depth=0,
+    height=1,
+    _level=0,
+    _origin=None,
+    _field=None,
+    **options
+):
     """
     Permet de créer les classes de serializer et de viewset associés à un modèle
     :param model: Modèle
@@ -367,15 +419,16 @@ def create_model_serializer_and_viewset(
     # Héritages du serializer et viewset
     from common.api.serializers import CommonModelSerializer
     from common.api.viewsets import CommonModelViewSet
-    _serializer_base = (serializer_base or {}).get(model, (CommonModelSerializer, ))
-    _viewset_base = (viewset_base or {}).get(model, (CommonModelViewSet, ))
+
+    _serializer_base = (serializer_base or {}).get(model, (CommonModelSerializer,))
+    _viewset_base = (viewset_base or {}).get(model, (CommonModelViewSet,))
 
     # Ajout du serializer des hyperlinks à la liste si ils sont activés
     _bases = _serializer_base  # Le serializer par défaut des viewsets ne doit pas hériter du serializer des hyperlinks
 
     # Si aucune surcharge des serializer et/ou du viewset, utilisation des modèles par défaut
-    _serializer_base = _serializer_base or (serializers.ModelSerializer, )
-    _viewset_base = _viewset_base or (viewsets.ModelViewSet, )
+    _serializer_base = _serializer_base or (serializers.ModelSerializer,)
+    _viewset_base = _viewset_base or (viewsets.ModelViewSet,)
 
     # Données complémentaires du serializer et viewset
     _serializer_data = (serializer_data or {}).get(model, {}).copy()
@@ -385,19 +438,21 @@ def create_model_serializer_and_viewset(
     exclude_related = exclude_related if isinstance(exclude_related, dict) else {model: exclude_related or []}
     metadata = (metas or {}).get(model, {})
     metadata.update(options)
-    metadata['extra_kwargs'] = metadata.get('extra_kwargs', {})
+    metadata["extra_kwargs"] = metadata.get("extra_kwargs", {})
 
     # Vérifie qu'un nom de champ donné est inclu ou exclu
     def field_allowed(field_name):
-        return field_name in metadata.get('fields', []) or (
-            field_name not in metadata.get('exclude', []) and
-            field_name not in exclude_related.get(model, []))
+        return field_name in metadata.get("fields", []) or (
+            field_name not in metadata.get("exclude", []) and field_name not in exclude_related.get(model, [])
+        )
 
     # Création du serializer et du viewset
     serializer = to_model_serializer(model, **metadata)(
-        type(object_name + 'Serializer', _serializer_base, _serializer_data))
+        type(object_name + "Serializer", _serializer_base, _serializer_data)
+    )
     viewset = to_model_viewset(model, serializer, permissions, bases=_bases, **metadata)(
-        type(object_name + 'ViewSet', _viewset_base, _viewset_data))
+        type(object_name + "ViewSet", _viewset_base, _viewset_data)
+    )
 
     # Surcharge du queryset par défaut dans le viewset
     if queryset is not None:
@@ -419,19 +474,34 @@ def create_model_serializer_and_viewset(
         # Ajout du serializer pour la relation de clé étrangère
         if (foreign_keys and 0 >= _level > -height) or (fks_in_related and _level > 0):
             fk_serializer, fk_viewset = create_model_serializer_and_viewset(
-                field.related_model, foreign_keys=foreign_keys, many_to_many=False,
-                one_to_one=False, one_to_many=False, fks_in_related=False, null_fks=False,
-                serializer_base=serializer_base, viewset_base=viewset_base,
-                serializer_data=serializer_data, viewset_data=viewset_data,
-                exclude_related=exclude_related, metas=metas, depth=0, height=height,
-                _level=_level - 1, _origin=model, _field=field.name)
+                field.related_model,
+                foreign_keys=foreign_keys,
+                many_to_many=False,
+                one_to_one=False,
+                one_to_many=False,
+                fks_in_related=False,
+                null_fks=False,
+                serializer_base=serializer_base,
+                viewset_base=viewset_base,
+                serializer_data=serializer_data,
+                viewset_data=viewset_data,
+                exclude_related=exclude_related,
+                metas=metas,
+                depth=0,
+                height=height,
+                _level=_level - 1,
+                _origin=model,
+                _field=field.name,
+            )
             serializer._declared_fields[field.name] = fk_serializer(read_only=True)
             relateds.append(field.name)
             # Récupération des relations de plus haut niveau si nécessaire
-            field_relateds = get_related(
-                field.related_model, null=null_fks, height=height - 1, _models=[model])
-            relateds += ['__'.join([field.name, field_related]) for field_related in field_relateds
-                         if field_related not in exclude_related.get(field.related_model, [])]
+            field_relateds = get_related(field.related_model, null=null_fks, height=height - 1, _models=[model])
+            relateds += [
+                "__".join([field.name, field_related])
+                for field_related in field_relateds
+                if field_related not in exclude_related.get(field.related_model, [])
+            ]
         elif _level > 0:
             # Les clés étrangères des relations inversées qui pointent sur le modèle d'origine peuvent être nulles
             if field.remote_field and not field.primary_key and field.related_model is _origin:
@@ -448,12 +518,25 @@ def create_model_serializer_and_viewset(
                 continue
             # Ajout du serializer pour la relation many-to-many
             m2m_serializer, m2m_viewset = create_model_serializer_and_viewset(
-                field.related_model, foreign_keys=False, many_to_many=False,
-                one_to_one=False, one_to_many=False, fks_in_related=False, null_fks=False,
-                serializer_base=serializer_base, viewset_base=viewset_base,
-                serializer_data=serializer_data, viewset_data=viewset_data,
-                exclude_related=exclude_related, metas=metas, depth=0, height=0,
-                _level=0, _origin=model, _field=field.name)
+                field.related_model,
+                foreign_keys=False,
+                many_to_many=False,
+                one_to_one=False,
+                one_to_many=False,
+                fks_in_related=False,
+                null_fks=False,
+                serializer_base=serializer_base,
+                viewset_base=viewset_base,
+                serializer_data=serializer_data,
+                viewset_data=viewset_data,
+                exclude_related=exclude_related,
+                metas=metas,
+                depth=0,
+                height=0,
+                _level=0,
+                _origin=model,
+                _field=field.name,
+            )
             serializer._declared_fields[field.name] = m2m_serializer(many=True, read_only=True)
             prefetchs.append(field.name)
             # Prefetch des métadonnées
@@ -474,19 +557,36 @@ def create_model_serializer_and_viewset(
             field_name = field.get_accessor_name()
             # Ajout du serializer pour la relation inversée
             child_serializer, child_viewset = create_model_serializer_and_viewset(
-                field.related_model, foreign_keys=foreign_keys, many_to_many=many_to_many,
-                one_to_one=one_to_one, one_to_many=one_to_many, fks_in_related=fks_in_related, null_fks=null_fks,
-                serializer_base=serializer_base, viewset_base=viewset_base,
-                serializer_data=serializer_data, viewset_data=viewset_data,
-                exclude_related=exclude_related, metas=metas, depth=depth, height=0,
-                _level=_level + 1, _origin=model, _field=field_name)
+                field.related_model,
+                foreign_keys=foreign_keys,
+                many_to_many=many_to_many,
+                one_to_one=one_to_one,
+                one_to_many=one_to_many,
+                fks_in_related=fks_in_related,
+                null_fks=null_fks,
+                serializer_base=serializer_base,
+                viewset_base=viewset_base,
+                serializer_data=serializer_data,
+                viewset_data=viewset_data,
+                exclude_related=exclude_related,
+                metas=metas,
+                depth=depth,
+                height=0,
+                _level=_level + 1,
+                _origin=model,
+                _field=field_name,
+            )
             serializer._declared_fields[field_name] = child_serializer(read_only=True)
             relateds.append(field_name)
             # Récupération des relations de plus haut niveau si nécessaire
             field_relateds = get_related(
-                field.related_model, one_to_one=True, null=null_fks, height=height - 1, _models=[model])
-            relateds += ['__'.join([field_name, field_related]) for field_related in field_relateds
-                         if field_related not in exclude_related.get(field.related_model, [])]
+                field.related_model, one_to_one=True, null=null_fks, height=height - 1, _models=[model]
+            )
+            relateds += [
+                "__".join([field_name, field_related])
+                for field_related in field_relateds
+                if field_related not in exclude_related.get(field.related_model, [])
+            ]
 
     # Gestion des one-to-many
     if one_to_many and depth > _level:
@@ -500,12 +600,25 @@ def create_model_serializer_and_viewset(
             field_name = field.get_accessor_name()
             # Ajout du serializer pour la relation inversée
             child_serializer, child_viewset = create_model_serializer_and_viewset(
-                field.related_model, foreign_keys=foreign_keys, many_to_many=many_to_many,
-                one_to_one=one_to_one, one_to_many=one_to_many, fks_in_related=fks_in_related, null_fks=null_fks,
-                serializer_base=serializer_base, viewset_base=viewset_base,
-                serializer_data=serializer_data, viewset_data=viewset_data,
-                exclude_related=exclude_related, metas=metas, depth=depth, height=0,
-                _level=_level + 1, _origin=model, _field=field_name)
+                field.related_model,
+                foreign_keys=foreign_keys,
+                many_to_many=many_to_many,
+                one_to_one=one_to_one,
+                one_to_many=one_to_many,
+                fks_in_related=fks_in_related,
+                null_fks=null_fks,
+                serializer_base=serializer_base,
+                viewset_base=viewset_base,
+                serializer_data=serializer_data,
+                viewset_data=viewset_data,
+                exclude_related=exclude_related,
+                metas=metas,
+                depth=depth,
+                height=0,
+                _level=_level + 1,
+                _origin=model,
+                _field=field_name,
+            )
             serializer._declared_fields[field_name] = child_serializer(many=True, read_only=True)
 
     # Récupération des relations inversées
@@ -516,7 +629,8 @@ def create_model_serializer_and_viewset(
         one_to_one=one_to_one,
         one_to_many=one_to_many,
         many_to_many=many_to_many,
-        null=null_fks)
+        null=null_fks,
+    )
     prefetchs += get_prefetchs(model, **arguments)
     prefetchs_metadata += get_prefetchs(model, metadata=True, **arguments)
 
@@ -538,20 +652,22 @@ def perishable_view(func):
     :param func: Fonction à décorer
     :return: Fonction avec la request enrichie
     """
+
     @wraps(func)
     def wrapper(item, *args, **kwargs):
         # "request = item.request" dans le cas d'une ViewSet, "item" dans le cas d'une api_view
-        request = item.request if hasattr(item, 'request') else item
+        request = item.request if hasattr(item, "request") else item
         valid = None
         valid_date = None
         params = request.data if request.data else request.query_params
         if params:
-            valid = str_to_bool(params.get('valid', None))
-            valid_date = parsedate(params.get('valid_date', None))
-        setattr(request, 'valid', valid)
-        setattr(request, 'valid_date', valid_date)
-        setattr(request, 'valid_filter', dict(valid=valid, date=valid_date))
+            valid = str_to_bool(params.get("valid", None))
+            valid_date = parsedate(params.get("valid_date", None))
+        setattr(request, "valid", valid)
+        setattr(request, "valid_date", valid_date)
+        setattr(request, "valid_filter", dict(valid=valid, date=valid_date))
         return func(item, *args, **kwargs)
+
     return wrapper
 
 
@@ -565,6 +681,7 @@ def api_view_with_serializer(http_method_names=None, input_serializer=None, seri
     :param validation: Exécuter la validation des données d'entrée ? (request contiendra alors "validated_data")
     :return: APIView
     """
+
     def decorator(func):
         @wraps(func)
         def inner_func(request, *args, **kwargs):
@@ -585,37 +702,52 @@ def api_view_with_serializer(http_method_names=None, input_serializer=None, seri
             view_class.serializer_class = input_serializer
             # Reprise des méthodes d'accès au serializer pour les métadonnées de l'APIView
             from rest_framework.generics import GenericAPIView
+
             view_class.get_serializer = GenericAPIView.get_serializer
             view_class.get_serializer_context = GenericAPIView.get_serializer_context
             view_class.get_serializer_class = GenericAPIView.get_serializer_class
 
             if validation:
                 # POST
-                post_handler = getattr(view_class, 'post', None)
+                post_handler = getattr(view_class, "post", None)
                 if post_handler:
+
                     def handler(self, request, *args, **kwargs):
                         serializer_instance = input_serializer(data=request.data)
                         serializer_instance.is_valid(raise_exception=True)
                         request.validated_data = serializer_instance.validated_data
                         return post_handler(self, request, *args, **kwargs)
+
                     view_class.post = handler
                 # PUT
-                put_handler = getattr(view_class, 'put', None)
+                put_handler = getattr(view_class, "put", None)
                 if put_handler:
+
                     def handler(self, request, *args, **kwargs):
-                        partial = kwargs.pop('partial', False)
+                        partial = kwargs.pop("partial", False)
                         instance = self.get_object()
                         serializer_instance = input_serializer(instance, data=request.data, partial=partial)
                         serializer_instance.is_valid(raise_exception=True)
                         request.validated_data = serializer_instance.validated_data
                         return post_handler(self, request, *args, **kwargs)
+
                     view_class.put = handler
         return view
+
     return decorator
 
 
-def auto_view(http_method_names=None, input_serializer=None, serializer=None, validation=True, many=False,
-              custom_func=None, query_func=None, func_args=None, func_kwargs=None):
+def auto_view(
+    http_method_names=None,
+    input_serializer=None,
+    serializer=None,
+    validation=True,
+    many=False,
+    custom_func=None,
+    query_func=None,
+    func_args=None,
+    func_kwargs=None,
+):
     """
     Décorateur permettant de générer le corps d'une APIView à partir d'un QuerySet
     :param http_method_names: Méthodes HTTP supportées
@@ -646,8 +778,14 @@ def auto_view(http_method_names=None, input_serializer=None, serializer=None, va
                 queryset = custom_func(request, queryset)
             if many and serializer:
                 return api_paginate(
-                    request, queryset, serializer, context=context,
-                    query_func=query_func, func_args=func_args, func_kwargs=func_kwargs)
+                    request,
+                    queryset,
+                    serializer,
+                    context=context,
+                    query_func=query_func,
+                    func_args=func_args,
+                    func_kwargs=func_kwargs,
+                )
             queryset = query_func(queryset, *func_args, **func_kwargs)
             if not isinstance(queryset, QuerySet) and not queryset:
                 raise NotFound()
@@ -659,12 +797,23 @@ def auto_view(http_method_names=None, input_serializer=None, serializer=None, va
             http_method_names=http_method_names,
             input_serializer=input_serializer,
             serializer=serializer,
-            validation=validation)(wrapped)
+            validation=validation,
+        )(wrapped)
+
     return wrapper
 
 
-def api_paginate(request, queryset, serializer, pagination=None, enable_options=True,
-                 context=None, query_func=None, func_args=None, func_kwargs=None):
+def api_paginate(
+    request,
+    queryset,
+    serializer,
+    pagination=None,
+    enable_options=True,
+    context=None,
+    query_func=None,
+    func_args=None,
+    func_kwargs=None,
+):
     """
     Ajoute de la pagination aux résultats d'un QuerySet dans un serializer donné
     :param request: Requête HTTP
@@ -679,10 +828,11 @@ def api_paginate(request, queryset, serializer, pagination=None, enable_options=
     :return: Réponse HTTP des résultats avec pagination
     """
     from common.api.pagination import CustomPageNumberPagination
+
     pagination = pagination or CustomPageNumberPagination
 
     # Mots-clés réservés dans les URLs
-    default_reserved_query_params = ['format', pagination.page_query_param, pagination.page_size_query_param]
+    default_reserved_query_params = ["format", pagination.page_query_param, pagination.page_size_query_param]
     reserved_query_params = default_reserved_query_params + RESERVED_QUERY_PARAMS
 
     url_params = request.query_params.dict()
@@ -693,144 +843,147 @@ def api_paginate(request, queryset, serializer, pagination=None, enable_options=
     if enable_options:
 
         # Critères de recherche dans le cache
-        cache_key = url_params.pop('cache', None)
+        cache_key = url_params.pop("cache", None)
         if cache_key:
             from django.core.cache import cache
+
             cache_params = cache.get(settings.API_CACHE_PREFIX + cache_key, {})
             new_url_params = {}
             new_url_params.update(**cache_params)
             new_url_params.update(**url_params)
             url_params = new_url_params
             new_cache_params = {
-                key: value for key, value in url_params.items()
-                if key not in default_reserved_query_params}
+                key: value for key, value in url_params.items() if key not in default_reserved_query_params
+            }
             if new_cache_params:
-                from django.utils.timezone import now
                 from datetime import timedelta
-                cache_timeout = int(url_params.pop('timeout', settings.API_CACHE_TIMEOUT)) or None
+
+                from django.utils.timezone import now
+
+                cache_timeout = int(url_params.pop("timeout", settings.API_CACHE_TIMEOUT)) or None
                 cache.set(settings.API_CACHE_PREFIX + cache_key, new_cache_params, timeout=cache_timeout)
-                options['cache_expires'] = now() + timedelta(seconds=cache_timeout) if cache_timeout else 'never'
-            cache_url = '{}?cache={}'.format(request.build_absolute_uri(request.path), cache_key)
+                options["cache_expires"] = now() + timedelta(seconds=cache_timeout) if cache_timeout else "never"
+            cache_url = "{}?cache={}".format(request.build_absolute_uri(request.path), cache_key)
             plain_url = cache_url
             for key, value in url_params.items():
-                url_param = '&{}={}'.format(key, value)
+                url_param = "&{}={}".format(key, value)
                 if key in default_reserved_query_params:
                     cache_url += url_param
                 plain_url += url_param
-            options['cache_data'] = new_cache_params
-            options['cache_url'] = cache_url
-            options['raw_url'] = plain_url
+            options["cache_data"] = new_cache_params
+            options["cache_url"] = cache_url
+            options["raw_url"] = plain_url
 
         # Erreurs silencieuses
-        silent = str_to_bool(url_params.get('silent', ''))
+        silent = str_to_bool(url_params.get("silent", ""))
 
         # Filtres (dans une fonction pour être appelé par les aggregations sans group_by)
         def do_filter(queryset):
             try:
                 filters, excludes = {}, {}
                 for key, value in url_params.items():
-                    key = key.replace('.', '__')
-                    if value.startswith('[') and value.endswith(']'):
-                        value = F(value[1:-1].replace('.', '__'))
+                    key = key.replace(".", "__")
+                    if value.startswith("[") and value.endswith("]"):
+                        value = F(value[1:-1].replace(".", "__"))
                     if key in reserved_query_params:
                         continue
-                    if key.startswith('-'):
+                    if key.startswith("-"):
                         key = key[1:].strip()
                         excludes[key] = url_value(key, value)
                     else:
-                        key = key[1:].strip() if key.startswith('+') else key.strip()
+                        key = key[1:].strip() if key.startswith("+") else key.strip()
                         filters[key] = url_value(key, value)
                 if filters:
                     queryset = queryset.filter(**filters)
                 if excludes:
                     queryset = queryset.exclude(**excludes)
                 # Filtres génériques
-                others = url_params.get('filters', '')
+                others = url_params.get("filters", "")
                 if others:
                     queryset = queryset.filter(parse_filters(others))
                 if filters or excludes or others:
-                    options['filters'] = True
+                    options["filters"] = True
             except Exception as error:
                 if not silent:
-                    raise ValidationError(dict(error="filters: {}".format(error)), code='filters')
-                options['filters'] = False
+                    raise ValidationError(dict(error="filters: {}".format(error)), code="filters")
+                options["filters"] = False
                 if settings.DEBUG:
-                    options['filters_error'] = str(error)
+                    options["filters_error"] = str(error)
             return queryset
 
         # Annotations
         annotations = {}
         try:
             for annotation, function in FUNCTIONS.items():
-                for field_name in url_params.pop(annotation, '').split(','):
+                for field_name in url_params.pop(annotation, "").split(","):
                     if not field_name:
                         continue
-                    field_name, *args = field_name.split('|')
+                    field_name, *args = field_name.split("|")
                     function_args = []
                     for arg in args:
                         try:
                             function_args.append(ast.literal_eval(arg))
                         except (SyntaxError, ValueError):
-                            arg = arg.replace('.', '__')
-                            if any(arg.endswith(':{}'.format(cast)) for cast in CASTS):
-                                arg, *junk, cast = arg.split(':')
+                            arg = arg.replace(".", "__")
+                            if any(arg.endswith(":{}".format(cast)) for cast in CASTS):
+                                arg, *junk, cast = arg.split(":")
                                 cast = CASTS.get(cast.lower())
                                 arg = functions.Cast(arg, output_field=cast()) if cast else arg
                             function_args.append(arg)
-                    field_name = field_name.replace('.', '__')
+                    field_name = field_name.replace(".", "__")
                     field = field_name
-                    if any(field_name.endswith(':{}'.format(cast)) for cast in CASTS):
-                        field_name, *junk, cast = field_name.split(':')
+                    if any(field_name.endswith(":{}".format(cast)) for cast in CASTS):
+                        field_name, *junk, cast = field_name.split(":")
                         cast = CASTS.get(cast.lower())
                         field = functions.Cast(field_name, output_field=cast()) if cast else field_name
-                    annotations[annotation + '__' + field_name] = function(field, *function_args)
+                    annotations[annotation + "__" + field_name] = function(field, *function_args)
             if annotations:
                 queryset = queryset.annotate(**annotations)
-                options['annotates'] = True
+                options["annotates"] = True
         except Exception as error:
             if not silent:
-                raise ValidationError(dict(error="annotates: {}".format(error)), code='annotates')
-            options['annotates'] = False
+                raise ValidationError(dict(error="annotates: {}".format(error)), code="annotates")
+            options["annotates"] = False
             if settings.DEBUG:
-                options['annotates_error'] = str(error)
+                options["annotates_error"] = str(error)
 
         # Aggregations
         aggregations = {}
         try:
             for aggregate, function in AGGREGATES.items():
-                for field_name in url_params.get(aggregate, '').split(','):
+                for field_name in url_params.get(aggregate, "").split(","):
                     if not field_name:
                         continue
-                    distinct = field_name.startswith(' ') or field_name.startswith('+')
+                    distinct = field_name.startswith(" ") or field_name.startswith("+")
                     field_name = field_name[1:] if distinct else field_name
-                    field_name = field_name.strip().replace('.', '__')
+                    field_name = field_name.strip().replace(".", "__")
                     value = field_name
-                    if any(field_name.endswith(':{}'.format(cast)) for cast in CASTS):
-                        field_name, *junk, cast = field_name.split(':')
+                    if any(field_name.endswith(":{}".format(cast)) for cast in CASTS):
+                        field_name, *junk, cast = field_name.split(":")
                         cast = CASTS.get(cast.lower())
                         value = functions.Cast(field_name, output_field=cast()) if cast else value
-                    aggregations[aggregate + '__' + field_name] = function(value, distinct=distinct)
-            group_by = url_params.get('group_by', '')
+                    aggregations[aggregate + "__" + field_name] = function(value, distinct=distinct)
+            group_by = url_params.get("group_by", "")
             if group_by:
-                _queryset = queryset.values(*group_by.replace('.', '__').split(','))
+                _queryset = queryset.values(*group_by.replace(".", "__").split(","))
                 if aggregations:
                     _queryset = _queryset.annotate(**aggregations)
                 else:
                     _queryset = _queryset.distinct()
                 queryset = _queryset
-                options['aggregates'] = True
+                options["aggregates"] = True
             elif aggregations:
-                options['aggregates'] = True
+                options["aggregates"] = True
                 queryset = do_filter(queryset)  # Filtres éventuels
                 return queryset.aggregate(**aggregations)
         except ValidationError:
             raise
         except Exception as error:
             if not silent:
-                raise ValidationError(dict(error="aggregates: {}".format(error)), code='aggregates')
-            options['aggregates'] = False
+                raise ValidationError(dict(error="aggregates: {}".format(error)), code="aggregates")
+            options["aggregates"] = False
             if settings.DEBUG:
-                options['aggregates_error'] = str(error)
+                options["aggregates_error"] = str(error)
 
         # Filtres
         queryset = do_filter(queryset)
@@ -838,50 +991,50 @@ def api_paginate(request, queryset, serializer, pagination=None, enable_options=
         # Tris
         orders = []
         try:
-            order_by = url_params.get('order_by', '')
+            order_by = url_params.get("order_by", "")
             if order_by:
-                for order in order_by.replace('.', '__').split(','):
-                    nulls_first, nulls_last = order.endswith('<'), order.endswith('>')
+                for order in order_by.replace(".", "__").split(","):
+                    nulls_first, nulls_last = order.endswith("<"), order.endswith(">")
                     order = order[:-1] if nulls_first or nulls_last else order
-                    if order.startswith('-'):
+                    if order.startswith("-"):
                         orders.append(F(order[1:]).desc(nulls_first=nulls_first, nulls_last=nulls_last))
                     else:
-                        order = order[1:] if order.startswith('+') or order.startswith(' ') else order
+                        order = order[1:] if order.startswith("+") or order.startswith(" ") else order
                         orders.append(F(order).asc(nulls_first=nulls_first, nulls_last=nulls_last))
                 temp_queryset = queryset.order_by(*orders)
                 str(temp_queryset.query)  # Force SQL evaluation to retrieve exception
                 queryset = temp_queryset
-                options['order_by'] = True
+                options["order_by"] = True
         except EmptyResultSet:
             pass
         except Exception as error:
             if not silent:
-                raise ValidationError(dict(error="order_by: {}".format(error)), code='order_by')
-            options['order_by'] = False
+                raise ValidationError(dict(error="order_by: {}".format(error)), code="order_by")
+            options["order_by"] = False
             if settings.DEBUG:
-                options['order_by_error'] = str(error)
+                options["order_by_error"] = str(error)
 
         # Distinct
         distincts = []
         try:
-            distinct = url_params.get('distinct', '')
+            distinct = url_params.get("distinct", "")
             if distinct:
-                distincts = distinct.replace('.', '__').split(',')
+                distincts = distinct.replace(".", "__").split(",")
                 if str_to_bool(distinct) is not None:
                     distincts = []
                 queryset = queryset.distinct(*distincts)
-                options['distinct'] = True
+                options["distinct"] = True
         except EmptyResultSet:
             pass
         except Exception as error:
             if not silent:
-                raise ValidationError(dict(error="distinct: {}".format(error)), code='distinct')
-            options['distinct'] = False
+                raise ValidationError(dict(error="distinct: {}".format(error)), code="distinct")
+            options["distinct"] = False
             if settings.DEBUG:
-                options['distinct_error'] = str(error)
+                options["distinct_error"] = str(error)
 
         # Extraction de champs spécifiques
-        fields = url_params.get('fields', '')
+        fields = url_params.get("fields", "")
         if fields:
             # Supprime la récupération des relations
             queryset = queryset.select_related(None).prefetch_related(None)
@@ -889,62 +1042,61 @@ def api_paginate(request, queryset, serializer, pagination=None, enable_options=
             try:
                 relateds = set()
                 field_names = set()
-                for field in fields.replace('.', '__').split(','):
+                for field in fields.replace(".", "__").split(","):
                     if not field:
                         continue
                     field_names.add(field)
-                    *related, field_name = field.split('__')
+                    *related, field_name = field.split("__")
                     if related and field not in annotations:
-                        relateds.add('__'.join(related))
+                        relateds.add("__".join(related))
                 if relateds:
                     queryset = queryset.select_related(*relateds)
                 if field_names:
                     queryset = queryset.values(*field_names)
             except Exception as error:
                 if not silent:
-                    raise ValidationError(dict(error="fields: {}".format(error)), code='fields')
+                    raise ValidationError(dict(error="fields: {}".format(error)), code="fields")
 
         # Fonction utilitaire d'ajout de champ au serializer
         def add_field_to_serializer(fields, field_name):
             field_name = field_name.strip()
-            source = field_name.strip().replace('.', '__')
+            source = field_name.strip().replace(".", "__")
             # Champ spécifique en cas d'énumération
-            choices = getattr(get_field_by_path(queryset.model, field_name), 'flatchoices', None)
-            if choices and str_to_bool(url_params.get('display', '')):
-                fields[field_name + '_display'] = ChoiceDisplayField(choices=choices, source=source)
+            choices = getattr(get_field_by_path(queryset.model, field_name), "flatchoices", None)
+            if choices and str_to_bool(url_params.get("display", "")):
+                fields[field_name + "_display"] = ChoiceDisplayField(choices=choices, source=source)
             # Champ spécifique pour l'affichage de la valeur
-            fields[field_name] = ReadOnlyObjectField(source=source if '.' in field_name else None)
+            fields[field_name] = ReadOnlyObjectField(source=source if "." in field_name else None)
 
         # Création de serializer à la volée en cas d'aggregation ou de restriction de champs
         aggregations = {}
         for aggregate in AGGREGATES.keys():
-            for field in url_params.get(aggregate, '').split(','):
+            for field in url_params.get(aggregate, "").split(","):
                 if not field:
                     continue
-                field_name = aggregate + '__' + field.strip()
-                source = field_name.replace('.', '__') if '.' in field else None
+                field_name = aggregate + "__" + field.strip()
+                source = field_name.replace(".", "__") if "." in field else None
                 aggregations[field_name] = serializers.ReadOnlyField(source=source)
 
         # Regroupements & aggregations
-        if 'group_by' in url_params or aggregations:
+        if "group_by" in url_params or aggregations:
             fields = {}
-            for field in url_params.get('group_by', '').split(','):
+            for field in url_params.get("group_by", "").split(","):
                 add_field_to_serializer(fields, field)
             fields.update(aggregations)
             fields.update(annotations)
             # Un serializer avec les données groupées est créé à la volée
-            serializer = type(serializer.__name__, (serializers.Serializer, ), fields)
+            serializer = type(serializer.__name__, (serializers.Serializer,), fields)
         # Restriction de champs
-        elif 'fields' in url_params:
+        elif "fields" in url_params:
             fields = {}
-            for field in url_params.get('fields', '').split(','):
+            for field in url_params.get("fields", "").split(","):
                 add_field_to_serializer(fields, field)
             fields.update(annotations)
             # Un serializer avec restriction des champs est créé à la volée
-            serializer = type(serializer.__name__, (serializers.Serializer, ), fields)
+            serializer = type(serializer.__name__, (serializers.Serializer,), fields)
         elif annotations:
-            serializer._declared_fields.update({
-                key: serializers.ReadOnlyField() for key, value in annotations.items()})
+            serializer._declared_fields.update({key: serializers.ReadOnlyField() for key, value in annotations.items()})
 
     # Fonction spécifique
     if query_func:
@@ -953,26 +1105,38 @@ def api_paginate(request, queryset, serializer, pagination=None, enable_options=
         queryset = query_func(queryset, *func_args, **func_kwargs)
 
     # Uniquement si toutes les données sont demandées
-    all_data = str_to_bool(url_params.get('all', ''))
+    all_data = str_to_bool(url_params.get("all", ""))
     if all_data:
         return Response(serializer(queryset, context=context, many=True).data)
 
     # Pagination avec ajout des options de filtres/tris dans la pagination
     paginator = pagination()
-    if enable_options and hasattr(paginator, 'additional_data'):
+    if enable_options and hasattr(paginator, "additional_data"):
         paginator.additional_data = dict(options=options)
     # Force un tri sur la clé primaire en cas de pagination
-    if hasattr(queryset, 'ordered') and not queryset.ordered:
+    if hasattr(queryset, "ordered") and not queryset.ordered:
         primary_key = get_pk_field(queryset.model)
         queryset = queryset.order_by(
-            *(getattr(queryset, '_fields', None) or (enable_options and distincts) or [primary_key.name]))
+            *(getattr(queryset, "_fields", None) or (enable_options and distincts) or [primary_key.name])
+        )
     serializer = serializer(paginator.paginate_queryset(queryset, request), context=context, many=True)
     return paginator.get_paginated_response(serializer.data)
 
 
-def create_api(*models, default_config=None, router=None, all_serializers=None, all_viewsets=None,
-               all_bases_serializers=None, all_bases_viewsets=None, all_data_serializers=None, all_data_viewsets=None,
-               all_querysets=None, all_metadata=None, all_configs=None):
+def create_api(
+    *models,
+    default_config=None,
+    router=None,
+    all_serializers=None,
+    all_viewsets=None,
+    all_bases_serializers=None,
+    all_bases_viewsets=None,
+    all_data_serializers=None,
+    all_data_viewsets=None,
+    all_querysets=None,
+    all_metadata=None,
+    all_configs=None
+):
     """
     Crée les APIs REST standard pour les modèles donnés
     :param models: Liste des modèles
@@ -994,10 +1158,18 @@ def create_api(*models, default_config=None, router=None, all_serializers=None, 
 
     # Récupération de la configuration générale
     from common.api.base import (
-        SERIALIZERS, VIEWSETS,
-        SERIALIZERS_BASE, VIEWSETS_BASE,
-        SERIALIZERS_DATA, VIEWSETS_DATA,
-        QUERYSETS, METADATA, CONFIGS, DEFAULT_CONFIG)
+        CONFIGS,
+        DEFAULT_CONFIG,
+        METADATA,
+        QUERYSETS,
+        SERIALIZERS,
+        SERIALIZERS_BASE,
+        SERIALIZERS_DATA,
+        VIEWSETS,
+        VIEWSETS_BASE,
+        VIEWSETS_DATA,
+    )
+
     all_serializers = all_serializers or SERIALIZERS
     all_viewsets = all_viewsets or VIEWSETS
     all_bases_serializers = all_bases_serializers or SERIALIZERS_BASE
@@ -1014,13 +1186,19 @@ def create_api(*models, default_config=None, router=None, all_serializers=None, 
         if not model:
             continue
         serializers[model], viewsets[model] = create_model_serializer_and_viewset(
-            model, serializer_base=all_bases_serializers, viewset_base=all_bases_viewsets,
-            serializer_data=all_data_serializers, viewset_data=all_data_viewsets,
-            queryset=all_querysets.get(model, None), metas=all_metadata,
-            **all_configs.get(model, default_config or {}))
+            model,
+            serializer_base=all_bases_serializers,
+            viewset_base=all_bases_viewsets,
+            serializer_data=all_data_serializers,
+            viewset_data=all_data_viewsets,
+            queryset=all_querysets.get(model, None),
+            metas=all_metadata,
+            **all_configs.get(model, default_config or {})
+        )
 
     # Création des routes par défaut
     from rest_framework import routers
+
     router = router or routers.DefaultRouter()
     for model, viewset in sorted(viewsets.items(), key=lambda key: key[0]._meta.model_name):
         code = model._meta.model_name
@@ -1041,6 +1219,7 @@ def disable_relation_fields(*models, all_metadata=None):
     :return: Rien
     """
     from common.api.base import METADATA
+
     all_metadata = all_metadata or METADATA
 
     for model in models:
@@ -1049,10 +1228,10 @@ def disable_relation_fields(*models, all_metadata=None):
         metas = {}
         for field in model._meta.get_fields():
             if field.concrete and not field.auto_created and field.related_model:
-                metas[field.name] = dict(style={'base_template': 'input.html', 'placeholder': str(field.verbose_name)})
+                metas[field.name] = dict(style={"base_template": "input.html", "placeholder": str(field.verbose_name)})
         if metas:
             metadata = all_metadata[model] = all_metadata.get(model, {})
-            extra_kwargs = metadata['extra_kwargs'] = metadata.get('extra_kwargs', {})
+            extra_kwargs = metadata["extra_kwargs"] = metadata.get("extra_kwargs", {})
             for key, value in metas.items():
                 extra_kwargs[key] = extra_kwargs.get(key, {})
                 extra_kwargs[key].update(value)

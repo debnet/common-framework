@@ -3,7 +3,6 @@ import logging
 
 from django.core.management.base import BaseCommand
 
-
 # Logging
 logger = logging.getLogger(__name__)
 
@@ -12,6 +11,7 @@ class ImportExcelCommand(BaseCommand):
     """
     Commande Django de base pour les imports Excel
     """
+
     workbook = None
     models = {}
 
@@ -53,7 +53,7 @@ class ImportExcelCommand(BaseCommand):
                     break
                 field = fields[cell_number]
                 value = cell.value
-                if value is None or value == '':
+                if value is None or value == "":
                     continue
                 try:
                     value = value.strip()
@@ -64,10 +64,9 @@ class ImportExcelCommand(BaseCommand):
                 if f.remote_field and f.related_model and field not in actions:
                     related_class = f.related_model
                     rel_model_name = related_class._meta.model_name
-                    models = results if rel_model_name == model_name else self.models[
-                        f.related_model._meta.model_name]
-                    if hasattr(f.remote_field, 'through'):
-                        m2ms[field] = [models[code.strip()] for code in value.split(',')]
+                    models = results if rel_model_name == model_name else self.models[f.related_model._meta.model_name]
+                    if hasattr(f.remote_field, "through"):
+                        m2ms[field] = [models[code.strip()] for code in value.split(",")]
                         continue
                     else:
                         value = models[value]
@@ -102,8 +101,9 @@ class ImportExcelCommand(BaseCommand):
                 m2m.clear()
                 m2m.add(*values)
             # Conserve l'instance selon son code
-            code = '|'.join(str(value.pk if hasattr(value, 'pk') else value)
-                            for key, value in data.items() if key in keys)
+            code = "|".join(
+                str(value.pk if hasattr(value, "pk") else value) for key, value in data.items() if key in keys
+            )
             if code:
                 results[code] = obj
             logger.info("[{}] {} (id: {})".format(model_name, obj, obj.pk))

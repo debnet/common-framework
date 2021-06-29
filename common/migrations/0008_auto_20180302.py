@@ -6,13 +6,17 @@ from django.db import migrations
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('contenttypes', '0002_remove_content_type_name'),
-        ('common', '0007_auto_20180210'),
+        ("contenttypes", "0002_remove_content_type_name"),
+        ("common", "0007_auto_20180210"),
     ]
 
     operations = [
         migrations.AlterIndexTogether(
-            name='metadata',
-            index_together={('content_type', 'object_id', 'deletion_date', 'key'), ('content_type', 'object_id'), ('content_type', 'object_id', 'deletion_date')},
+            name="metadata",
+            index_together={
+                ("content_type", "object_id", "deletion_date", "key"),
+                ("content_type", "object_id"),
+                ("content_type", "object_id", "deletion_date"),
+            },
         ),
     ]
