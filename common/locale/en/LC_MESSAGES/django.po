@@ -394,7 +394,7 @@ msgid "admin"
 msgstr "admin"
 
 msgid "modifications"
-msgstr "modifications"
+msgstr "modified fields"
 
 msgid "mises à jour"
 msgstr "updates"
