@@ -861,7 +861,8 @@ class HistoryCommon(CommonModel):
     Abstraction commune aux historiques et champs modifiés
     """
 
-    creation_date = models.DateTimeField(auto_now_add=True, editable=False, verbose_name=_("date"))
+    creation_date = models.DateTimeField(
+        auto_now_add=True, editable=False, db_index=True, verbose_name=_("date"))
     restoration_date = models.DateTimeField(
         blank=True, null=True, editable=False, verbose_name=_("dernière restauration")
     )
