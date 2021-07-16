@@ -1861,7 +1861,7 @@ def log_save(instance, created):
     """
     # Sauvegarde la création/modification de l'entité
     user = instance._current_user or get_current_user()
-    user = user if user and not user.pk else None
+    user = user if user and user.pk else None
     # Vérification des changements entre les anciennes et nouvelles données
     old_data = instance._copy
     new_data = instance.to_dict(editables=True)
@@ -1969,7 +1969,7 @@ def log_m2m(instance, model, status_m2m):
     """
     # Sauvegarde la mise à jour de relations M2M de l'entité
     user = instance._current_user or get_current_user()
-    user = user if user and not user.pk else None
+    user = user if user and user.pk else None
     old_m2m = instance._copy_m2m
     new_m2m = instance.m2m_to_dict()
     history, fields_count = None, 0
@@ -2055,7 +2055,7 @@ def log_delete(instance):
     """
     # Sauvegarde la suppression de l'entité
     user = instance._current_user or get_current_user()
-    user = user if user and not user.pk else None
+    user = user if user and user.pk else None
     data = instance.to_dict(m2m=True, editables=True)
     # Sauvegarde de l'historique de suppression
     history = History.objects.create(
