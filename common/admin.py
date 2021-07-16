@@ -27,7 +27,7 @@ from common.models import (
     Webhook,
 )
 from common.settings import settings
-from common.utils import get_pk_field
+from common.utils import _assert, get_pk_field
 
 
 def delete_selected_entity(modeladmin, request, queryset):
@@ -782,7 +782,7 @@ def create_admin(*args, baseclass=None, **kwargs):
         import grappelli
         from django.conf import settings
 
-        assert "grappelli" in settings.INSTALLED_APPS
+        _assert("grappelli" in settings.INSTALLED_APPS)
     except (AssertionError, ImportError):
         grappelli = False
 

@@ -19,6 +19,7 @@ class Settings:
         SERVICE_USAGE_DATA={},
         SERVICE_USAGE_LIMIT_ONLY=False,
         IGNORE_LOG=False,
+        IGNORE_LOG_NO_USER=False,
         IGNORE_GLOBAL=False,
         NOTIFY_CHANGES=False,
         NOTIFY_OPTIONS={},

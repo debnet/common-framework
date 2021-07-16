@@ -112,7 +112,7 @@ def get_current_app():
     :return: Application Celery ou mock
     """
     try:
-        assert getattr(settings, "CELERY_ENABLE", False)
+        _assert(getattr(settings, "CELERY_ENABLE", False))
         from celery import current_app
 
         return current_app
@@ -984,6 +984,33 @@ def str_to_int(value):
             except ValueError:
                 continue
     return None
+
+
+def get_first(*values, condition=None, default=None):
+    """
+    Permet de renvoyer le premier élément qui valide la condition parmi l'ensemble des valeurs
+    :param values: Liste d'éléments
+    :param condition: Fonction de filtrage conditionnel (non nul par défaut)
+    :param default: Valeur par défaut si non trouvé
+    :return: Premier élément qui valide la condition
+    """
+    condition = condition or (lambda e: e is not None)
+    return next(filter(condition, values), default)
+
+
+def _assert(condition, message=None):
+    """
+    Remplace le mot-clé assert dans le cas où Python est exécuté avec optimisation
+    :param condition: Condition à évaluer
+    :param message: Message de l'exception
+    :return: Rien
+    :raise: AssertionError
+    """
+    if condition:
+        return
+    if message:
+        raise AssertionError(message)
+    raise AssertionError()
 
 
 def decimal(value=None, precision=None, rounding=ROUND_HALF_EVEN, context=None):

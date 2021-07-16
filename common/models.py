@@ -36,9 +36,11 @@ except ImportError:
 from common.fields import JsonField, PickleField
 from common.settings import settings
 from common.utils import (
+    _assert,
     base64_encode,
     get_current_app,
     get_current_user,
+    get_first,
     get_pk_field,
     json_decode,
     json_encode,
@@ -245,7 +247,7 @@ class MetaData(models.Model):
         :param queryset: QuerySet de récupération des métadonnées
         :return: Valeur ou entité
         """
-        assert getattr(instance, "pk", None), _("Unable to get metadata from an unsaved model instance.")
+        _assert(getattr(instance, "pk", None), _("Unable to get metadata from an unsaved model instance."))
         content_type = get_content_type(instance.__class__)
         queryset = queryset or MetaData.objects.filter(content_type=content_type, object_id=instance.pk)
         if valid:
@@ -268,7 +270,7 @@ class MetaData(models.Model):
         :param queryset: QuerySet de récupération des métadonnées
         :return: Vrai en cas de succès, faux sinon
         """
-        assert getattr(instance, "pk", None), _("Unable to set metadata for an unsaved model instance.")
+        _assert(getattr(instance, "pk", None), _("Unable to set metadata for an unsaved model instance."))
         content_type = get_content_type(instance.__class__)
         try:
             queryset = queryset or MetaData.objects.filter(content_type=content_type, object_id=instance.pk)
@@ -294,7 +296,7 @@ class MetaData(models.Model):
         :param queryset: QuerySet de récupération des métadonnées
         :return: Métadonnée
         """
-        assert getattr(instance, "pk", None), _("Unable to set metadata for an unsaved model instance.")
+        _assert(getattr(instance, "pk", None), _("Unable to set metadata for an unsaved model instance."))
         metadata = MetaData.get(instance, key=key, queryset=queryset, raw=True)
         if metadata:
             if isinstance(value, dict) and isinstance(metadata.value, dict):
@@ -324,7 +326,7 @@ class MetaData(models.Model):
         :param queryset: QuerySet de récupération des métadonnées
         :return: Vrai en cas de succès, faux sinon
         """
-        assert getattr(instance, "pk", None), _("Unable to delete metadata from an unsaved model instance.")
+        _assert(getattr(instance, "pk", None), _("Unable to delete metadata from an unsaved model instance."))
         content_type = get_content_type(instance.__class__)
         queryset = queryset or MetaData.objects.filter(content_type=content_type, object_id=instance.pk)
         if key:
@@ -431,7 +433,7 @@ class CommonModel(models.Model):
                 unique_fields.add(field.name)
             else:
                 non_unique_fields.add(field.name)
-        assert unique_fields, _("Unable to update an instance which have no unique fields.")
+        _assert(unique_fields, _("Unable to update an instance which have no unique fields."))
         queryset = model.objects.filter(**{field: getattr(self, field, None) for field in unique_fields})
         count = queryset.update(**{field: getattr(self, field, None) for field in non_unique_fields})
         if count:
@@ -1205,16 +1207,20 @@ class EntityQuerySet(CommonQuerySet):
     """
 
     # Propriétés liées à l'historisation
-    _ignore_log = False
+    _ignore_log = None
+    _ignore_log_no_user = None
     _current_user = None
     _reason = None
     _from_admin = False
     _force_default = False
 
-    def delete(self, _ignore_log=None, _current_user=None, _reason=None, _force_default=False):
+    def delete(
+        self, _ignore_log=None, _ignore_log_no_user=None, _current_user=None, _reason=None, _force_default=False
+    ):
         """
         Surcharge de la suppression des entités du QuerySet
         :param _ignore_log: Ignorer l'historique de suppression ?
+        :param _ignore_log_no_user: Ignorer l'historique de suppression si aucun utilisateur n'a pu être identifié ?
         :param _current_user: Utilisateur à l'origine de la suppression
         :param _reason: Raison de la suppression
         :param _force_default: Force la suppression directe ?
@@ -1222,13 +1228,14 @@ class EntityQuerySet(CommonQuerySet):
         if _force_default or self._force_default:
             return super().delete()
 
-        assert self.query.can_filter(), _("Cannot use 'limit' or 'offset' with delete.")
+        _assert(self.query.can_filter(), _("Cannot use 'limit' or 'offset' with delete."))
         if self._fields is not None:
             raise TypeError(_("Cannot call delete() after .values() or .values_list()"))
 
         del_query = self._clone()
         for element in del_query:
-            element._ignore_log = _ignore_log or self._ignore_log
+            element._ignore_log = get_first(_ignore_log, self._ignore_log)
+            element._ignore_log_no_user = get_first(_ignore_log_no_user, self._ignore_log_no_user)
             element._current_user = _current_user or self._current_user or get_current_user()
             element._reason = _reason or self._reason
             element._from_admin = self._from_admin
@@ -1256,10 +1263,19 @@ class EntityQuerySet(CommonQuerySet):
         self._result_cache = None
         return deleted, _rows_count
 
-    def create(self, _ignore_log=None, _current_user=None, _reason=None, _force_default=False, **kwargs):
+    def create(
+        self,
+        _ignore_log=None,
+        _ignore_log_no_user=None,
+        _current_user=None,
+        _reason=None,
+        _force_default=False,
+        **kwargs
+    ):
         """
         Surcharge de la création d'entités
         :param _ignore_log: Ignorer l'historique de création ?
+        :param _ignore_log_no_user: Ignorer l'historique de création si aucun utilisateur n'a pu être identifié ?
         :param _current_user: Utilisateur à l'origine de la création
         :param _reason: Raison de la création
         :param _force_default: Force la suppression directe ?
@@ -1271,6 +1287,7 @@ class EntityQuerySet(CommonQuerySet):
             force_insert=True,
             using=self.db,
             _ignore_log=_ignore_log,
+            _ignore_log_no_user=_ignore_log_no_user,
             _current_user=_current_user or get_current_user(),
             _reason=_reason,
         )
@@ -1329,7 +1346,8 @@ class Entity(CommonModel):
     objects = EntityQuerySet.as_manager()
 
     # Propriétés liées à l'historisation
-    _ignore_log = False
+    _ignore_log = None
+    _ignore_log_no_user = None
     _ignore_global = False
     _current_user = None
     _reason = None
@@ -1345,6 +1363,7 @@ class Entity(CommonModel):
         self,
         *args,
         _ignore_log=None,
+        _ignore_log_no_user=None,
         _current_user=None,
         _reason=None,
         _force_default=False,
@@ -1354,6 +1373,7 @@ class Entity(CommonModel):
         """
         Surcharge de la sauvegarde de l'entité
         :param _ignore_log: Ignorer l'historique de modification ?
+        :param _ignore_log_no_user: Ignorer l'historique de modification si l'utilisateur n'a pu être identifié ?
         :param _current_user: Utilisateur à l'origine de la modification
         :param _reason: Raison de la modification
         :param _force_default: Force le comportement par défaut ?
@@ -1363,7 +1383,8 @@ class Entity(CommonModel):
         self._current_user = self.current_user = _current_user or self._current_user or get_current_user()
         if _force_default or self._force_default:
             return super().save(force_insert=force_insert, *args, **kwargs)
-        self._ignore_log = _ignore_log or self._ignore_log
+        self._ignore_log = get_first(_ignore_log, self._ignore_log)
+        self._ignore_log_no_user = get_first(_ignore_log_no_user, self._ignore_log_no_user)
         self._reason = _reason or self._reason
         self._force_default = _force_default or self._force_default
         if force_insert:
@@ -1375,6 +1396,7 @@ class Entity(CommonModel):
         self,
         *args,
         _ignore_log=None,
+        _ignore_log_no_user=None,
         _current_user=None,
         _reason=None,
         _force_default=False,
@@ -1384,6 +1406,7 @@ class Entity(CommonModel):
         """
         Surcharge de la suppression de l'entité
         :param _ignore_log: Ignorer l'historique de suppression ?
+        :param _ignore_log_no_user: Ignorer l'historique de suppression si l'utilisateur n'a pu être identifié ?
         :param _current_user: Utilisateur à l'origine de la suppression
         :param _reason: Raison de la suppression
         :param _force_default: Force le comportement par défaut ?
@@ -1391,10 +1414,12 @@ class Entity(CommonModel):
         """
         if _force_default:
             return super().delete(*args, **kwargs)
-        assert self.pk is not None, _("{} can't be deleted because it doesn't exists in database.").format(
-            self._meta.object_name
+        _assert(
+            self.pk is not None,
+            _("{} can't be deleted because it doesn't exists in database.").format(self._meta.object_name),
         )
-        self._ignore_log = _ignore_log or self._ignore_log
+        self._ignore_log = get_first(_ignore_log, self._ignore_log)
+        self._ignore_log_no_user = get_first(_ignore_log_no_user, self._ignore_log_no_user)
         self._current_user = self.current_user = _current_user or self._current_user or get_current_user()
         self._reason = _reason or self._reason
         self._force_default = _force_default or self._force_default
@@ -1451,8 +1476,11 @@ class Entity(CommonModel):
         unique = Global.objects.select_related().get(object_uid=value)
         model_from = unique.content_type.model_class()
         model_to = field.related_model
-        assert model_from == model_to, _("Unexpected model '{}' used instead of expected model '{}'.").format(
-            model_from._meta.verbose_name_raw, model_to._meta.verbose_name_raw
+        _assert(
+            model_from == model_to,
+            _("Unexpected model '{}' used instead of expected model '{}'.").format(
+                model_from._meta.verbose_name_raw, model_to._meta.verbose_name_raw
+            ),
         )
         setattr(self, fk_field + "_id", unique.object_id)
 
@@ -1465,16 +1493,28 @@ class Entity(CommonModel):
             return
         field = self._meta.get_field(m2m_field)
         uniques = Global.objects.select_related().filter(object_uid__in=values)
-        assert uniques.values_list("content_type", flat=True).distinct().count() == 1, _(
-            "Multiple model types are found in values."
+        _assert(
+            uniques.values_list("content_type", flat=True).distinct().count() == 1,
+            _("Multiple model types are found in values."),
         )
         model_from = uniques.first().content_type.model_class()
         model_to = field.related_model
-        assert model_from == model_to, _("Unexpected model '{}' used instead of expected model '{}'.").format(
-            model_from._meta.verbose_name_raw, model_to._meta.verbose_name_raw
+        _assert(
+            model_from == model_to,
+            _("Unexpected model '{}' used instead of expected model '{}'.").format(
+                model_from._meta.verbose_name_raw, model_to._meta.verbose_name_raw
+            ),
         )
         ids = uniques.values_list("object_id", flat=True)
         getattr(self, m2m_field).set(ids)
+
+    def must_log(self):
+        if get_first(self._ignore_log, settings.IGNORE_LOG):
+            return False
+        self._current_user = self._current_user or get_current_user()
+        if not self._current_user and get_first(self._ignore_log_no_user, settings.IGNORE_LOG_NO_USER):
+            return False
+        return True
 
     def __json__(self):
         """
@@ -1787,14 +1827,15 @@ def post_save_receiver(sender, instance, created, raw, *args, **kwargs):
     """
     if isinstance(instance, Entity):
         # Ajoute le point d'entrée global de l'entité
-        if not settings.IGNORE_GLOBAL and not instance._ignore_global and created and instance.pk and instance.uuid:
+        create_global = get_first(instance._ignore_global, settings.IGNORE_GLOBAL)
+        if created and instance.pk and instance.uuid and create_global:
             Global.objects.create(content_type=instance.model_type, object_id=instance.pk, object_uid=instance.uuid)
         # Sauvegarde l'historique de modification
         if raw:
             instance._ignore_log = True
             instance._force_default = True
             return
-        if not settings.IGNORE_LOG and not instance._ignore_log:
+        if instance.must_log():
             log_save.apply_async(
                 args=(
                     instance,
@@ -1819,11 +1860,8 @@ def log_save(instance, created):
     :return: Rien
     """
     # Sauvegarde la création/modification de l'entité
-    if settings.IGNORE_LOG or instance._ignore_log:
-        return
     user = instance._current_user or get_current_user()
-    if user and not user.pk:
-        user = None
+    user = user if user and not user.pk else None
     # Vérification des changements entre les anciennes et nouvelles données
     old_data = instance._copy
     new_data = instance.to_dict(editables=True)
@@ -1874,7 +1912,7 @@ def log_save(instance, created):
                 )
             )
         HistoryField.objects.bulk_create(fields)
-        history.fields_count = len(fields)
+        history.fields_count = (history.fields_count or 0) + len(fields)
         history.save(update_fields=("fields_count",))
     logger.debug(
         "Create/update log saved for entity {} #{} ({})".format(instance._meta.object_name, instance.pk, instance.uuid)
@@ -1901,7 +1939,7 @@ def m2m_changed_receiver(sender, instance, model, action, *args, **kwargs):
     """
     status_m2m = LOG_M2M_ACTIONS.get(action)
     if isinstance(instance, Entity):
-        if status_m2m and not settings.IGNORE_LOG and not instance._ignore_log:
+        if status_m2m and instance.must_log():
             # Sauvegarde l'historique des changements de champs many-to-many
             log_m2m.apply_async(
                 args=(
@@ -1930,11 +1968,8 @@ def log_m2m(instance, model, status_m2m):
     :return: Rien
     """
     # Sauvegarde la mise à jour de relations M2M de l'entité
-    if settings.IGNORE_LOG or instance._ignore_log:
-        return
     user = instance._current_user or get_current_user()
-    if user and not user.pk:
-        user = None
+    user = user if user and not user.pk else None
     old_m2m = instance._copy_m2m
     new_m2m = instance.m2m_to_dict()
     history, fields_count = None, 0
@@ -1990,7 +2025,7 @@ def log_m2m(instance, model, status_m2m):
             )
         )
     if history and fields_count:
-        history.fields_count = fields_count
+        history.fields_count = (history.fields_count or 0) + fields_count
         history.save(update_fields=("fields_count",))
 
 
@@ -2004,7 +2039,7 @@ def pre_delete_receiver(sender, instance, *args, **kwargs):
     """
     if isinstance(instance, Entity):
         # Sauvegarde l'historique de suppression
-        if not settings.IGNORE_LOG and not instance._ignore_log:
+        if instance.must_log():
             log_delete.apply_async(args=(instance,), retry=False)
     if isinstance(instance, CommonModel):
         # Alerte de la suppression
@@ -2019,11 +2054,8 @@ def log_delete(instance):
     :return: Rien
     """
     # Sauvegarde la suppression de l'entité
-    if settings.IGNORE_LOG or instance._ignore_log:
-        return
     user = instance._current_user or get_current_user()
-    if user and not user.pk:
-        user = None
+    user = user if user and not user.pk else None
     data = instance.to_dict(m2m=True, editables=True)
     # Sauvegarde de l'historique de suppression
     history = History.objects.create(

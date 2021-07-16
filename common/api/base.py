@@ -5,18 +5,19 @@ from django.contrib.auth import get_user_model
 from django.contrib.auth.models import Group, Permission
 from django.contrib.contenttypes.models import ContentType
 
-try:
-    from rest_framework.authtoken.models import Token
-
-    assert "rest_framework.authtoken" in settings.INSTALLED_APPS
-except (AssertionError, ImportError):
-    Token = None
-
 from common.api.permissions import CurrentUserPermissions
 from common.api.serializers import UserSerializer
 from common.api.utils import create_api, disable_relation_fields
 from common.api.viewsets import UserViewSet
 from common.models import MODELS, GroupMetaData, MetaData, UserMetaData
+from common.utils import _assert
+
+try:
+    from rest_framework.authtoken.models import Token
+
+    _assert("rest_framework.authtoken" in settings.INSTALLED_APPS)
+except (AssertionError, ImportError):
+    Token = None
 
 # Modèle utilisateur courant
 User = get_user_model()
