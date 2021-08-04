@@ -1837,10 +1837,7 @@ def post_save_receiver(sender, instance, created, raw, *args, **kwargs):
             return
         if instance.must_log():
             log_save.apply_async(
-                args=(
-                    instance,
-                    created,
-                ),
+                args=(instance, created, kwargs),
                 retry=False,
             )
     if isinstance(instance, CommonModel):
@@ -1852,19 +1849,25 @@ def post_save_receiver(sender, instance, created, raw, *args, **kwargs):
 
 
 @app.task(ignore_result=True, name="common.log_save")
-def log_save(instance, created):
+def log_save(instance, created, save_kwargs=None):
     """
     Enregistre un historique de création/modification de l'entité
     :param instance: Instance de l'entité
     :param created: Entité nouvellement créée ?
+    :param save_kwargs: Paramètres supplémentaires fournis au moment de la sauvegarde
     :return: Rien
     """
     # Sauvegarde la création/modification de l'entité
     user = instance._current_user or get_current_user()
     user = user if user and user.pk else None
     # Vérification des changements entre les anciennes et nouvelles données
-    old_data = instance._copy
-    new_data = instance.to_dict(editables=True)
+    update_fields = (save_kwargs or {}).get("update_fields", [])
+    if update_fields:
+        old_data = {key: value for key, value in instance._copy.items() if key in update_fields}
+        new_data = instance.to_dict(editables=True, includes=update_fields)
+    else:
+        old_data = instance._copy
+        new_data = instance.to_dict(editables=True)
     diff = set(to_tuple(new_data)) ^ set(to_tuple(old_data))
     if not diff:
         return
