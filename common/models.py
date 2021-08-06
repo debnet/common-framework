@@ -446,7 +446,7 @@ class CommonModel(models.Model):
         Sauvegarde l'instance du modèle
         """
         primary_key = get_pk_field(self)
-        pk_modified = self._meta.pk.name in self.modified or primary_key in self.modified
+        pk_modified = self._meta.pk.name in self.modified or primary_key.name in self.modified
         if not self._state.adding and not _full_update and not force_insert and not pk_modified:
             kwargs["update_fields"] = update_fields = set(kwargs.pop("update_fields", self.modified.keys()))
             # Les champs de date avec auto_now=True ne sont modifiés que pendant la sauvegarde
@@ -1890,8 +1890,7 @@ def log_save(instance, created, save_kwargs=None):
         )
         instance._history = history
     # Sauvegarde les champs modifiés
-    primary_key = get_pk_field(instance)
-    if history.status in (History.UPDATE, History.RESTORE) and old_data.get(primary_key.name):
+    if history.status in (History.UPDATE, History.RESTORE):
         fields = []
         for key in new_data:
             old_value = old_data.get(key, None)
