@@ -1083,7 +1083,7 @@ def recursive_get_urls(module=None, namespaces=None, attributes=None, model=None
             namespace = _namespace or getattr(pattern, "namespace", None)
             if namespaces and namespace not in namespaces:
                 continue
-            url = _current + pattern.pattern.regex.pattern.strip("^$").replace("\\", "")
+            url = _current + pattern.pattern.regex.pattern.strip("^$\\Z").replace("\\", "")
             url = re.sub(REGEX_URL_PARAMS, r":\1:", url).replace("?", "")
             url = url.replace("(.+)", ":pk:")
             if getattr(pattern.pattern, "name", None):
