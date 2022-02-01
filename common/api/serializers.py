@@ -1,7 +1,6 @@
 # coding: utf-8
 from operator import itemgetter
 
-from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.contrib.auth.models import Group, Permission
 from django.contrib.auth.password_validation import validate_password
@@ -16,6 +15,7 @@ from rest_framework.settings import api_settings
 
 from common.api.fields import CustomHyperlinkedIdentityField, CustomHyperlinkedRelatedField
 from common.api.utils import create_model_serializer, to_model_serializer
+from common.settings import settings
 from common.utils import get_pk_field
 
 # URLs dans les serializers

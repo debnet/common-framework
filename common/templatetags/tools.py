@@ -82,7 +82,7 @@ def tag_query(context, queryset, save="", **kwargs):
     """
     from django.db.models import F, QuerySet
 
-    from common.api.utils import AGGREGATES, CASTS, FUNCTIONS, url_value
+    from common.api.utils import AGGREGATES, CASTS, FUNCTIONS, convert_arg, url_value
 
     if not isinstance(queryset, QuerySet):
         return queryset
@@ -145,28 +145,33 @@ def tag_query(context, queryset, save="", **kwargs):
     # Annotations
     annotations = {}
     for annotation, function in FUNCTIONS.items():
-        for field_name in kwargs.get(annotation, "").split(","):
-            if not field_name:
-                continue
-            field_name, *args = field_name.split("|")
+        if annotation not in kwargs:
+            continue
+        for field_name in kwargs.get(annotation).split(","):
+            field_name, field_rename = (field_name.split("|") + [""])[:2]
+            field_name, *args = field_name.split(";")
             function_args = []
-            for arg in args:
+            for index, arg in enumerate(args):
                 try:
-                    function_args.append(ast.literal_eval(arg))
+                    value = convert_arg(annotation, index, arg)
+                    if value is not None:
+                        function_args.append(value)
                 except (SyntaxError, ValueError):
                     arg = arg.replace(".", "__")
                     if any(arg.endswith(":{}".format(cast)) for cast in CASTS):
                         arg, *junk, cast = arg.split(":")
-                        cast = CASTS.get(cast.lower())
-                        arg = functions.Cast(arg, output_field=cast()) if cast else arg
+                        output_field = CASTS.get(cast.lower())
+                        arg = functions.Cast(arg, output_field=output_field) if output_field else arg
                     function_args.append(arg)
             field_name = field_name.replace(".", "__")
             field = field_name
             if any(field_name.endswith(":{}".format(cast)) for cast in CASTS):
                 field_name, *junk, cast = field_name.split(":")
-                cast = CASTS.get(cast.lower())
-                field = functions.Cast(field_name, output_field=cast()) if cast else field_name
-            annotations[annotation + "__" + field_name] = function(field, *function_args)
+                output_field = CASTS.get(cast.lower())
+                field = functions.Cast(field_name, output_field=output_field) if output_field else field_name
+            field_rename = field_rename or ((annotation + "__" + field_name) if field_name else annotation)
+            function_call = function(field, *function_args) if field else function(*function_args)
+            annotations[field_rename] = function_call
     if annotations:
         queryset = queryset.annotate(**annotations)
 
@@ -177,14 +182,16 @@ def tag_query(context, queryset, save="", **kwargs):
             if not field_name:
                 continue
             distinct = field_name.startswith(" ") or field_name.startswith("+")
+            field_name, field_rename = (field_name.split("|") + [""])[:2]
             field_name = field_name[1:] if distinct else field_name
             field_name = field_name.strip().replace(".", "__")
-            value = field_name
+            field = field_name
             if any(field_name.endswith(":{}".format(cast)) for cast in CASTS):
                 field_name, *junk, cast = field_name.split(":")
-                cast = CASTS.get(cast.lower())
-                value = functions.Cast(field_name, output_field=cast()) if cast else value
-            aggregations[aggregate + "__" + field_name] = function(value, distinct=distinct)
+                output_field = CASTS.get(cast.lower())
+                field = functions.Cast(field_name, output_field=output_field) if cast else field
+            field_rename = field_rename or (aggregate + "__" + field_name)
+            aggregations[field_rename] = function(field, distinct=distinct)
 
     group_by = get("group_by")
     if group_by:
@@ -381,11 +388,11 @@ class ObfuscatorNode(Node):
         output = self.nodelist.render(context)
         if self.key:
             encoded = self.encode(output, self.key)
-            return f'<div data-code="{encoded}"></div>'
+            return f'<div data-encoded="{encoded}"></div>'
         else:
             key = uuid.uuid4().hex
             encoded = self.encode(output, key)
-            return f'<div data-key="{key}" data-code="{encoded}"></div>'
+            return f'<div data-decode-key="{key}" data-encoded="{encoded}"></div>'
 
 
 @register.tag(name="obfuscate")

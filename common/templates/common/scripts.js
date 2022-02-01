@@ -10,7 +10,7 @@
     DjangoJsError.prototype = new Error();
     DjangoJsError.prototype.constructor = DjangoJsError;
 
-    var Django = window.Django = {
+    let Django = window.Django = {
 
         token_regex: /:\w*:/g,
         named_token_regex: /:(\w+):/g,
@@ -32,7 +32,7 @@
          * Equivalent to ``reverse`` function and ``url`` template tag.
          */
         url: function(name, args) {
-            var pattern = this.urls[name] || false,
+            let pattern = this.urls[name] || false,
                 url = pattern,
                 key, regex, token, parts;
 
@@ -51,13 +51,13 @@
                 return this._url_from_object(name, pattern, args);
             }
             else {
-                var argsArray = Array.prototype.slice.apply(arguments, [1, arguments.length]);
+                let argsArray = Array.prototype.slice.apply(arguments, [1, arguments.length]);
                 return this._url_from_array(name, pattern, argsArray);
             }
         },
 
         _url_from_array: function(name, pattern, array) {
-            var matches = pattern.match(this.token_regex),
+            let matches = pattern.match(this.token_regex),
                 parts = pattern.split(this.token_regex),
                 url = parts[0];
 
@@ -69,7 +69,7 @@
                 throw new DjangoJsError('Wrong number of argument for pattern "' + name + '"');
             }
 
-            for (var idx = 0; idx < array.length; idx++) {
+            for (let idx = 0; idx < array.length; idx++) {
                 url += array[idx] + parts[idx + 1];
             }
 
@@ -77,15 +77,15 @@
         },
 
         _url_from_object: function(name, pattern, object) {
-            var url = pattern,
+            let url = pattern,
                 tokens = pattern.match(this.token_regex);
 
             if (!tokens) {
                 return url;
             }
 
-            for (var idx = 0; idx < tokens.length; idx++) {
-                var token = tokens[idx],
+            for (let idx = 0; idx < tokens.length; idx++) {
+                let token = tokens[idx],
                     prop = token.slice(1, -1),
                     value = object[prop];
 
@@ -118,11 +118,11 @@
          *  cf. https://docs.djangoproject.com/en/dev/ref/contrib/csrf/#ajax
          */
         _getCookie: function(name) {
-            var cookieValue = null;
+            let cookieValue = null;
             if (document.cookie && document.cookie !== '') {
-                var cookies = document.cookie.split(';');
-                for (var i = 0; i < cookies.length; i++) {
-                    var cookie = $.trim(cookies[i]);
+                let cookies = document.cookie.split(';');
+                for (let i = 0; i < cookies.length; i++) {
+                    let cookie = $.trim(cookies[i]);
                     // Does this cookie string begin with the name we want?
                     if (cookie.substring(0, name.length + 1) === (name + '=')) {
                         cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
@@ -144,7 +144,7 @@
          * Equivalent to ``csrf_token`` template tag.
          */
         csrf_element: function() {
-            var token = this.csrf_token(),
+            let token = this.csrf_token(),
                 elem = [
                     '<input type="hidden" name="csrfmiddlewaretoken" value="',
                     token ? token : '',
@@ -158,14 +158,14 @@
          *  Fix ajax request with CSRF Django middleware.
          */
         jquery_csrf: function() {
-            var getCookie = this._getCookie;
+            let getCookie = this._getCookie;
             $(document).ajaxSend(function(event, xhr, settings) {
                 function sameOrigin(url) {
                     // url could be relative or scheme relative or absolute
-                    var host = document.location.host; // host + port
-                    var protocol = document.location.protocol;
-                    var sr_origin = '//' + host;
-                    var origin = protocol + sr_origin;
+                    let host = document.location.host; // host + port
+                    let protocol = document.location.protocol;
+                    let sr_origin = '//' + host;
+                    let origin = protocol + sr_origin;
                     // Allow absolute or scheme relative URLs to same origin
                     return (
                         url === origin ||

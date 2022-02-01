@@ -5,6 +5,6 @@ from common.tests import create_api_test_class
 RECIPES = {}
 
 
-# Tests automatisées pour tous les modèles liés à une API REST
-for model in [MetaData, Webhook]:
+# Tests automatisés pour tous les modèles liés à une API REST
+for model in (MetaData, Webhook):
     create_api_test_class(model, namespace="common-api", data=RECIPES.get(model, None))

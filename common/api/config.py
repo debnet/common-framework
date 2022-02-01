@@ -58,6 +58,5 @@ try:
             user.save(update_fields=["last_login"])
         return {"token": token}
 
-
 except ImportError:
     pass

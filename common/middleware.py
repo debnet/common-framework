@@ -166,15 +166,16 @@ class ServiceUsageMiddleware:
                 extra = usage.extra or dict(addresses={}, data={}, params={})
                 address = extra["addresses"].setdefault(usage.address, {})
                 address.update(date=date, method=request.method, count=address.get("count", 0) + 1)
-                for method in ("GET", "POST"):
-                    for key, value in getattr(request, method, {}).items():
-                        if not value:
-                            continue
-                        data = extra["data"].setdefault(key, {})
-                        data.update(date=date, method=method, count=data.get("count", 0) + 1)
-                for key, value in request.resolver_match.kwargs.items():
-                    params = extra["params"].setdefault(key, {})
-                    params.update(date=date, method=request.method, count=params.get("count", 0) + 1)
+                if settings.SERVICE_USAGE_LOG_DATA:
+                    for method in ("GET", "POST"):
+                        for key, value in getattr(request, method, {}).items():
+                            if not value:
+                                continue
+                            data = extra["data"].setdefault(key, {})
+                            data.update(date=date, method=method, count=data.get("count", 0) + 1)
+                    for key, value in request.resolver_match.kwargs.items():
+                        params = extra["params"].setdefault(key, {})
+                        params.update(date=date, method=request.method, count=params.get("count", 0) + 1)
                 usage.extra = extra
                 usage.save()
                 try:

@@ -32,6 +32,5 @@ try:
             for row in self.tablize(data, header=header, labels=labels):
                 yield csv_writer.writerow([elem for elem in row])
 
-
 except ImportError:
     pass

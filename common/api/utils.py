@@ -1,21 +1,26 @@
 # coding: utf-8
 import ast
+import zoneinfo
+from datetime import timedelta
 from functools import partial, wraps
 from json import JSONDecodeError
 
-from django.conf import settings
 from django.core.exceptions import EmptyResultSet
 from django.db import models
-from django.db.models import Avg, Count, F, Max, Min, Q, QuerySet, StdDev, Sum, Variance, functions
+from django.db.models import Avg, Count, F, Max, Min, Q, QuerySet, StdDev, Sum, Value, Variance, functions
+from django.utils.timezone import now
 from rest_framework import serializers, viewsets
 from rest_framework.decorators import api_view
-from rest_framework.exceptions import NotFound, ValidationError
+from rest_framework.exceptions import NotFound, PermissionDenied, ValidationError
 from rest_framework.relations import PrimaryKeyRelatedField
 from rest_framework.response import Response
 
 from common.api.fields import ChoiceDisplayField, ReadOnlyObjectField
+from common.settings import settings
 from common.utils import (
     get_field_by_path,
+    get_model_permissions,
+    get_models_from_queryset,
     get_pk_field,
     get_prefetchs,
     get_related,
@@ -39,39 +44,47 @@ AGGREGATES = {
     "variance": Variance,
 }
 CASTS = {
-    "bool": models.BooleanField,
-    "date": models.DateField,
-    "datetime": models.DateTimeField,
-    "decimal": models.DecimalField,
-    "float": models.FloatField,
-    "int": models.IntegerField,
-    "str": models.CharField,
-    "time": models.TimeField,
+    "bool": models.BooleanField(),
+    "date": models.DateField(),
+    "datetime": models.DateTimeField(),
+    "decimal": models.DecimalField(),
+    "float": models.FloatField(),
+    "int": models.IntegerField(),
+    "str": models.CharField(),
+    "text": models.TextField(),
+    "time": models.TimeField(),
 }
 FUNCTIONS = {
+    "f": F,
     "cast": lambda value, cast_type="", *args: (
-        partial(functions.Cast, output_field=CASTS.get(cast_type, models.CharField)())(value, *args)
+        partial(functions.Cast, output_field=CASTS.get(cast_type, models.CharField()))(value, *args)
     ),
     "coalesce": functions.Coalesce,
+    "collate": functions.Collate,
     "greatest": functions.Greatest,
     "least": functions.Least,
     "nullif": functions.NullIf,
-    "extract_year": functions.ExtractIsoYear,
+    "extract": functions.Extract,
+    "extract_year": functions.ExtractYear,
+    "extract_iso_year": functions.ExtractIsoYear,
     "extract_month": functions.ExtractMonth,
     "extract_day": functions.ExtractDay,
-    "extract_week_day": functions.ExtractIsoWeekDay,
+    "extract_week_day": functions.ExtractWeekDay,
+    "extract_iso_week_day": functions.ExtractIsoWeekDay,
     "extract_week": functions.ExtractWeek,
     "extract_quarter": functions.ExtractQuarter,
     "extract_hour": functions.ExtractHour,
     "extract_minute": functions.ExtractMinute,
     "extract_second": functions.ExtractSecond,
+    "now": functions.Now,
+    "trunc": functions.Trunc,
+    "trunc_date": functions.TruncDate,
     "trunc_year": functions.TruncYear,
     "trunc_month": functions.TruncMonth,
+    "trunc_day": functions.TruncDay,
     "trunc_week": functions.TruncWeek,
     "trunc_quarter": functions.TruncQuarter,
-    "trunc_date": functions.TruncDate,
     "trunc_time": functions.TruncTime,
-    "trunc_day": functions.TruncDay,
     "trunc_hour": functions.TruncHour,
     "trunc_minute": functions.TruncMinute,
     "trunc_second": functions.TruncSecond,
@@ -89,13 +102,17 @@ FUNCTIONS = {
     "ln": functions.Ln,
     "log": functions.Log,
     "mod": functions.Mod,
-    "radians": functions.Radians,
-    "round": functions.Round,
+    "pi": functions.Pi,
     "power": functions.Power,
+    "radians": functions.Radians,
+    "random": functions.Random,
+    "round": functions.Round,
     "sign": functions.Sign,
     "sin": functions.Sin,
     "sqrt": functions.Sqrt,
     "tan": functions.Tan,
+    "chr": functions.Chr,
+    "concat": functions.Concat,
     "left": functions.Left,
     "length": functions.Length,
     "lower": functions.Lower,
@@ -119,6 +136,34 @@ FUNCTIONS = {
     "trim": functions.Trim,
     "upper": functions.Upper,
 }
+CONVERTS = {
+    "cast": (str, {}),
+    "collate": (Value, {1: str}),
+    "extract": (Value, {1: str, 2: zoneinfo.ZoneInfo}),
+    "now": (None, {}),
+    "trunc": (Value, {1: str, 2: CASTS.get, 3: zoneinfo.ZoneInfo, 4: bool}),
+    "trunc_year": (Value, {1: CASTS.get, 2: zoneinfo.ZoneInfo, 3: bool}),
+    "trunc_month": (Value, {1: CASTS.get, 2: zoneinfo.ZoneInfo, 3: bool}),
+    "trunc_week": (Value, {1: CASTS.get, 2: zoneinfo.ZoneInfo, 3: bool}),
+    "trunc_quarter": (Value, {1: CASTS.get, 2: zoneinfo.ZoneInfo, 3: bool}),
+    "trunc_date": (Value, {1: CASTS.get, 2: zoneinfo.ZoneInfo, 3: bool}),
+    "trunc_time": (Value, {1: CASTS.get, 2: zoneinfo.ZoneInfo, 3: bool}),
+    "trunc_day": (Value, {1: CASTS.get, 2: zoneinfo.ZoneInfo, 3: bool}),
+    "trunc_hour": (Value, {1: CASTS.get, 2: zoneinfo.ZoneInfo, 3: bool}),
+    "trunc_minute": (Value, {1: CASTS.get, 2: zoneinfo.ZoneInfo, 3: bool}),
+    "trunc_second": (Value, {1: CASTS.get, 2: zoneinfo.ZoneInfo, 3: bool}),
+    "pi": (None, {}),
+    "random": (None, {}),
+    "round": (Value, {1: int}),
+    "left": (Value, {1: int}),
+    "lpad": (Value, {1: int, 2: Value}),
+    "repeat": (Value, {1: int}),
+    "replace": (Value, {1: Value, 2: Value}),
+    "right": (Value, {1: int}),
+    "rpad": (Value, {1: int, 2: Value}),
+    "strindex": (Value, {1: Value}),
+    "substr": (Value, {1: int, 2: int}),
+}
 RESERVED_QUERY_PARAMS = (
     [
         "filters",
@@ -137,6 +182,24 @@ RESERVED_QUERY_PARAMS = (
     + list(AGGREGATES.keys())
     + list(FUNCTIONS.keys())
 )
+MULTI_LOOKUPS = ["__in", "__range", "__hasany", "__hasall", "__has_keys", "__has_any_keys", "__overlap"]
+BOOL_LOOKUPS = ["__isnull", "__isempty"]
+JSON_LOOKUPS = ["__contains", "__contained_by", "__hasdict", "__indict"]
+
+
+def convert_arg(annotation, arg_index, arg_raw):
+    """
+    Transforme un argument parsé de l'API en fonction de l'annotation utilisée
+    :param annotation: Nom de l'annotation
+    :param arg_index: Position de l'argument
+    :param arg_raw: Valeur brute de l'argument
+    :return: Valeur transformée
+    """
+    default, converts = CONVERTS.get(annotation, (Value, {}))
+    if not default:
+        return None
+    arg_value = ast.literal_eval(arg_raw)
+    return converts.get(arg_index, default)(arg_value)
 
 
 def url_value(filter, value):
@@ -155,18 +218,15 @@ def url_value(filter, value):
         evaluated = False
     if not filter:
         return value
-    if any(
-        filter.endswith(lookup)
-        for lookup in ("__in", "__range", "__hasany", "__hasall", "__has_keys", "__has_any_keys", "__overlap")
-    ):
+    if any(filter.endswith(lookup) for lookup in MULTI_LOOKUPS):
         if evaluated:
             if not isinstance(value, (list, set, tuple)):
                 return (value,)
         else:
             return value.split(",")
-    if any(filter.endswith(lookup) for lookup in ("__isnull", "__isempty")):
+    if any(filter.endswith(lookup) for lookup in BOOL_LOOKUPS):
         return str_to_bool(value)
-    if any(filter.endswith(lookup) for lookup in ("__contains", "__contained_by", "__hasdict", "__indict")):
+    if any(filter.endswith(lookup) for lookup in JSON_LOOKUPS):
         if not isinstance(value, str):
             return value
         try:
@@ -213,7 +273,7 @@ def parse_filters(filters):
         elif isinstance(filter, dict):
             fields = {}
             for key, value in filter.items():
-                key = key.strip().replace(".", "__")
+                key = key.replace(".", "__")
                 if value.startswith("[") and value.endswith("]"):
                     value = F(value[1:-1].replace(".", "__"))
                 fields[key] = url_value(key, value)
@@ -368,9 +428,9 @@ def serializer_factory(excludes):
 
 def create_model_serializer_and_viewset(
     model,
-    foreign_keys=True,
+    foreign_keys=False,
     many_to_many=False,
-    one_to_one=True,
+    one_to_one=False,
     one_to_many=False,
     fks_in_related=False,
     null_fks=False,
@@ -382,7 +442,7 @@ def create_model_serializer_and_viewset(
     queryset=None,
     metas=None,
     exclude_related=None,
-    depth=0,
+    depth=1,
     height=1,
     _level=0,
     _origin=None,
@@ -743,6 +803,7 @@ def auto_view(
     serializer=None,
     validation=True,
     many=False,
+    enable_options=True,
     custom_func=None,
     query_func=None,
     func_args=None,
@@ -755,6 +816,7 @@ def auto_view(
     :param serializer: Serializer des données de sortie
     :param validation: Exécuter la validation des données d'entrée ? (request contiendra alors "validated_data")
     :param many: Affichage de plusieurs éléments ou élément individuel (404 si élément non trouvé) ?
+    :param enable_options: Active toutes les options de filtre/tri/aggregation/distinct
     :param custom_func: Fonction facultive de transformation du QuerySet
         fonction(request: Request, queryset: QuerySet) -> Union[QuerySet, Tuple[QuerySet, dict]]
     :param query_func: Fonction de récupération des éléments ('first' ou 'all' par défaut selon le paramètre 'many')
@@ -781,6 +843,7 @@ def auto_view(
                     request,
                     queryset,
                     serializer,
+                    enable_options=enable_options,
                     context=context,
                     query_func=query_func,
                     func_args=func_args,
@@ -842,6 +905,10 @@ def api_paginate(
     # Activation des options
     if enable_options:
 
+        # Copie des modèles d'origine de la requête pour vérification des permissions
+        if settings.ENABLE_API_PERMISSIONS:
+            base_queryset_models = get_models_from_queryset(queryset)
+
         # Critères de recherche dans le cache
         cache_key = url_params.pop("cache", None)
         if cache_key:
@@ -856,10 +923,6 @@ def api_paginate(
                 key: value for key, value in url_params.items() if key not in default_reserved_query_params
             }
             if new_cache_params:
-                from datetime import timedelta
-
-                from django.utils.timezone import now
-
                 cache_timeout = int(url_params.pop("timeout", settings.API_CACHE_TIMEOUT)) or None
                 cache.set(settings.API_CACHE_PREFIX + cache_key, new_cache_params, timeout=cache_timeout)
                 options["cache_expires"] = now() + timedelta(seconds=cache_timeout) if cache_timeout else "never"
@@ -891,7 +954,7 @@ def api_paginate(
                         key = key[1:].strip()
                         excludes[key] = url_value(key, value)
                     else:
-                        key = key[1:].strip() if key.startswith("+") else key.strip()
+                        key = (key[1:] if key.startswith("+") else key).strip()
                         filters[key] = url_value(key, value)
                 if filters:
                     queryset = queryset.filter(**filters)
@@ -905,7 +968,7 @@ def api_paginate(
                     options["filters"] = True
             except Exception as error:
                 if not silent:
-                    raise ValidationError(dict(error="filters: {}".format(error)), code="filters")
+                    raise ValidationError({"filters": error}, code="filters")
                 options["filters"] = False
                 if settings.DEBUG:
                     options["filters_error"] = str(error)
@@ -915,34 +978,42 @@ def api_paginate(
         annotations = {}
         try:
             for annotation, function in FUNCTIONS.items():
-                for field_name in url_params.pop(annotation, "").split(","):
-                    if not field_name:
-                        continue
-                    field_name, *args = field_name.split("|")
+                if annotation not in url_params:
+                    continue
+                for field_name in url_params.pop(annotation).split(","):
+                    field_name, field_rename = (field_name.split("|") + [""])[:2]
+                    field_name, *args = field_name.split(";")
                     function_args = []
-                    for arg in args:
+                    for index, arg in enumerate(args):
                         try:
-                            function_args.append(ast.literal_eval(arg))
+                            value = convert_arg(annotation, index, arg)
+                            if value is not None:
+                                function_args.append(value)
                         except (SyntaxError, ValueError):
+                            if annotation == "cast":
+                                function_args.append(arg)
+                                break
                             arg = arg.replace(".", "__")
                             if any(arg.endswith(":{}".format(cast)) for cast in CASTS):
                                 arg, *junk, cast = arg.split(":")
-                                cast = CASTS.get(cast.lower())
-                                arg = functions.Cast(arg, output_field=cast()) if cast else arg
+                                output_field = CASTS.get(cast.lower())
+                                arg = functions.Cast(arg, output_field=output_field) if output_field else arg
                             function_args.append(arg)
                     field_name = field_name.replace(".", "__")
                     field = field_name
                     if any(field_name.endswith(":{}".format(cast)) for cast in CASTS):
                         field_name, *junk, cast = field_name.split(":")
-                        cast = CASTS.get(cast.lower())
-                        field = functions.Cast(field_name, output_field=cast()) if cast else field_name
-                    annotations[annotation + "__" + field_name] = function(field, *function_args)
+                        output_field = CASTS.get(cast.lower())
+                        field = functions.Cast(field_name, output_field=output_field) if output_field else field_name
+                    field_rename = field_rename or ((annotation + "__" + field_name) if field_name else annotation)
+                    function_call = function(field, *function_args) if field else function(*function_args)
+                    annotations[field_rename] = function_call
             if annotations:
                 queryset = queryset.annotate(**annotations)
                 options["annotates"] = True
         except Exception as error:
             if not silent:
-                raise ValidationError(dict(error="annotates: {}".format(error)), code="annotates")
+                raise ValidationError({"annotates": error}, code="annotates")
             options["annotates"] = False
             if settings.DEBUG:
                 options["annotates_error"] = str(error)
@@ -951,18 +1022,20 @@ def api_paginate(
         aggregations = {}
         try:
             for aggregate, function in AGGREGATES.items():
-                for field_name in url_params.get(aggregate, "").split(","):
-                    if not field_name:
-                        continue
+                if aggregate not in url_params:
+                    continue
+                for field_name in url_params.get(aggregate).split(","):
                     distinct = field_name.startswith(" ") or field_name.startswith("+")
+                    field_name, field_rename = (field_name.split("|") + [""])[:2]
                     field_name = field_name[1:] if distinct else field_name
-                    field_name = field_name.strip().replace(".", "__")
-                    value = field_name
+                    field_name = field_name.replace(".", "__")
+                    field = field_name
                     if any(field_name.endswith(":{}".format(cast)) for cast in CASTS):
                         field_name, *junk, cast = field_name.split(":")
-                        cast = CASTS.get(cast.lower())
-                        value = functions.Cast(field_name, output_field=cast()) if cast else value
-                    aggregations[aggregate + "__" + field_name] = function(value, distinct=distinct)
+                        output_field = CASTS.get(cast.lower())
+                        field = functions.Cast(field_name, output_field=output_field) if output_field else field_name
+                    field_rename = field_rename or ((aggregate + "__" + field_name) if field_name else aggregate)
+                    aggregations[field_rename] = function(field, distinct=distinct)
             group_by = url_params.get("group_by", "")
             if group_by:
                 _queryset = queryset.values(*group_by.replace(".", "__").split(","))
@@ -980,7 +1053,7 @@ def api_paginate(
             raise
         except Exception as error:
             if not silent:
-                raise ValidationError(dict(error="aggregates: {}".format(error)), code="aggregates")
+                raise ValidationError({"aggregates": error}, code="aggregates")
             options["aggregates"] = False
             if settings.DEBUG:
                 options["aggregates_error"] = str(error)
@@ -1009,7 +1082,7 @@ def api_paginate(
             pass
         except Exception as error:
             if not silent:
-                raise ValidationError(dict(error="order_by: {}".format(error)), code="order_by")
+                raise ValidationError({"order_by": error}, code="order_by")
             options["order_by"] = False
             if settings.DEBUG:
                 options["order_by_error"] = str(error)
@@ -1028,7 +1101,7 @@ def api_paginate(
             pass
         except Exception as error:
             if not silent:
-                raise ValidationError(dict(error="distinct: {}".format(error)), code="distinct")
+                raise ValidationError({"distinct": error}, code="distinct")
             options["distinct"] = False
             if settings.DEBUG:
                 options["distinct_error"] = str(error)
@@ -1055,12 +1128,11 @@ def api_paginate(
                     queryset = queryset.values(*field_names)
             except Exception as error:
                 if not silent:
-                    raise ValidationError(dict(error="fields: {}".format(error)), code="fields")
+                    raise ValidationError({"fields": error}, code="fields")
 
         # Fonction utilitaire d'ajout de champ au serializer
         def add_field_to_serializer(fields, field_name):
-            field_name = field_name.strip()
-            source = field_name.strip().replace(".", "__")
+            source = field_name.replace(".", "__")
             # Champ spécifique en cas d'énumération
             choices = getattr(get_field_by_path(queryset.model, field_name), "flatchoices", None)
             if choices and str_to_bool(url_params.get("display", "")):
@@ -1071,12 +1143,13 @@ def api_paginate(
         # Création de serializer à la volée en cas d'aggregation ou de restriction de champs
         aggregations = {}
         for aggregate in AGGREGATES.keys():
-            for field in url_params.get(aggregate, "").split(","):
-                if not field:
-                    continue
-                field_name = aggregate + "__" + field.strip()
+            if aggregate not in url_params:
+                continue
+            for field in url_params.get(aggregate).split(","):
+                field_name = (aggregate + "__" + field) if field else aggregate
+                field_name, field_rename = (field_name.split("|") + [""])[:2]
                 source = field_name.replace(".", "__") if "." in field else None
-                aggregations[field_name] = serializers.ReadOnlyField(source=source)
+                aggregations[field_rename or field_name] = serializers.ReadOnlyField(source=source)
 
         # Regroupements & aggregations
         if "group_by" in url_params or aggregations:
@@ -1097,6 +1170,14 @@ def api_paginate(
             serializer = type(serializer.__name__, (serializers.Serializer,), fields)
         elif annotations:
             serializer._declared_fields.update({key: serializers.ReadOnlyField() for key, value in annotations.items()})
+
+        # Vérifie les droits sur les différents modèles traversés
+        if settings.ENABLE_API_PERMISSIONS and request.user and hasattr(queryset, "query"):
+            new_queryset_models = get_models_from_queryset(queryset) - base_queryset_models
+            permissions = get_model_permissions(request.user, *new_queryset_models)
+            for permission_code, permission_value in permissions.items():
+                if not permission_value:
+                    raise PermissionDenied({permission_code: PermissionDenied.default_detail})
 
     # Fonction spécifique
     if query_func:
@@ -1119,6 +1200,7 @@ def api_paginate(
         queryset = queryset.order_by(
             *(getattr(queryset, "_fields", None) or (enable_options and distincts) or [primary_key.name])
         )
+
     serializer = serializer(paginator.paginate_queryset(queryset, request), context=context, many=True)
     return paginator.get_paginated_response(serializer.data)
 
@@ -1135,7 +1217,8 @@ def create_api(
     all_data_viewsets=None,
     all_querysets=None,
     all_metadata=None,
-    all_configs=None
+    all_configs=None,
+    **config
 ):
     """
     Crée les APIs REST standard pour les modèles donnés
@@ -1150,7 +1233,8 @@ def create_api(
     :param all_data_serializers: Toutes les données de serializers créées jusqu'à présent
     :param all_data_viewsets: Toutes les données de viewsets créées jusqu'à présent
     :param all_querysets: Toutes les requêtes créées jusqu'à présent
-    :param all_configs: Toutes les configs créées jusqu'à présent
+    :param all_configs: Toutes les configurations créées jusqu'à présent
+    :param config: Configuration spécifique aux modèles
     :return: Router, Serializers, Viewsets
     """
     serializers = {}
@@ -1185,6 +1269,8 @@ def create_api(
     for model in models:
         if not model:
             continue
+        configuration = all_configs.get(model, default_config or {})
+        configuration.update(config)
         serializers[model], viewsets[model] = create_model_serializer_and_viewset(
             model,
             serializer_base=all_bases_serializers,
@@ -1193,7 +1279,7 @@ def create_api(
             viewset_data=all_data_viewsets,
             queryset=all_querysets.get(model, None),
             metas=all_metadata,
-            **all_configs.get(model, default_config or {})
+            **configuration,
         )
 
     # Création des routes par défaut

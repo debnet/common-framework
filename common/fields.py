@@ -88,7 +88,8 @@ if django_version < (3, 1) or settings.COMMON_JSONFIELD:
 
     class JsonDict(dict):
         """
-        Hack so repr() called by dumpdata will output JSON instead of Python formatted data. This way fixtures will work!
+        Hack so repr() called by dumpdata will output JSON instead of Python formatted data.
+        This way fixtures will work!
         """
 
         def __repr__(self):
@@ -100,7 +101,8 @@ if django_version < (3, 1) or settings.COMMON_JSONFIELD:
 
     class JsonString(str):
         """
-        Hack so repr() called by dumpdata will output JSON instead of Python formatted data. This way fixtures will work!
+        Hack so repr() called by dumpdata will output JSON instead of Python formatted data.
+        This way fixtures will work!
         """
 
         def __repr__(self):
@@ -112,7 +114,8 @@ if django_version < (3, 1) or settings.COMMON_JSONFIELD:
 
     class JsonList(list):
         """
-        Hack so repr() called by dumpdata will output JSON instead of Python formatted data. This way fixtures will work!
+        Hack so repr() called by dumpdata will output JSON instead of Python formatted data.
+        This way fixtures will work!
         """
 
         def __repr__(self):
@@ -712,7 +715,6 @@ try:
             if CustomUnaccent.has_unaccent:
                 CustomUnaccent.function = "F_UNACCENT"
             return super().as_sql(compiler, connection, **kwargs)
-
 
 except ImportError:
     pass

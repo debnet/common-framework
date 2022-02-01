@@ -1,5 +1,6 @@
 # coding: utf-8
 import inspect
+import math
 import sys
 from datetime import timedelta
 from functools import wraps
@@ -31,7 +32,7 @@ class BaseApiTestCase(APITestCase):
         super().setUpClass()
         cls.user_admin = User.objects.filter(username="admin").first()
         if not cls.user_admin:
-            cls.user_admin = User.objects.create_superuser("admin", "admin@sa-cim.fr", "admin")
+            cls.user_admin = User.objects.create_superuser("admin", "admin@domain.local", "admin")
 
     @classmethod
     def tearDownClass(cls):
@@ -97,6 +98,8 @@ def create_api_test_class(
     test_metadata=True,
     test_simple=True,
     test_silent=True,
+    test_annotate=True,
+    test_aggregate=True,
 ):
     """
     Permet d'obtenir la classe de test du modèle avec les méthodes de tests standard de l'api
@@ -117,6 +120,8 @@ def create_api_test_class(
     :param test_metadata: Test des metadata
     :param test_simple: Test des réquêtes simplifiées
     :param test_silent: Test de la remontée d'erreur silencieuse
+    :param test_annotate: Test des annotations
+    :param test_aggregate: Test des aggregations
     :return: Classe de test
     """
     app_label = model._meta.app_label
@@ -187,9 +192,7 @@ def create_api_test_class(
             Méthode de test de la liste des éléments
             """
             items_count = model.objects.count()
-            recipes = self.recipes
-            nb_recipes = len(recipes)
-            for item in recipes:
+            for item in self.recipes:
                 item.make()
             url = reverse(self.url_list_api)
             response = self.client.get(url)
@@ -197,7 +200,7 @@ def create_api_test_class(
             self.client.force_authenticate(self.user_admin)
             response = self.client.get(url)
             self.assertEqual(response.status_code, status.HTTP_200_OK, response.data)
-            self.assertEqual(response.data["count"], items_count + nb_recipes)
+            self.assertEqual(response.data["count"], items_count + len(self.recipes))
 
         test_class.test_api_list = _test_api_list
 
@@ -224,16 +227,16 @@ def create_api_test_class(
             """
             Méthode de test de création d'un élément
             """
-            perissable = issubclass(model, PerishableEntity)
+            is_perishable = issubclass(model, PerishableEntity)
             # Permet d'eviter l'enregistrement d'une perissable exactement à la même date
-            if perissable:
+            if is_perishable:
                 start_date = now() - timedelta(days=1)
                 item = self.recipes[0].make(make_m2m=True, start_date=start_date)
             else:
                 item = self.recipes[0].make(make_m2m=True)
             request = APIRequestFactory().request()
             data_to_post = self.serializer(item, context=dict(request=request)).data
-            if perissable:
+            if is_perishable:
                 data_to_post["start_date"] = None
             item.delete(keep_parents=False, **(dict(_force_default=True) if issubclass(model, Entity) else {}))
             url = reverse(self.url_list_api)
@@ -243,7 +246,7 @@ def create_api_test_class(
             response = self.client.post(url, data_to_post)
             self.assertEqual(response.status_code, status.HTTP_201_CREATED, response.data)
             self.assertIsNotNone(response.data[pk_field])
-            if perissable:
+            if is_perishable:
                 self.assertIsNotNone(response.data["start_date"])
 
         test_class.test_api_post = _test_api_post
@@ -353,9 +356,8 @@ def create_api_test_class(
             """
             Méthode de test du filtre lors d'un get list
             """
-            recipes = self.recipes
             items_ids = []
-            for item in recipes:
+            for item in self.recipes:
                 instance = item.make()
                 items_ids.append(str(instance.pk))
             # Test avec résultat
@@ -487,9 +489,7 @@ def create_api_test_class(
             Méthode de test du silent
             """
             items_count = model.objects.count()
-            recipes = self.recipes
-            nb_recipes = len(recipes)
-            for item in recipes:
+            for item in self.recipes:
                 item.make()
             # Test sans le silent
             self.client.force_authenticate(self.user_admin)
@@ -500,11 +500,48 @@ def create_api_test_class(
             url = reverse(self.url_list_api) + "?test_field_does_not_exist=test&silent=1"
             response = self.client.get(url)
             self.assertEqual(response.status_code, status.HTTP_200_OK, response.data)
-            self.assertEqual(response.data["count"], items_count + nb_recipes)
+            self.assertEqual(response.data["count"], items_count + len(self.recipes))
             options = response.data.get("options", {})
             self.assertFalse(options.get("filters", True))
 
         test_class.test_api_silent = _test_api_silent
+
+    if test_annotate:
+
+        def _test_api_annotate(self):
+            """
+            Méthode de test d'une annotation sur un champ
+            """
+            item = self.recipes[0].make()
+            url = reverse(self.url_list_api) + "?atan2={};2|test_annotate_field".format(pk_field)
+            response = self.client.get(url)
+            self.assertIn(response.status_code, [status.HTTP_401_UNAUTHORIZED, status.HTTP_403_FORBIDDEN])
+            self.client.force_authenticate(self.user_admin)
+            response = self.client.get(url)
+            results = response.data["results"][0]
+            self.assertEqual(response.status_code, status.HTTP_200_OK, response.data)
+            self.assertEqual(results.get("test_annotate_field"), math.atan2(item.pk, 2))
+            options = response.data.get("options", {})
+            self.assertTrue(options.get("annotates"))
+
+        test_class.test_api_annotate = _test_api_annotate
+
+    if test_aggregate:
+
+        def _test_api_aggregate(self):
+            """
+            Méthode de test d'une aggregation de données
+            """
+            self.recipes[0].make()
+            url = reverse(self.url_list_api) + "?count={}|test_count_field".format(pk_field)
+            response = self.client.get(url)
+            self.assertIn(response.status_code, [status.HTTP_401_UNAUTHORIZED, status.HTTP_403_FORBIDDEN])
+            self.client.force_authenticate(self.user_admin)
+            response = self.client.get(url)
+            self.assertEqual(response.status_code, status.HTTP_200_OK, response.data)
+            self.assertEqual(response.data.get("test_count_field"), 1)
+
+        test_class.test_api_aggregate = _test_api_aggregate
 
     return test_class
 

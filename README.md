@@ -225,6 +225,12 @@ utilisateur et même de limiter le nombre d'usages.
 La fonctionnalité est désactivée par défaut et peut être activée via ``SERVICE_USAGE``. 
 Il est également nécessaire d'ajouter ``'common.middleware.ServiceUsageMiddleware'`` dans ``MIDDLEWARE_CLASSES``.
 
+Configuration :
+
+* ``SERVICE_USAGE`` (``False`` par défaut) : active ou non la surveillance
+* ``SERVICE_USAGE_LOG_DATA`` (``False`` par défaut) : suit également les données transmisses par les services
+* ``SERVICE_USAGE_LIMIT_ONLY`` (``False`` par défaut) : utilise uniquement le système de restriction des services
+
 ### Métadonnées utilisateurs & groupes
 
 De la même manière que sur les entités, les utilisateurs et les groupes ont la possibilité de conserver de 
@@ -280,6 +286,10 @@ relatif à Django et dans ``common.api.utils`` pour tout ce qui est relatif à D
 * ``collect_deleted_data`` : permet de récupérer les impacts potentiels d'une suppression d'entité
 * ``send_mail`` : permet d'envoyer un email
 * ``merge_validation_errors`` : permet de fusionner plusieurs exceptions de validation en une seule
+* ``get_all_models`` : récupère tous les modèles enregistrés dans les applications
+* ``get_all_permissions`` : récupère toutes les permissions existantes dans les applications
+* ``get_models_from_queryset`` : recupère tous les modèles qui ont été traversés par une requête
+* ``get_model_permissions`` : récupère toutes les permissions liées à un modèle et à un utilisateur
 
 ##### Autres (``common.admin``)
 
@@ -315,7 +325,7 @@ Les champs de modèle sont définis dans ``common.fields``.
 ### Formulaires
 
 Les utilitaires autour des formulaires sont définis dans ``common.forms``. Chaque classe utilitaire pour les
-formulaires possèdent une interface de base, préfixée généralement ``Base`` pour d'autres implémentations.
+formulaires possède une interface de base, préfixée généralement ``Base`` pour d'autres implémentations.
 
 * ``CommonForm`` : classe de base pour les formulaires avec gestion des historiques
 * ``CommonFormSet`` : classe de base pour les ensembles de formulaires avec gestion des historiques
@@ -326,6 +336,43 @@ formulaires possèdent une interface de base, préfixée généralement ``Base``
 * ``get_model_form`` : fonction permettant de créer un formulaire d'entité avec des imbrications
 
 # Django REST Framework
+
+## Usage
+
+La boîte à outils vous permet de générer rapidement des APIs RESTful pour vos modèles de base de données en leur
+fournissant au passage le moyen de faire des requêtes plus évoluées via l'URL. Cette génération s'adresse
+principalement aux développeurs qui ont besoin d'accéder à toute la richesse de leurs modèles et de l'ORM Django
+via les APIs le plus rapidement possible sans avoir à configurer finement chaque ressource.
+
+### Configuration rapide
+
+Dans votre application Django, créez un nouveau module et ajoutez ces quelques lignes :
+
+```python
+from common.api.utils import create_api
+from myapp.models import ModelA, ModelB
+
+namespace = "myapp-api"
+app_name = "myapp-api"
+router, all_serializers, all_viewsets = create_api(ModelA, ModelB)
+urlpatterns = [
+    # Vos URLs d'API personnalisées    
+] + router.urls
+urls = (urlpatterns, namespace, app_name)
+```
+
+Cela a pour conséquence de créer automatiquement les APIs pour les modèles que vous souhaitez ainsi que la table de
+routage nécessaire pour accéder à ces ressources.
+
+De nombreuses options de configuration existent pour vos APIs, vous pouvez par exemple définir précisément le
+serialiseur pour chaque modèle, configurer la récupération automatique des entités liées par clé étrangère (related) ou
+des relations de type plusieurs-à-plusieurs (prefetch) ou personnaliser les requêtes.
+
+Pour configurer globalement et de manière homogène vos modèles, modifiez les paramètres dans ``common.api.base``.
+
+### Guide d'utilisation rapide
+
+
 
 ## Utilitaires
 

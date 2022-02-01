@@ -43,7 +43,8 @@ def resolve_url(request):
 def get_urls(request):
     """
     Permet d'afficher l'ensemble des URLs connues
-    L'argument optionnel 'namespaces' permet de définir un filtre sur un ou plusieurs namespaces séparés par des virgules
+    L'argument optionnel 'namespaces' permet de définir un filtre
+    sur un ou plusieurs namespaces séparés par des virgules
     """
     namespaces = request.query_params.getlist("namespaces", [])
     return Response(

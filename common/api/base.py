@@ -1,5 +1,4 @@
 # coding: utf-8
-from django.conf import settings
 from django.contrib.admin.models import LogEntry
 from django.contrib.auth import get_user_model
 from django.contrib.auth.models import Group, Permission
@@ -10,6 +9,7 @@ from common.api.serializers import UserSerializer
 from common.api.utils import create_api, disable_relation_fields
 from common.api.viewsets import UserViewSet
 from common.models import MODELS, GroupMetaData, MetaData, UserMetaData
+from common.settings import settings
 from common.utils import _assert
 
 try:
@@ -53,7 +53,7 @@ METADATA = {}
 
 # Configuration des serializers
 CONFIGS = {
-    MetaData: dict(depth=0),
+    MetaData: {},
     Group: dict(many_to_many=True, depth=1, permissions=[CurrentUserPermissions]),
     GroupMetaData: dict(permissions=[CurrentUserPermissions]),
     User: dict(many_to_many=True, depth=1, permissions=[CurrentUserPermissions]),
@@ -61,7 +61,7 @@ CONFIGS = {
 }
 
 # Configuration par défaut
-DEFAULT_CONFIG = dict(depth=1)
+DEFAULT_CONFIG = {}
 
 # Précise les filtres à appliquer sur les permissions spécifiques par utilisateur
 CurrentUserPermissions.filters.update(

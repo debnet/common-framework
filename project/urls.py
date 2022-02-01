@@ -1,29 +1,18 @@
-"""project URL Configuration
-
-The `urlpatterns` list routes URLs to views. For more information please see:
-    https://docs.djangoproject.com/en/2.2/topics/http/urls/
-Examples:
-Function views
-    1. Add an import:  from my_app import views
-    2. Add a URL to urlpatterns:  path('', views.home, name='home')
-Class-based views
-    1. Add an import:  from other_app.views import Home
-    2. Add a URL to urlpatterns:  path('', Home.as_view(), name='home')
-Including another URLconf
-    1. Import the include() function: from django.urls import include, path
-    2. Add a URL to urlpatterns:  path('blog/', include('blog.urls'))
-"""
 from django.contrib import admin
 from django.urls import include, path
 from rest_framework.authtoken import views as drf_views
 
+
 urlpatterns = [
-    path("admin/", admin.site.urls),
+    path(r"admin/", admin.site.urls),
     # Django REST Framework
-    path("api/", include("rest_framework.urls", namespace="drf")),
+    path(r"api/", include("rest_framework.urls", namespace="drf")),
     # Django REST Framework Auth Token
-    path("api/auth/", drf_views.obtain_auth_token, name="token"),
+    path(r"api/auth/", drf_views.obtain_auth_token, name="token"),
     # Common Framework
-    path("common/", include("common.urls", namespace="common")),
-    path("api/common/", include("common.api.urls", namespace="common-api")),
+    path(r"common/", include("common.urls", namespace="common")),
+    path(r"api/common/", include("common.api.urls", namespace="common-api")),
+    # Test App
+    path(r"test/", include("testapp.urls", namespace="testapp")),
+    path(r"api/test/", include("testapp.api", namespace="testapp-api")),
 ]

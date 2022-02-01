@@ -1465,10 +1465,10 @@ def base64_decode(data):
     :param data: Chaîne base64 à décoder
     :return: Chaîne décodée
     """
-    from django.utils.encoding import force_text
+    from django.utils.encoding import force_str
     from django.utils.http import urlsafe_base64_decode
 
-    return force_text(urlsafe_base64_decode(data))
+    return force_str(urlsafe_base64_decode(data))
 
 
 def short_identifier():
@@ -1722,3 +1722,81 @@ def merge_validation_errors(errors):
         else:
             data.setdefault(NON_FIELD_ERRORS, []).extend(error.error_list)
     return ValidationError(data)
+
+
+@lru_cache(maxsize=None)
+def get_all_models(*args, **kwargs):
+    """
+    Récupère la liste de tous les modèles chargés par nom de table
+    :return: Mapping des modèles par nom de table
+    """
+    from django.apps import apps
+
+    return {model._meta.db_table: model for model in apps.get_models(*args, **kwargs)}
+
+
+@lru_cache(maxsize=None)
+def get_all_permissions(model):
+    """
+    Récupère toutes les permissions d'un modèle
+    :param model: Modèle
+    :return: Mapping des permissions par code
+    """
+    from django.contrib.auth.models import Permission
+    from django.contrib.contenttypes.models import ContentType
+
+    content_type = getattr(model, "_content_type", None) or ContentType.objects.get_for_model(model)
+    return {permission.codename: permission for permission in Permission.objects.filter(content_type=content_type)}
+
+
+def get_models_from_queryset(queryset):
+    """
+    Récupère tous les modèles utilisées par une requête
+    :param queryset: Requête
+    :return: Ensemble des modèles
+    """
+    if not hasattr(queryset, "query"):
+        return None
+    str(queryset.query)  # Force query evaluation
+    models_by_table = get_all_models()
+    models = set()
+    for operation in queryset.query.alias_map.values():
+        model = models_by_table.get(operation.table_name)
+        if not model:
+            continue
+        models.add(model)
+    for prefetch in queryset._prefetch_related_lookups:
+        if isinstance(prefetch, str):
+            for related in queryset.model._meta.related_objects:
+                if related.name != prefetch:
+                    continue
+                models.add(related.model)
+                break
+        else:
+            models.update(get_models_from_queryset(prefetch.queryset))
+    return models
+
+
+def get_model_permissions(user, *models, prefix="view", bool_only=False):
+    """
+    Identifie les permissions de l'utilisateur sur un ou plusieurs modèles
+    :param user: Instance de l'utilisateur
+    :param models: Modèles
+    :param prefix: Préfixe de permission
+    :param bool_only: Retour uniquement vrai ou faux
+    :return: Mapping des permissions par modèle
+    """
+    permissions = {}
+    if not user or not models:
+        return permissions
+    for model in models:
+        model_permissions = get_all_permissions(model)
+        for permission_code, permission in model_permissions.items():
+            if prefix and not permission_code.startswith(prefix):
+                continue
+            permissions[permission_code] = user.has_perm(permission_code)
+    if bool_only:
+        if not permissions:
+            return True
+        return all(permissions.values())
+    return permissions
