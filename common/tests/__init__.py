@@ -1,6 +1,5 @@
 # coding: utf-8
 import inspect
-import math
 import sys
 from datetime import timedelta
 from functools import wraps
@@ -41,10 +40,10 @@ class BaseApiTestCase(APITestCase):
 
     def _test_access(self, func, *args, **kwargs):
         response = func(*args, **kwargs)
-        self.assertIn(response.status_code, [status.HTTP_401_UNAUTHORIZED, status.HTTP_403_FORBIDDEN])
+        self.assertIn(response.status_code, (status.HTTP_401_UNAUTHORIZED, status.HTTP_403_FORBIDDEN))
         self.client.force_authenticate(self.user_admin)
         response = func(*args, **kwargs)
-        self.assertNotIn(response.status_code, [status.HTTP_401_UNAUTHORIZED, status.HTTP_403_FORBIDDEN])
+        self.assertNotIn(response.status_code, (status.HTTP_401_UNAUTHORIZED, status.HTTP_403_FORBIDDEN))
         return response
 
 
@@ -196,7 +195,7 @@ def create_api_test_class(
                 item.make()
             url = reverse(self.url_list_api)
             response = self.client.get(url)
-            self.assertIn(response.status_code, [status.HTTP_401_UNAUTHORIZED, status.HTTP_403_FORBIDDEN])
+            self.assertIn(response.status_code, (status.HTTP_401_UNAUTHORIZED, status.HTTP_403_FORBIDDEN))
             self.client.force_authenticate(self.user_admin)
             response = self.client.get(url)
             self.assertEqual(response.status_code, status.HTTP_200_OK, response.data)
@@ -211,9 +210,9 @@ def create_api_test_class(
             Méthode de test du détail d'un élément
             """
             item = self.recipes[0].make()
-            url = reverse(self.url_detail_api, args=[item.pk])
+            url = reverse(self.url_detail_api, args=(item.pk,))
             response = self.client.get(url)
-            self.assertIn(response.status_code, [status.HTTP_401_UNAUTHORIZED, status.HTTP_403_FORBIDDEN])
+            self.assertIn(response.status_code, (status.HTTP_401_UNAUTHORIZED, status.HTTP_403_FORBIDDEN))
             self.client.force_authenticate(self.user_admin)
             response = self.client.get(url)
             self.assertEqual(response.status_code, status.HTTP_200_OK, response.data)
@@ -241,7 +240,7 @@ def create_api_test_class(
             item.delete(keep_parents=False, **(dict(_force_default=True) if issubclass(model, Entity) else {}))
             url = reverse(self.url_list_api)
             response = self.client.post(url, data_to_post)
-            self.assertIn(response.status_code, [status.HTTP_401_UNAUTHORIZED, status.HTTP_403_FORBIDDEN])
+            self.assertIn(response.status_code, (status.HTTP_401_UNAUTHORIZED, status.HTTP_403_FORBIDDEN))
             self.client.force_authenticate(self.user_admin)
             response = self.client.post(url, data_to_post)
             self.assertEqual(response.status_code, status.HTTP_201_CREATED, response.data)
@@ -261,11 +260,11 @@ def create_api_test_class(
             if issubclass(model, PerishableEntity):
                 backery_make_args["start_date"] = now()
             item = self.recipes[0].make(**backery_make_args)
-            url = reverse(self.url_detail_api, args=[item.pk])
+            url = reverse(self.url_detail_api, args=(item.pk,))
             request = APIRequestFactory().request()
             data_to_put = self.serializer(item, context=dict(request=request)).data
             response = self.client.put(url, data_to_put)
-            self.assertIn(response.status_code, [status.HTTP_401_UNAUTHORIZED, status.HTTP_403_FORBIDDEN])
+            self.assertIn(response.status_code, (status.HTTP_401_UNAUTHORIZED, status.HTTP_403_FORBIDDEN))
             self.client.force_authenticate(self.user_admin)
             response = self.client.put(url, data_to_put)
             self.assertEqual(response.status_code, status.HTTP_200_OK, response.data)
@@ -290,9 +289,9 @@ def create_api_test_class(
             Méthode de test de suppression d'un élément
             """
             item = self.recipes[0].make()
-            url = reverse(self.url_detail_api, args=[item.pk])
+            url = reverse(self.url_detail_api, args=(item.pk,))
             response = self.client.delete(url)
-            self.assertIn(response.status_code, [status.HTTP_401_UNAUTHORIZED, status.HTTP_403_FORBIDDEN])
+            self.assertIn(response.status_code, (status.HTTP_401_UNAUTHORIZED, status.HTTP_403_FORBIDDEN))
             self.client.force_authenticate(self.user_admin)
             response = self.client.delete(url)
             self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT, response.data)
@@ -312,7 +311,7 @@ def create_api_test_class(
             """
             url = reverse(self.url_list_api)
             response = self.client.options(url)
-            self.assertIn(response.status_code, [status.HTTP_401_UNAUTHORIZED, status.HTTP_403_FORBIDDEN])
+            self.assertIn(response.status_code, (status.HTTP_401_UNAUTHORIZED, status.HTTP_403_FORBIDDEN))
             self.client.force_authenticate(self.user_admin)
             response = self.client.options(url)
             self.assertEqual(response.status_code, status.HTTP_200_OK, response.data)
@@ -332,7 +331,7 @@ def create_api_test_class(
                 self.recipes[0].make(_quantity=2)
             url = reverse(self.url_list_api) + "?order_by=-" + pk_field
             response = self.client.get(url)
-            self.assertIn(response.status_code, [status.HTTP_401_UNAUTHORIZED, status.HTTP_403_FORBIDDEN])
+            self.assertIn(response.status_code, (status.HTTP_401_UNAUTHORIZED, status.HTTP_403_FORBIDDEN))
             self.client.force_authenticate(self.user_admin)
             response = self.client.get(url)
             item1, item2 = response.data["results"][0], response.data["results"][1]
@@ -363,7 +362,7 @@ def create_api_test_class(
             # Test avec résultat
             url = reverse(self.url_list_api) + "?{}__in={}".format(pk_field, ",".join(items_ids[:2]))
             response = self.client.get(url)
-            self.assertIn(response.status_code, [status.HTTP_401_UNAUTHORIZED, status.HTTP_403_FORBIDDEN])
+            self.assertIn(response.status_code, (status.HTTP_401_UNAUTHORIZED, status.HTTP_403_FORBIDDEN))
             self.client.force_authenticate(self.user_admin)
             response = self.client.get(url)
             self.assertEqual(response.status_code, status.HTTP_200_OK, response.data)
@@ -384,15 +383,15 @@ def create_api_test_class(
             Méthode de test du filtre lors d'un get unitaire
             """
             item = self.recipes[0].make()
-            url = reverse(self.url_detail_api, args=[item.pk]) + "?{}={}".format(pk_field, item.pk)
+            url = reverse(self.url_detail_api, args=(item.pk,)) + "?{}={}".format(pk_field, item.pk)
             response = self.client.get(url)
-            self.assertIn(response.status_code, [status.HTTP_401_UNAUTHORIZED, status.HTTP_403_FORBIDDEN])
+            self.assertIn(response.status_code, (status.HTTP_401_UNAUTHORIZED, status.HTTP_403_FORBIDDEN))
             self.client.force_authenticate(self.user_admin)
             response = self.client.get(url)
             self.assertEqual(response.status_code, status.HTTP_200_OK, response.data)
             self.assertEqual(response.data.get(pk_field, None), item.pk)
             # Test sans résultat
-            url = reverse(self.url_detail_api, args=[item.pk]) + "?" + pk_field + "=0"
+            url = reverse(self.url_detail_api, args=(item.pk,)) + "?" + pk_field + "=0"
             response = self.client.get(url)
             self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
 
@@ -405,9 +404,9 @@ def create_api_test_class(
             Méthode de test des restrictions de champ
             """
             item = self.recipes[0].make()
-            url = reverse(self.url_detail_api, args=[item.pk]) + "?fields={}".format(pk_field)
+            url = reverse(self.url_detail_api, args=(item.pk,)) + "?fields={}".format(pk_field)
             response = self.client.get(url)
-            self.assertIn(response.status_code, [status.HTTP_401_UNAUTHORIZED, status.HTTP_403_FORBIDDEN])
+            self.assertIn(response.status_code, (status.HTTP_401_UNAUTHORIZED, status.HTTP_403_FORBIDDEN))
             self.client.force_authenticate(self.user_admin)
             response = self.client.get(url)
             self.assertEqual(response.status_code, status.HTTP_200_OK, response.data)
@@ -425,15 +424,15 @@ def create_api_test_class(
             item = self.recipes[0].make()
             item.set_metadata("test_key", "test_value")
             # Test sans metadata
-            url = reverse(self.url_detail_api, args=[item.pk])
+            url = reverse(self.url_detail_api, args=(item.pk,))
             response = self.client.get(url)
-            self.assertIn(response.status_code, [status.HTTP_401_UNAUTHORIZED, status.HTTP_403_FORBIDDEN])
+            self.assertIn(response.status_code, (status.HTTP_401_UNAUTHORIZED, status.HTTP_403_FORBIDDEN))
             self.client.force_authenticate(self.user_admin)
             response = self.client.get(url)
             self.assertEqual(response.status_code, status.HTTP_200_OK, response.data)
             self.assertIsNone(response.data.get("metadata"))
             # Test avec metadata
-            url = reverse(self.url_detail_api, args=[item.pk]) + "?meta=1"
+            url = reverse(self.url_detail_api, args=(item.pk,)) + "?meta=1"
             response = self.client.get(url)
             self.assertEqual(response.status_code, status.HTTP_200_OK, response.data)
             metadata = response.data.get("metadata", {})
@@ -456,7 +455,7 @@ def create_api_test_class(
             item = recipe.make()
             # Récupération submodels sans le simple
             self.client.force_authenticate(self.user_admin)
-            url = reverse(self.url_detail_api, args=[item.pk])
+            url = reverse(self.url_detail_api, args=(item.pk,))
             response = self.client.get(url)
             list_submodels = []
             unique_submodels = []
@@ -469,7 +468,7 @@ def create_api_test_class(
                     elif (field.one_to_one or isinstance(field, ForeignKey)) and isinstance(field_name, dict):
                         unique_submodels.append(field_name)
             # On vérifie qu'ils ne soient plus remontés avec le simple
-            url = reverse(self.url_detail_api, args=[item.pk]) + "?simple=1"
+            url = reverse(self.url_detail_api, args=(item.pk,)) + "?simple=1"
             response = self.client.get(url)
             self.assertEqual(response.status_code, status.HTTP_200_OK)
             self.assertTrue(all(field not in response.data for field in list_submodels))
@@ -513,16 +512,13 @@ def create_api_test_class(
             Méthode de test d'une annotation sur un champ
             """
             item = self.recipes[0].make()
-            url = reverse(self.url_list_api) + "?atan2={};2|test_annotate_field".format(pk_field)
+            url = reverse(self.url_detail_api, args=(item.pk,)) + "?lpad={}:str;10;'_'|test_annotate".format(pk_field)
             response = self.client.get(url)
-            self.assertIn(response.status_code, [status.HTTP_401_UNAUTHORIZED, status.HTTP_403_FORBIDDEN])
+            self.assertIn(response.status_code, (status.HTTP_401_UNAUTHORIZED, status.HTTP_403_FORBIDDEN))
             self.client.force_authenticate(self.user_admin)
             response = self.client.get(url)
-            results = response.data["results"][0]
             self.assertEqual(response.status_code, status.HTTP_200_OK, response.data)
-            self.assertEqual(results.get("test_annotate_field"), math.atan2(item.pk, 2))
-            options = response.data.get("options", {})
-            self.assertTrue(options.get("annotates"))
+            self.assertEqual(response.data.get("test_annotate"), str(item.pk).rjust(10, "_")[:10])
 
         test_class.test_api_annotate = _test_api_annotate
 
@@ -532,14 +528,15 @@ def create_api_test_class(
             """
             Méthode de test d'une aggregation de données
             """
+            items_count = model.objects.count()
             self.recipes[0].make()
-            url = reverse(self.url_list_api) + "?count={}|test_count_field".format(pk_field)
+            url = reverse(self.url_list_api) + "?count={}|test_count".format(pk_field)
             response = self.client.get(url)
-            self.assertIn(response.status_code, [status.HTTP_401_UNAUTHORIZED, status.HTTP_403_FORBIDDEN])
+            self.assertIn(response.status_code, (status.HTTP_401_UNAUTHORIZED, status.HTTP_403_FORBIDDEN))
             self.client.force_authenticate(self.user_admin)
             response = self.client.get(url)
             self.assertEqual(response.status_code, status.HTTP_200_OK, response.data)
-            self.assertEqual(response.data.get("test_count_field"), 1)
+            self.assertEqual(response.data.get("test_count"), items_count + 1)
 
         test_class.test_api_aggregate = _test_api_aggregate
 

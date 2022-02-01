@@ -251,7 +251,7 @@ class CommonModelViewSet(viewsets.ModelViewSet):
                         field_name, field_rename = (field_name.split("|") + [""])[:2]
                         field_name, *args = field_name.split(";")
                         function_args = []
-                        for index, arg in enumerate(args):
+                        for index, arg in enumerate(args, start=1):
                             try:
                                 value = convert_arg(annotation, index, arg)
                                 if value is not None:
