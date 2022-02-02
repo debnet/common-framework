@@ -1,5 +1,6 @@
 # coding: utf-8
 import ast
+import re
 import zoneinfo
 from datetime import timedelta
 from functools import partial, wraps
@@ -254,9 +255,6 @@ def parse_filters(filters):
     """
     if isinstance(filters, str):
         try:
-            import ast
-            import re
-
             filters = filters.replace("'", "\\'").replace('"', '\\"')
             filters = re.sub(r"([\w.]+):([^,()]*)", r'{"\1":"\2"}', filters)
             filters = re.sub(r"(\w+)\(", r'("\1",', filters)
