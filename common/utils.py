@@ -1794,7 +1794,8 @@ def get_model_permissions(user, *models, prefix="view", bool_only=False):
         for permission_code, permission in model_permissions.items():
             if prefix and not permission_code.startswith(prefix):
                 continue
-            permissions[permission_code] = user.has_perm(permission_code)
+            perm = f"{model._meta.app_label}.{permission_code}"
+            permissions[permission_code] = user.has_perm(perm)
     if bool_only:
         if not permissions:
             return True
