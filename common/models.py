@@ -3,6 +3,7 @@ import logging
 import time
 import uuid
 
+from django import VERSION as django_version
 from django.apps import apps
 from django.contrib.auth import get_user_model
 from django.contrib.auth.models import AbstractBaseUser, Group
@@ -1243,7 +1244,10 @@ class EntityQuerySet(CommonQuerySet):
         del_query._for_write = True
         del_query.query.select_for_update = False
         del_query.query.select_related = False
-        del_query.query.clear_ordering(force_empty=True)
+        if django_version >= (4, ):
+            del_query.query.clear_ordering(force=True)
+        else:
+            del_query.query.clear_ordering(force_empty=True)
 
         collector = Collector(using=del_query.db)
         collector.collect(del_query)
