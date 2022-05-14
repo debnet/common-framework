@@ -18,10 +18,13 @@ def view_cache(request):
     """
     Cache
     """
+    if not request.user.is_superuser:
+        return {}
+
     value = None
     key = request.GET.get("key", None)
     if key:
-        value = cache.get(key)
+        value = cache.get(key) or cache.get(":".join(key.split(":")[2:]))
         try:
             value = dict(value)
             value = json_encode(value, indent=4)
@@ -34,7 +37,7 @@ def view_cache(request):
     else:
         for key in request.POST:
             cache.delete(key)
-        keys = sorted((key.split(":")[-1] for key in cache._cache.keys()))
+        keys = sorted(cache._cache.keys())
 
     return {
         "keys": keys,

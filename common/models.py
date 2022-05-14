@@ -1244,7 +1244,7 @@ class EntityQuerySet(CommonQuerySet):
         del_query._for_write = True
         del_query.query.select_for_update = False
         del_query.query.select_related = False
-        if django_version >= (4, ):
+        if django_version >= (4,):
             del_query.query.clear_ordering(force=True)
         else:
             del_query.query.clear_ordering(force_empty=True)

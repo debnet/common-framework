@@ -3,13 +3,18 @@ import ast
 import base64
 import uuid
 from itertools import cycle
+from json import JSONDecodeError
+from operator import attrgetter, itemgetter
+from urllib import parse
 
 from django.conf import settings
 from django.db.models import functions
 from django.http import QueryDict
-from django.template import Library, Node
+from django.template import Library, Node, Template, Context
 from django.utils.formats import localize
 from django.utils.translation import gettext as _
+
+from common.utils import json_decode, json_encode
 
 register = Library()
 
@@ -18,6 +23,7 @@ register = Library()
 def filter_meta(instance, key):
     """
     Récupération d'une métadonnée sur une instance
+    :param instance: Instance
     :param key: Clé
     :return: Valeur
     """
@@ -50,12 +56,12 @@ def filter_get(value, key):
     """
     try:
         if isinstance(value, dict):
-            return value.get(str(key)) or value.get(int(key))
-        elif isinstance(value, (list, tuple)):
-            return value[int(key)]
+            return value.get(key)
+        elif hasattr(value, "__getitem__"):
+            return itemgetter(key)(value)
         else:
-            return getattr(value, key, None)
-    except (TypeError, ValueError):
+            return attrgetter(key)(value)
+    except (KeyError, TypeError, ValueError):
         return None
 
 
@@ -329,14 +335,72 @@ def filter_split(value, sep=" "):
     return value.split(sep)
 
 
-@register.simple_tag(name="eval", takes_context=True)
-def tag_evaluate(context, text):
+@register.filter(name="sorted")
+def filter_sorted(value, key=None):
     """
-    Evalue une chaîne comme un template
+    Retourne la collection triée par ordre croissant
     """
-    from django.template import Context, Template
+    if not value:
+        return value
+    if key:
+        try:
+            return sorted(value, key=itemgetter(key))
+        except:  # noqa
+            return sorted(value, key=attrgetter(key))
+    return sorted(value)
 
-    return Template(text).render(Context(context))
+
+@register.filter(name="reversed")
+def filter_reversed(value):
+    """
+    Retourne la collection triée dans l'ordre inverse
+    """
+    if not value:
+        return value
+    return reversed(value)
+
+
+@register.filter(name="drop")
+def filter_drop(value, keys=None):
+    """
+    Supprime des clés depuis une QueryString
+    """
+    querystring = parse.parse_qs(value)
+    for key in (keys or "").split(","):
+        querystring.pop(key, None)
+    return parse.urlencode(querystring, doseq=True)
+
+
+@register.filter(name="decode")
+def filter_json_decode(value):
+    """
+    Déserialize des données depuis un format JSON
+    """
+    try:
+        return json_decode(value)
+    except (JSONDecodeError, TypeError, ValueError):
+        return value
+
+
+@register.filter(name="json")
+@register.filter(name="encode")
+def filter_json_encode(value):
+    """
+    Serialize des données brutes en JSON
+    """
+    try:
+        return json_encode(value)
+    except (TypeError, ValueError):
+        return value
+
+
+@register.simple_tag(name="eval", takes_context=True)
+@register.simple_tag(name="render", takes_context=True)
+def tag_render(context, template):
+    """
+    Génère le rendu d'un gabarit HTML direct en utilisant le contexte local
+    """
+    return Template(template).render(Context(context))
 
 
 class MarkdownNode(Node):

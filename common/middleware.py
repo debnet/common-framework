@@ -1,6 +1,4 @@
 # coding: utf-8
-import socket
-
 from django.core.exceptions import PermissionDenied
 from django.urls import Resolver404, resolve
 from django.utils.timezone import now
@@ -8,116 +6,7 @@ from django.utils.translation import gettext_lazy as _
 
 from common.models import ServiceUsage
 from common.settings import settings
-
-# Ordre des métadonnées de requêtes pour l'identification de l'adresse IP du client
-REQUEST_META_ORDER = (
-    "HTTP_X_FORWARDED_FOR",
-    "X_FORWARDED_FOR",
-    "HTTP_CLIENT_IP",
-    "HTTP_X_REAL_IP",
-    "HTTP_X_FORWARDED",
-    "HTTP_X_CLUSTER_CLIENT_IP",
-    "HTTP_FORWARDED_FOR",
-    "HTTP_FORWARDED",
-    "HTTP_VIA",
-    "REMOTE_ADDR",
-)
-
-# Liste des préfixes d'adresses IP dites "privées"
-PRIVATE_IP_PREFIXES = (
-    "0.",  # externally non-routable
-    "10.",  # class A private block
-    "169.254.",  # link-local block
-    "172.16.",
-    "172.17.",
-    "172.18.",
-    "172.19.",
-    "172.20.",
-    "172.21.",
-    "172.22.",
-    "172.23.",
-    "172.24.",
-    "172.25.",
-    "172.26.",
-    "172.27.",
-    "172.28.",
-    "172.29.",
-    "172.30.",
-    "172.31.",  # class B private blocks
-    "192.0.2.",  # reserved for documentation and example code
-    "192.168.",  # class C private block
-    "255.255.255.",  # IPv4 broadcast address
-    "2001:db8:",  # reserved for documentation and example code
-    "fc00:",  # IPv6 private block
-    "fe80:",  # link-local unicast
-    "ff00:",  # IPv6 multicast
-)
-
-LOOPBACK_PREFIXES = (
-    "127.",  # IPv4 loopback device
-    "::1",  # IPv6 loopback device
-)
-
-NON_PUBLIC_IP_PREFIXES = PRIVATE_IP_PREFIXES + LOOPBACK_PREFIXES
-
-
-def is_valid_ipv4(ip_str):
-    """
-    Vérifie qu'une adresse IPv4 est valide
-    """
-    try:
-        socket.inet_pton(socket.AF_INET, ip_str)
-    except AttributeError:
-        try:  # Fall-back on legacy API or False
-            socket.inet_aton(ip_str)
-        except (AttributeError, socket.error):
-            return False
-        return ip_str.count(".") == 3
-    except socket.error:
-        return False
-    return True
-
-
-def is_valid_ipv6(ip_str):
-    """
-    Vérifie qu'une adresse IPv6 est valide
-    """
-    try:
-        socket.inet_pton(socket.AF_INET6, ip_str)
-    except socket.error:
-        return False
-    return True
-
-
-def is_valid_ip(ip_str):
-    """
-    Vérifie qu'une adresse IP est valide
-    """
-    return is_valid_ipv4(ip_str) or is_valid_ipv6(ip_str)
-
-
-def get_ip(request, real_ip_only=False, right_most_proxy=False):
-    """
-    Returns client's best-matched ip-address, or None
-    """
-    best_matched_ip = None
-    for key in REQUEST_META_ORDER:
-        value = request.META.get(key, request.META.get(key.replace("_", "-"), "")).strip()
-        if value is not None and value != "":
-            ips = [ip.strip().lower() for ip in value.split(",")]
-            if right_most_proxy and len(ips) > 1:
-                ips = reversed(ips)
-            for ip_str in ips:
-                if ip_str and is_valid_ip(ip_str):
-                    if not ip_str.startswith(NON_PUBLIC_IP_PREFIXES):
-                        return ip_str
-                    if not real_ip_only:
-                        loopback = LOOPBACK_PREFIXES
-                        if best_matched_ip is None:
-                            best_matched_ip = ip_str
-                        elif best_matched_ip.startswith(loopback) and not ip_str.startswith(loopback):
-                            best_matched_ip = ip_str
-    return best_matched_ip
+from common.utils import get_client_ip
 
 
 class ServiceUsageMiddleware:
@@ -162,7 +51,7 @@ class ServiceUsageMiddleware:
                     )
                 date = now()
                 usage.count += 1
-                usage.address = get_ip(request)
+                usage.address = get_client_ip(request)
                 extra = usage.extra or dict(addresses={}, data={}, params={})
                 address = extra["addresses"].setdefault(usage.address, {})
                 address.update(date=date, method=request.method, count=address.get("count", 0) + 1)

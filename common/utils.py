@@ -2,12 +2,14 @@
 import abc
 import ast
 import collections
+import hashlib
 import inspect
 import json
 import logging
 import mimetypes
 import os
 import re
+import socket
 import sys
 import threading
 from collections.abc import MutableMapping
@@ -1801,3 +1803,138 @@ def get_model_permissions(user, *models, prefix="view", bool_only=False):
             return True
         return all(permissions.values())
     return permissions
+
+
+# Ordre des métadonnées de requêtes pour l'identification de l'adresse IP du client
+REQUEST_META_ORDER = (
+    "HTTP_X_FORWARDED_FOR",
+    "X_FORWARDED_FOR",
+    "HTTP_CLIENT_IP",
+    "HTTP_X_REAL_IP",
+    "HTTP_X_FORWARDED",
+    "HTTP_X_CLUSTER_CLIENT_IP",
+    "HTTP_FORWARDED_FOR",
+    "HTTP_FORWARDED",
+    "HTTP_VIA",
+    "REMOTE_ADDR",
+)
+
+# Liste des préfixes d'adresses IP dites "privées"
+PRIVATE_IP_PREFIXES = (
+    "0.",  # externally non-routable
+    "10.",  # class A private block
+    "169.254.",  # link-local block
+    "172.16.",
+    "172.17.",
+    "172.18.",
+    "172.19.",
+    "172.20.",
+    "172.21.",
+    "172.22.",
+    "172.23.",
+    "172.24.",
+    "172.25.",
+    "172.26.",
+    "172.27.",
+    "172.28.",
+    "172.29.",
+    "172.30.",
+    "172.31.",  # class B private blocks
+    "192.0.2.",  # reserved for documentation and example code
+    "192.168.",  # class C private block
+    "255.255.255.",  # IPv4 broadcast address
+    "2001:db8:",  # reserved for documentation and example code
+    "fc00:",  # IPv6 private block
+    "fe80:",  # link-local unicast
+    "ff00:",  # IPv6 multicast
+)
+
+LOOPBACK_PREFIXES = (
+    "127.",  # IPv4 loopback device
+    "::1",  # IPv6 loopback device
+)
+
+NON_PUBLIC_IP_PREFIXES = PRIVATE_IP_PREFIXES + LOOPBACK_PREFIXES
+
+
+def is_valid_ipv4(ip_str):
+    """
+    Vérifie qu'une adresse IPv4 est valide
+    """
+    try:
+        socket.inet_pton(socket.AF_INET, ip_str)
+    except AttributeError:
+        try:  # Fall-back on legacy API or False
+            socket.inet_aton(ip_str)
+        except (AttributeError, socket.error):
+            return False
+        return ip_str.count(".") == 3
+    except socket.error:
+        return False
+    return True
+
+
+def is_valid_ipv6(ip_str):
+    """
+    Vérifie qu'une adresse IPv6 est valide
+    """
+    try:
+        socket.inet_pton(socket.AF_INET6, ip_str)
+    except socket.error:
+        return False
+    return True
+
+
+def is_valid_ip(ip_str):
+    """
+    Vérifie qu'une adresse IP est valide
+    """
+    return is_valid_ipv4(ip_str) or is_valid_ipv6(ip_str)
+
+
+def get_client_ip(request, real_ip_only=False, right_most_proxy=False):
+    """
+    Retourne l'adresse IP du client connecté autant que possible
+    :param request: Requête HTTP Django
+    :param real_ip_only: Exclure les adresses de type loopback
+    :param right_most_proxy: Récupérer la dernière adresse IP parmi les adresses proxy traversées
+    :return: Adresse IP v4 ou v6 du client connecté
+    """
+    best_matched_ip = None
+    for key in REQUEST_META_ORDER:
+        value = request.META.get(key, request.META.get(key.replace("_", "-"), "")).strip()
+        if value is not None and value != "":
+            ips = [ip.strip().lower() for ip in value.split(",")]
+            if right_most_proxy and len(ips) > 1:
+                ips = reversed(ips)
+            for ip_str in ips:
+                if ip_str and is_valid_ip(ip_str):
+                    if not ip_str.startswith(NON_PUBLIC_IP_PREFIXES):
+                        return ip_str
+                    if not real_ip_only:
+                        loopback = LOOPBACK_PREFIXES
+                        if best_matched_ip is None:
+                            best_matched_ip = ip_str
+                        elif best_matched_ip.startswith(loopback) and not ip_str.startswith(loopback):
+                            best_matched_ip = ip_str
+    return best_matched_ip
+
+
+def hash_file(path, func=hashlib.sha1, chunks=None):
+    """
+    Récupère la somme de contrôle d'un fichier
+    :param path: Chemin vers le fichier
+    :param func: Fonction de hashage
+    :param chunks: Taille de bloc
+    :return: Somme de contrôle du fichier
+    """
+    if not os.path.exists(path):
+        return
+    digest = func()
+    with open(path, "rb") as file:
+        if chunks:
+            while chunk := file.read(chunks):
+                digest.update(chunk)
+        else:
+            digest.update(file.read())
+    return digest.hexdigest()

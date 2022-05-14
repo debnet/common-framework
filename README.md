@@ -290,6 +290,8 @@ relatif à Django et dans ``common.api.utils`` pour tout ce qui est relatif à D
 * ``get_all_permissions`` : récupère toutes les permissions existantes dans les applications
 * ``get_models_from_queryset`` : recupère tous les modèles qui ont été traversés par une requête
 * ``get_model_permissions`` : récupère toutes les permissions liées à un modèle et à un utilisateur
+* ``get_client_ip`` : récupère l'adresse IP du client depuis une requête Django
+* ``hash_file`` : calcule la somme de contrôle d'un fichier
 
 ##### Autres (``common.admin``)
 
