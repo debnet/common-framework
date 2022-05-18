@@ -54,6 +54,8 @@ def filter_get(value, key):
     :param key: Clé ou index
     :return: Valeur
     """
+    if value is None:
+        return None
     try:
         if isinstance(value, dict):
             return value.get(key)
@@ -61,7 +63,7 @@ def filter_get(value, key):
             return itemgetter(key)(value)
         else:
             return attrgetter(key)(value)
-    except (KeyError, TypeError, ValueError):
+    except (AttributeError, KeyError, TypeError, ValueError):
         return None
 
 
