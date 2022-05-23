@@ -16,7 +16,7 @@ from collections.abc import MutableMapping
 from contextlib import contextmanager
 from datetime import date, datetime, time, timedelta
 from decimal import ROUND_HALF_EVEN, Decimal, InvalidOperation
-from functools import lru_cache, wraps
+from functools import lru_cache, partial, wraps
 from importlib import import_module
 from itertools import chain, product
 from json import JSONDecoder
@@ -967,25 +967,29 @@ def str_to_bool(value):
     return str(value).lower() in TRUE_VALUES
 
 
-def str_to_int(value):
+def str_to_num(value, force_int=False):
     """
     Permet de renvoyer le nombre correspondant à la valeur chaîne entrée en paramètre
     :param value: valeur à analyser
+    :param force_int: Forcer le résultat en entier
     :return: valeur numérique correspondante ou None sinon
     """
-    if not value:
+    if not value or isinstance(value, (int, float)):
         return value
     try:
-        result = ast.literal_eval(value)
+        result = ast.literal_eval(str(value))
         if isinstance(result, (int, float)):
-            return result
+            value = result
     except (SyntaxError, ValueError):
-        for cast in (int, float):
-            try:
-                return cast(value)
-            except ValueError:
-                continue
-    return None
+        try:
+            cast = float if "." in str(value) else int
+            value = cast(str(value))
+        except ValueError:
+            return None
+    return int(value) if force_int else value
+
+
+str_to_int = partial(str_to_num, force_int=True)
 
 
 def get_first(*values, condition=None, default=None):
