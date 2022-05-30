@@ -150,15 +150,20 @@ class CustomGenericRelation(GenericRelation):
     def get_joining_columns(self, reverse_join=False):
         return ()
 
-    def get_extra_restriction(self, where_class, alias, remote_alias):
-        cond = super().get_extra_restriction(where_class, alias, remote_alias)
+    def get_extra_restriction(self, alias, remote_alias, *args):
+        if args and django_version >= (4, ):
+            node = super().get_extra_restriction(alias, remote_alias)
+        else:
+            where_class, alias, remote_alias, *_ = alias, remote_alias, *args
+            node = super().get_extra_restriction(where_class, alias, remote_alias)
         from_field = self.model._meta.pk
         to_field = self.remote_field.model._meta.get_field(self.object_id_field_name)
         lookup = from_field.get_lookup("exact")(
-            Cast(from_field.get_col(alias), output_field=models.TextField()), to_field.get_col(remote_alias)
+            Cast(from_field.get_col(alias), output_field=models.TextField()),
+            to_field.get_col(remote_alias),
         )
-        cond.add(lookup, "AND")
-        return cond
+        node.add(lookup, "AND")
+        return node
 
 
 class MetaDataQuerySet(models.QuerySet):
@@ -1244,7 +1249,7 @@ class EntityQuerySet(CommonQuerySet):
         del_query._for_write = True
         del_query.query.select_for_update = False
         del_query.query.select_related = False
-        if django_version >= (4,):
+        if django_version >= (4, ):
             del_query.query.clear_ordering(force=True)
         else:
             del_query.query.clear_ordering(force_empty=True)
