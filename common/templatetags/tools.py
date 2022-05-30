@@ -373,10 +373,13 @@ def filter_drop(value, keys=None):
     """
     Supprime des clés depuis une QueryString
     """
-    querystring = parse.parse_qs(value)
+    if isinstance(value, QueryDict):
+        value = dict(value)
+    else:
+        value = parse.parse_qs(value)
     for key in (keys or "").split(","):
-        querystring.pop(key, None)
-    return parse.urlencode(querystring, doseq=True)
+        value.pop(key, None)
+    return parse.urlencode(value, doseq=True)
 
 
 @register.filter(name="decode")

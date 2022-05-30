@@ -21,27 +21,32 @@ def view_cache(request):
     if not request.user.is_superuser:
         return {}
 
-    value = None
-    key = request.GET.get("key", None)
+    key, value, excludes = request.GET.get("key", None), None, request.GET.getlist("exclude")
+
     if key:
-        value = cache.get(key) or cache.get(":".join(key.split(":")[2:]))
-        try:
-            value = dict(value)
-            value = json_encode(value, indent=4)
-        except (TypeError, ValueError):
-            pass
+        if not hasattr(cache, "keys"):
+            key = ":".join(key.split(":")[2:])
+        value = cache.get(key)
+        if value:
+            try:
+                value = dict(value)
+                value = json_encode(value, indent=4)
+            except (TypeError, ValueError):
+                pass
+
     if hasattr(cache, "keys"):
         for key in request.POST:
             cache.delete_pattern(key)
-        keys = sorted(cache.keys("*"))
+        keys = cache.keys("*")
     else:
         for key in request.POST:
+            key = ":".join(key.split(":")[2:])
             cache.delete(key)
-        keys = sorted(cache._cache.keys())
+        keys = cache._cache.keys()
 
     return {
-        "keys": keys,
-        "value": value or None,
+        "keys": sorted(key for key in keys if not any(exclude in key for exclude in excludes)),
+        "value": value,
     }
 
 

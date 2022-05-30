@@ -1,8 +1,7 @@
-{% load i18n %}
+{% load i18n tools %}
 
-<!DOCTYPE html>
-<html>
-<head lang="en">
+<html lang="en">
+<head>
     <meta charset="UTF-8">
     <title>Cache</title>
 </head>
@@ -10,7 +9,7 @@
     <form method="post" action="{{ request.path }}">
         {% for key in keys %}
             <input id="{{ key|slugify }}" type="checkbox" name="{{ key }}" />
-            <a href="{{ request.path }}?key={{ key }}#{{ key|slugify }}">({% trans "Voir" %})</a>
+            <a href="{{ request.path }}?{{ request.GET|drop:'key' }}&key={{ key }}#{{ key|slugify }}">({% trans 'Voir' %})</a>
             <label for="{{ key|slugify }}">{{ key }}</label>
             {% if request.GET.key == key %}
             <pre>{{ value }}</pre>
@@ -19,7 +18,7 @@
             {% endif %}
         {% endfor %}
         <br />
-        <input type="submit" value="{% trans "Supprimer" %}" />
+        <input type="submit" value="{% trans 'Supprimer' %}" />
         {% csrf_token %}
     </form>
 </body>
