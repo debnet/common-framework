@@ -975,9 +975,10 @@ def api_paginate(
         # Annotations
         annotations = {}
         try:
-            for annotation, function in FUNCTIONS.items():
-                if annotation not in url_params:
+            for annotation in url_params:
+                if annotation not in FUNCTIONS:
                     continue
+                function = FUNCTIONS[annotation]
                 for field_name in url_params.pop(annotation).split(","):
                     field_name, field_rename = (field_name.split("|") + [""])[:2]
                     field_name, *args = field_name.split(";")
@@ -1019,9 +1020,10 @@ def api_paginate(
         # Aggregations
         aggregations = {}
         try:
-            for aggregate, function in AGGREGATES.items():
-                if aggregate not in url_params:
+            for aggregate in url_params:
+                if aggregate not in AGGREGATES:
                     continue
+                function = AGGREGATES[aggregate]
                 for field_name in url_params.get(aggregate).split(","):
                     distinct = field_name.startswith(" ") or field_name.startswith("+")
                     field_name, field_rename = (field_name.split("|") + [""])[:2]
@@ -1140,8 +1142,8 @@ def api_paginate(
 
         # Création de serializer à la volée en cas d'aggregation ou de restriction de champs
         aggregations = {}
-        for aggregate in AGGREGATES.keys():
-            if aggregate not in url_params:
+        for aggregate in url_params:
+            if aggregate not in AGGREGATES:
                 continue
             for field in url_params.get(aggregate).split(","):
                 field_name = (aggregate + "__" + field) if field else aggregate

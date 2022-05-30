@@ -151,7 +151,7 @@ class CustomGenericRelation(GenericRelation):
         return ()
 
     def get_extra_restriction(self, alias, remote_alias, *args):
-        if args and django_version >= (4, ):
+        if args and django_version >= (4,):
             node = super().get_extra_restriction(alias, remote_alias)
         else:
             where_class, alias, remote_alias, *_ = alias, remote_alias, *args
@@ -1249,7 +1249,7 @@ class EntityQuerySet(CommonQuerySet):
         del_query._for_write = True
         del_query.query.select_for_update = False
         del_query.query.select_related = False
-        if django_version >= (4, ):
+        if django_version >= (4,):
             del_query.query.clear_ordering(force=True)
         else:
             del_query.query.clear_ordering(force_empty=True)

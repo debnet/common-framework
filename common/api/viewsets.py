@@ -48,8 +48,8 @@ class CommonModelViewSet(viewsets.ModelViewSet):
 
             # Ajoute les champs d'annotation au serializer
             annotations = {}
-            for annotation in FUNCTIONS.keys():
-                if annotation not in url_params:
+            for annotation in url_params:
+                if annotation not in FUNCTIONS:
                     continue
                 for field in url_params.get(annotation).split(","):
                     field_name, field_rename = (field.split("|") + [""])[:2]
@@ -65,8 +65,8 @@ class CommonModelViewSet(viewsets.ModelViewSet):
 
             # Ajoute les champs d'aggregation au serializer
             aggregations = {}
-            for aggregate in AGGREGATES.keys():
-                if aggregate not in url_params:
+            for aggregate in url_params:
+                if aggregate not in AGGREGATES:
                     continue
                 for field in url_params.get(aggregate).split(","):
                     field_name, field_rename = (field.split("|") + [""])[:2]
@@ -244,9 +244,10 @@ class CommonModelViewSet(viewsets.ModelViewSet):
             # Annotations
             annotations = {}
             try:
-                for annotation, function in FUNCTIONS.items():
-                    if annotation not in url_params:
+                for annotation in url_params:
+                    if annotation not in FUNCTIONS:
                         continue
+                    function = FUNCTIONS[annotation]
                     for field_name in url_params.get(annotation).split(","):
                         field_name, field_rename = (field_name.split("|") + [""])[:2]
                         field_name, *args = field_name.split(";")
@@ -288,9 +289,10 @@ class CommonModelViewSet(viewsets.ModelViewSet):
             aggregations = {}
             if self.action == "list":
                 try:
-                    for aggregate, function in AGGREGATES.items():
-                        if aggregate not in url_params:
+                    for aggregate in url_params:
+                        if aggregate not in AGGREGATES:
                             continue
+                        function = AGGREGATES[aggregate]
                         for field_name in url_params.get(aggregate).split(","):
                             distinct = field_name.startswith(" ") or field_name.startswith("+")
                             field_name, field_rename = (field_name.split("|") + [""])[:2]

@@ -152,10 +152,13 @@ def tag_query(context, queryset, save="", **kwargs):
 
     # Annotations
     annotations = {}
-    for annotation, function in FUNCTIONS.items():
-        if annotation not in kwargs:
+    for annotation in kwargs:
+        if annotation not in FUNCTIONS:
             continue
-        for field_name in kwargs.get(annotation).split(","):
+        function = FUNCTIONS[annotation]
+        for field_name in kwargs.get(annotation, "").split(","):
+            if not field_name:
+                continue
             field_name, field_rename = (field_name.split("|") + [""])[:2]
             field_name, *args = field_name.split(";")
             function_args = []
@@ -185,7 +188,10 @@ def tag_query(context, queryset, save="", **kwargs):
 
     # Aggregations
     aggregations = {}
-    for aggregate, function in AGGREGATES.items():
+    for aggregate in kwargs:
+        if aggregate not in AGGREGATES:
+            continue
+        function = AGGREGATES[aggregate]
         for field_name in kwargs.get(aggregate, "").split(","):
             if not field_name:
                 continue
