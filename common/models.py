@@ -151,9 +151,9 @@ class CustomGenericRelation(GenericRelation):
         return ()
 
     def get_extra_restriction(self, alias, remote_alias, *args):
-        if args and django_version >= (4,):
+        if django_version >= (4,):
             node = super().get_extra_restriction(alias, remote_alias)
-        else:
+        elif args:
             where_class, alias, remote_alias, *_ = alias, remote_alias, *args
             node = super().get_extra_restriction(where_class, alias, remote_alias)
         from_field = self.model._meta.pk
