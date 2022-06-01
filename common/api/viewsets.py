@@ -69,7 +69,7 @@ class CommonModelViewSet(viewsets.ModelViewSet):
                 if aggregate not in AGGREGATES:
                     continue
                 for field in url_params.get(aggregate).split(","):
-                    field_name, field_rename = (field.split("|") + [""])[:2]
+                    field_name, field_rename = (field.strip().split("|") + [""])[:2]
                     source = None
                     if not field_rename:
                         field_name = (aggregate + "__" + field_name) if field_name else aggregate
@@ -221,7 +221,7 @@ class CommonModelViewSet(viewsets.ModelViewSet):
                             key = key[1:].strip()
                             excludes[key] = url_value(key, value)
                         else:
-                            key = (key[1:] if key.startswith("+") else key).strip()
+                            key = (key[1:] if key.startswith(" ") or key.startswith("+") else key).strip()
                             filters[key] = url_value(key, value)
                     if filters:
                         queryset = queryset.filter(**filters)
@@ -345,7 +345,7 @@ class CommonModelViewSet(viewsets.ModelViewSet):
                         if order.startswith("-"):
                             orders.append(F(order[1:]).desc(nulls_first=nulls_first, nulls_last=nulls_last))
                         else:
-                            order = order[1:] if order.startswith("+") or order.startswith(" ") else order
+                            order = order[1:] if order.startswith(" ") or order.startswith("+") else order
                             orders.append(F(order).asc(nulls_first=nulls_first, nulls_last=nulls_last))
                     temp_queryset = queryset.order_by(*orders)
                     str(temp_queryset.query)  # Force SQL evaluation to retrieve exception
