@@ -22,6 +22,7 @@ class Settings:
         ENABLE_API_PERMISSIONS=True,
         IGNORE_LOG=False,
         IGNORE_LOG_NO_USER=False,
+        IGNORE_LOG_ENTITY_FIELDS=True,
         IGNORE_GLOBAL=False,
         NOTIFY_CHANGES=False,
         NOTIFY_OPTIONS={},

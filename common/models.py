@@ -484,7 +484,6 @@ class CommonModel(models.Model):
         Permet d'ajouter une valeur à une métadonnée existante
         :param key: Clé
         :param value: Valeur
-        :param default: Valeur par défaut si la métadonnée n'existe pas (facultatif)
         :param allow_duplicate: Autorise l'ajout de doublons dans les listes de valeur (par défaut)
         :return: Métadonnée
         """
@@ -1518,10 +1517,14 @@ class Entity(CommonModel):
         getattr(self, m2m_field).set(ids)
 
     def must_log(self):
-        if get_first(self._ignore_log, settings.IGNORE_LOG):
+        ignore_log = get_first(self._ignore_log, settings.IGNORE_LOG)
+        print(self, "ignore log:", ignore_log)
+        if ignore_log is True:
             return False
+        ignore_log_no_user = get_first(self._ignore_log_no_user, settings.IGNORE_LOG_NO_USER)
+        print(self, "ignore log no user:", ignore_log_no_user)
         self._current_user = self._current_user or get_current_user()
-        if not self._current_user and get_first(self._ignore_log_no_user, settings.IGNORE_LOG_NO_USER):
+        if ignore_log_no_user is True and not self._current_user:
             return False
         return True
 
@@ -1870,13 +1873,17 @@ def log_save(instance, created, save_kwargs=None):
     user = instance._current_user or get_current_user()
     user = user if user and user.pk else None
     # Vérification des changements entre les anciennes et nouvelles données
+    exclude_fields = set(instance._ignore_log) if isinstance(instance._ignore_log, (list, set, tuple)) else set()
+    if settings.IGNORE_LOG_ENTITY_FIELDS:
+        exclude_fields.update(("modification_date", "current_user"))
+    old_data = instance._copy.copy()
     update_fields = (save_kwargs or {}).get("update_fields", [])
     if update_fields:
-        old_data = {key: value for key, value in instance._copy.items() if key in update_fields}
-        new_data = instance.to_dict(editables=True, includes=update_fields)
+        old_data = {key: value for key, value in old_data.items() if key in update_fields and key not in exclude_fields}
+        new_data = instance.to_dict(editables=True, includes=update_fields, excludes=exclude_fields)
     else:
-        old_data = instance._copy
-        new_data = instance.to_dict(editables=True)
+        old_data = {key: value for key, value in old_data.items() if key not in exclude_fields}
+        new_data = instance.to_dict(editables=True, excludes=exclude_fields)
     diff = set(to_tuple(new_data)) ^ set(to_tuple(old_data))
     if not diff:
         return
@@ -1981,10 +1988,13 @@ def log_m2m(instance, model, status_m2m):
     # Sauvegarde la mise à jour de relations M2M de l'entité
     user = instance._current_user or get_current_user()
     user = user if user and user.pk else None
+    exclude_fields = set(instance._ignore_log) if isinstance(instance._ignore_log, (list, set, tuple)) else set()
     old_m2m = instance._copy_m2m
     new_m2m = instance.m2m_to_dict()
     history, fields_count = None, 0
     for field in set(old_m2m) | set(new_m2m):
+        if field in exclude_fields:
+            continue
         # S'il n'y a aucun changement entre les anciennes et nouvelles données
         old_value = old_m2m.get(field, [])
         new_value = new_m2m.get(field, [])
