@@ -1518,11 +1518,9 @@ class Entity(CommonModel):
 
     def must_log(self):
         ignore_log = get_first(self._ignore_log, settings.IGNORE_LOG)
-        print(self, "ignore log:", ignore_log)
         if ignore_log is True:
             return False
         ignore_log_no_user = get_first(self._ignore_log_no_user, settings.IGNORE_LOG_NO_USER)
-        print(self, "ignore log no user:", ignore_log_no_user)
         self._current_user = self._current_user or get_current_user()
         if ignore_log_no_user is True and not self._current_user:
             return False
