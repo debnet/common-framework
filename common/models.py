@@ -1517,12 +1517,10 @@ class Entity(CommonModel):
         getattr(self, m2m_field).set(ids)
 
     def must_log(self):
-        ignore_log = get_first(self._ignore_log, settings.IGNORE_LOG)
-        if ignore_log is True:
+        if settings.IGNORE_LOG is True or self._ignore_log is True:
             return False
-        ignore_log_no_user = get_first(self._ignore_log_no_user, settings.IGNORE_LOG_NO_USER)
         self._current_user = self._current_user or get_current_user()
-        if ignore_log_no_user is True and not self._current_user:
+        if (settings.IGNORE_LOG_NO_USER is True or self._ignore_log_no_user is True) and not self._current_user:
             return False
         return True
 
@@ -1837,8 +1835,8 @@ def post_save_receiver(sender, instance, created, raw, *args, **kwargs):
     """
     if isinstance(instance, Entity):
         # Ajoute le point d'entrée global de l'entité
-        create_global = get_first(instance._ignore_global, settings.IGNORE_GLOBAL)
-        if created and instance.pk and instance.uuid and create_global:
+        ignore_global = settings.IGNORE_GLOBAL is True or instance._ignore_global is True
+        if not ignore_global and created and instance.pk and instance.uuid:
             Global.objects.create(content_type=instance.model_type, object_id=instance.pk, object_uid=instance.uuid)
         # Sauvegarde l'historique de modification
         if raw:
