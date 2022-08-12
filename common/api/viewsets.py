@@ -8,7 +8,6 @@ from django.db.models.query import F, Prefetch, QuerySet
 from django.utils.timezone import now
 from rest_framework import serializers, viewsets
 from rest_framework.exceptions import PermissionDenied, ValidationError
-from rest_framework.schemas import AutoSchema
 
 from common.api.fields import ChoiceDisplayField, ReadOnlyObjectField
 from common.api.utils import AGGREGATES, CASTS, FUNCTIONS, RESERVED_QUERY_PARAMS, convert_arg, parse_filters, url_value
@@ -21,9 +20,7 @@ class CommonModelViewSet(viewsets.ModelViewSet):
     """
     Définition commune de ModelViewSet pour l'API REST
     """
-
     url_params = {}
-    schema = AutoSchema()
 
     def get_serializer_class(self):
         # Le serializer par défaut est utilisé en cas de modification/suppression
