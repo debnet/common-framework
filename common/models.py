@@ -1396,7 +1396,9 @@ class Entity(CommonModel):
         self._reason = _reason or self._reason
         self._force_default = _force_default or self._force_default
         if force_insert:
-            self.pk = self.id = None
+            primary_key = get_pk_field(self)
+            if not primary_key.editable:
+                self.pk = self.id = None
             self.uuid = uuid.uuid4()
         return super().save(*args, force_insert=force_insert, **kwargs)
 
@@ -1607,7 +1609,10 @@ class PerishableEntity(Entity):
                 previous = self.__class__.objects.get(pk=self.pk)
                 previous.end_date = self.end_date or current_date
                 previous.save(force_update=True, **kwargs)
-                self.pk = self.id = self.end_date = self.uuid = None
+                primary_key = get_pk_field(self)
+                if not primary_key.editable:
+                    self.pk = self.id = None
+                self.end_date = self.uuid = None
                 self.start_date = previous.end_date or current_date
             result = super().save(force_insert=True, **kwargs)
             if previous:
