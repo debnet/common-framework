@@ -10,7 +10,7 @@ from urllib import parse
 from django.conf import settings
 from django.db.models import functions
 from django.http import QueryDict
-from django.template import Library, Node, Template, Context
+from django.template import Context, Library, Node, Template
 from django.utils.formats import localize
 from django.utils.translation import gettext as _
 

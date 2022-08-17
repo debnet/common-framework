@@ -2,7 +2,6 @@ from django.contrib import admin
 from django.urls import include, path
 from rest_framework.authtoken import views as drf_views
 
-
 urlpatterns = [
     path(r"admin/", admin.site.urls),
     # Django REST Framework

@@ -56,6 +56,9 @@ logger = logging.getLogger(__name__)
 # Celery
 app = get_current_app()
 
+# Vérifie si une valeur est considérée comme "vide" ou non
+is_empty = lambda value: value is None or value == "" or value == [] or value == {}
+
 
 def to_boolean(label_field, sort_order=None):
     """
@@ -511,12 +514,15 @@ class CommonModel(models.Model):
         display=False,
         labels=False,
         fks=False,
+        fks_depth=1,
         m2m=False,
+        m2m_depth=1,
         no_ids=False,
         no_empty=False,
         functions=None,
         extra=None,
         raw=True,
+        _depth=0,
         **kwargs
     ):
         """
@@ -531,7 +537,9 @@ class CommonModel(models.Model):
         :param display: Inclure le libellé de l'attribut s'il existe ?
         :param labels: Utiliser le libellé du champ à la place de son code ?
         :param fks: Inclure les éléments liés via les clés étrangères ?
+        :param fks_depth: Profondeur maximale de récupération des clés étrangères ?
         :param m2m: Inclure les identifiants des relations ManyToMany liées ?
+        :param m2m_depth: Profondeur maximale de récupération des relations ManyToMany ?
         :param no_ids: Ne pas inclure les identifiants des clés primaires et les identifiants des clés étrangères ?
         :param no_empty: Ne pas inclure les données vides ou nulles ?
         :param functions: Exécuter et inclure le résultat d'une ou plusieurs fonctions ?
@@ -539,11 +547,14 @@ class CommonModel(models.Model):
         [ (nom_champ, nom_fonction, [arg1, arg2, ...], {kwarg1: valeur, kwargs2: valeur, ...} ]
         :param extra: Liste d'attributs supplémentaires à récupérer (ou vrai pour tous les attributs hors modèle)
         :param raw: Ne pas chercher à retourner des valeurs serialisables ?
+        :param _depth: Profondeur de récupération des données (pour la récursivité)
         :return: Dictionnaire
         """
         data = {}
         meta = self._meta
         keywords = dict(
+            includes=includes,
+            excludes=excludes,
             editables=editables,
             uids=uids,
             metadata=metadata,
@@ -552,19 +563,17 @@ class CommonModel(models.Model):
             display=display,
             labels=labels,
             fks=fks,
+            fks_depth=fks_depth,
             m2m=m2m,
+            m2m_depth=m2m_depth,
             no_ids=no_ids,
             no_empty=no_empty,
+            **kwargs
         )
         if isinstance(includes, dict):
-            keywords.update(includes=includes)
             includes = set(includes.get("__all__") or []) | set(includes.get(meta.model) or [])
         if isinstance(excludes, dict):
-            keywords.update(excludes=excludes)
             excludes = set(excludes.get("__all__") or []) | set(excludes.get(meta.model) or [])
-        keywords.update(kwargs)
-        # Utilitaires
-        is_empty = lambda value: False if isinstance(value, (int, float, complex, bool)) else not bool(value)
         # Données textuelles de l'entité (nom, modèle, représentation, etc...)
         if names:
             data.update(
@@ -591,10 +600,10 @@ class CommonModel(models.Model):
             if not editables and not getattr(field, "editable", editables):
                 continue
             # Champs inclus
-            if includes and field.name not in includes:
+            if includes and not any(name in includes for name in (field.name, field.attname)):
                 continue
             # Champs exclus
-            if excludes and field.name in excludes:
+            if excludes and any(name in excludes for name in (field.name, field.attname)):
                 continue
             field_name = str(field.verbose_name or camel_case_to_spaces(field.name)) if labels else field.name
             # Relations de type many-to-many
@@ -603,7 +612,7 @@ class CommonModel(models.Model):
                     continue
                 if self.pk is None:
                     data[field_name] = []
-                else:
+                elif m2m_depth > _depth:
                     value = field.value_from_object(self)
                     related = field.related_model
                     # Identifiants
@@ -613,7 +622,7 @@ class CommonModel(models.Model):
                             data[field_name + str(_(" (IDs)") if labels else "_ids")] = result
                     # Données
                     if fks:
-                        result = [to_dict(v, **keywords) for v in value]
+                        result = [to_dict(v, **keywords, _depth=_depth + 1) for v in value]
                         if result or not no_empty:
                             data[field_name] = result
                             for item in result:
@@ -631,14 +640,16 @@ class CommonModel(models.Model):
                     continue
                 # Gestion des clés étrangères
                 if isinstance(field, (models.ForeignKey, models.OneToOneField)):
+                    if no_empty and is_empty(value):
+                        continue
                     # Identifiant
                     if not no_ids:
                         data[(field_name + str(_(" (ID)"))) if labels else field.attname] = value
                     if fks or uids:
                         fk = getattr(self, field.name, None)
                         # Données
-                        if fks and fk:
-                            data[field_name] = to_dict(fk, **keywords)
+                        if fks and fk and fks_depth > _depth:
+                            data[field_name] = to_dict(fk, **keywords, _depth=_depth + 1)
                             data[field_name].pop("_state", None)  # Non serialisable
                         # GUID (uniquement entité)
                         if uids and isinstance(fk, Entity):
@@ -679,7 +690,7 @@ class CommonModel(models.Model):
                     result = getattr(self, "get_{}_json".format(field.name))()
                     if result or not no_empty:
                         data[field_name] = result
-                elif not is_empty(value) or not no_empty:
+                elif not no_empty or not is_empty(value):
                     data[field_name] = value
                 if display and hasattr(self, "get_{}_display".format(field.name)):
                     result = getattr(self, "get_{}_display".format(field.name))()
@@ -694,7 +705,7 @@ class CommonModel(models.Model):
         if functions:
             for key, func_name, func_args, func_kwargs in functions:
                 result = getattr(self, func_name)(*func_args, **func_kwargs)
-                if not is_empty(result) or not no_empty:
+                if not no_empty and not is_empty(result):
                     data[key] = result
         # Champs additionnels
         if extra:
@@ -711,10 +722,10 @@ class CommonModel(models.Model):
                 item = getattr(self, field, None)
                 # Liste d'entités
                 if isinstance(item, list) and item and isinstance(item[0], Entity):
-                    data[field] = [i.to_dict(**keywords) for i in item]
+                    data[field] = [i.to_dict(**keywords, _depth=_depth + 1) for i in item]
                 # QuerySet d'entités
                 elif isinstance(item, (CommonModel, CommonQuerySet)):
-                    data[field] = item.to_dict(**keywords)
+                    data[field] = item.to_dict(**keywords, _depth=_depth + 1)
                 # Dictionnaire
                 elif isinstance(item, dict):
                     for key, value in item.items():
@@ -722,7 +733,7 @@ class CommonModel(models.Model):
                             continue
                         # Entités ou QuerySet d'entités
                         if isinstance(value, (CommonModel, CommonQuerySet)):
-                            data[key] = value.to_dict(**keywords)
+                            data[key] = value.to_dict(**keywords, _depth=_depth + 1)
                         # Autres données
                         else:
                             data[key] = value

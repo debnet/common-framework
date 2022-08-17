@@ -731,9 +731,10 @@ def get_prefetchs(
     one_to_one=True,
     one_to_many=False,
     many_to_many=False,
+    reverse_many_to_many=False,
     metadata=False,
     excludes=None,
-    null=False,
+    nullables=False,
     _model=None,
     _prefetch="",
     _level=1,
@@ -747,16 +748,17 @@ def get_prefetchs(
     :param one_to_one: Récupère les relations de type one-to-one ?
     :param one_to_many: Récupère les relations de type one-to-many ? (peut-être très coûteux selon les données)
     :param many_to_many: Récupère les relations de type many-to-many ?
+    :param reverse_many_to_many: Récupère les relations inverses des champs de type many-to-many ?
     :param metadata: Récupère uniquement les prefetchs des métadonnées ?
     :param excludes: Champs ou types à exclure
-    :param null: Remonter par les clés étrangères nulles ?
+    :param nullables: Remonter par les clés étrangères nulles ?
     :param _model: Modèle courant (pour la récursivité, nul par défaut)
     :param _prefetch: Nom du prefetch courant (pour la récursivité, vide par défaut)
     :param _level: Profondeur actuelle (pour la récursivité, 1 par défaut)
     :return: Liste des prefetch related associés
     """
     excludes = excludes or []
-    results = prefetch_metadata(parent) if metadata and not _model else []
+    results = set(prefetch_metadata(parent) if metadata and not _model else [])
     if _level > depth:
         return results
     model = _model or parent
@@ -766,9 +768,12 @@ def get_prefetchs(
         if (
             (field.one_to_one and one_to_one)
             or (field.one_to_many and one_to_many)
-            or (field.many_to_many and many_to_many)
+            or (field.many_to_many and many_to_many and field.related_model == parent)
+            or (field.many_to_many and reverse_many_to_many and field.related_model != parent)
         ):
             accessor_name = field.get_accessor_name() if field.auto_created else field.name
+            if not accessor_name:
+                continue
             recursive_prefetch = accessor_name if model == parent else "__".join((_prefetch, accessor_name))
             prefetchs = None
             if model == parent or _level < depth:
@@ -784,21 +789,21 @@ def get_prefetchs(
                     _prefetch=recursive_prefetch,
                     _level=_level + 1,
                 )
-                results += prefetchs
+                results.update(prefetchs)
             if height and not field.many_to_many:
                 for related in get_related(
                     field.related_model,
                     excludes=excludes,
                     foreign_keys=foreign_keys,
                     one_to_one=one_to_one,
-                    null=null,
+                    nullables=nullables,
                     height=height,
                 ):
-                    results.append("__".join((recursive_prefetch, related)))
+                    results.add("__".join((recursive_prefetch, related)))
             if metadata:
-                results.extend(prefetch_metadata(parent, lookup=recursive_prefetch))
+                results.update(prefetch_metadata(parent, lookup=recursive_prefetch))
             elif not prefetchs:
-                results.append(recursive_prefetch)
+                results.add(recursive_prefetch)
     return results
 
 
@@ -808,7 +813,7 @@ def get_related(
     excludes=None,
     foreign_keys=True,
     one_to_one=False,
-    null=False,
+    nullables=False,
     height=1,
     _related="",
     _models=None,
@@ -821,7 +826,7 @@ def get_related(
     :param excludes: Champs ou types à exclure
     :param foreign_keys: Récupère les relations de type foreign-key ?
     :param one_to_one: Récupère les relations de type one-to-one ?
-    :param null: Remonter par les clés étrangères nulles ?
+    :param nullables: Remonter par les clés étrangères nulles ?
     :param height: Hauteur de récupération
     :param _related: Nom du chemin de relation courant (pour la récursivité, vide par défaut)
     :param _models: Liste des modèles traversés (pour la récursivité, vide par défaut)
@@ -829,12 +834,12 @@ def get_related(
     :return: Liste des relations directes associées
     """
     excludes = excludes or []
-    results = []
+    results = set()
     if (not dest and _level > height) or (_models and model in _models):
         return results
     models = (_models or []) + [model]
     if _related and dest == model or (dest is None and _related):
-        results.append(_related)
+        results.add(_related)
     # Clés étrangères
     if foreign_keys:
         for field in model._meta.fields:
@@ -842,19 +847,21 @@ def get_related(
                 not isinstance(field, (ForeignKey, OneToOneField))
                 or field.name in excludes
                 or (field.remote_field and field.related_model in excludes)
-                or (not null and field.null)
+                or (not nullables and field.null)
             ):
                 continue
             related_path = "__".join((_related, field.name)) if _related else field.name
-            results += get_related(
-                field.related_model,
-                dest=dest,
-                excludes=excludes,
-                height=height,
-                null=null,
-                _related=related_path,
-                _models=models,
-                _level=_level + 1,
+            results.update(
+                get_related(
+                    field.related_model,
+                    dest=dest,
+                    excludes=excludes,
+                    height=height,
+                    nullables=nullables,
+                    _related=related_path,
+                    _models=models,
+                    _level=_level + 1,
+                )
             )
     # Relations de type one-to-one
     if one_to_one:
@@ -864,15 +871,17 @@ def get_related(
                 if field_name in excludes:
                     continue
                 related_path = "__".join((_related, field_name)) if _related else field_name
-                results += get_related(
-                    field.related_model,
-                    dest=dest,
-                    excludes=excludes,
-                    height=height,
-                    null=null,
-                    _related=related_path,
-                    _models=models,
-                    _level=_level + 1,
+                results.update(
+                    get_related(
+                        field.related_model,
+                        dest=dest,
+                        excludes=excludes,
+                        height=height,
+                        nullables=nullables,
+                        _related=related_path,
+                        _models=models,
+                        _level=_level + 1,
+                    )
                 )
     return results
 

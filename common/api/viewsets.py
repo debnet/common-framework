@@ -20,6 +20,7 @@ class CommonModelViewSet(viewsets.ModelViewSet):
     """
     Définition commune de ModelViewSet pour l'API REST
     """
+
     url_params = {}
 
     def get_serializer_class(self):
