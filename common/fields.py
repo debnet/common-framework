@@ -679,8 +679,8 @@ class JsonEmpty(Lookup):
         rhs = ",".join(["%s"] * len(self.empty_values))
         cast = "::text" if is_postgresql(connection) else ""
         if str_to_bool(value):
-            return "%s IS NULL OR %s%s IN (%s)" % (lhs, lhs, cast, rhs), self.empty_values
-        return "%s IS NOT NULL AND %s%s NOT IN (%s)" % (lhs, lhs, cast, rhs), self.empty_values
+            return "(%s IS NULL OR %s%s IN (%s))" % (lhs, lhs, cast, rhs), self.empty_values
+        return "(%s IS NOT NULL AND %s%s NOT IN (%s))" % (lhs, lhs, cast, rhs), self.empty_values
 
 
 # Bakery monkey-patch for CustomDecimalField and JsonField
