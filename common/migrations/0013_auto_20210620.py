@@ -16,7 +16,6 @@ def count_history_fields(apps, schema_editor):
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
         ("common", "0012_auto_20210420"),
     ]

@@ -311,7 +311,7 @@ if django_version < (3, 1) or settings.COMMON_JSONFIELD:
                 self.rhs = rhs_key_transforms[-1]
             lhs, lhs_params = self.process_lhs(compiler, connection)
             rhs, rhs_params = self.process_rhs(compiler, connection)
-            value, *junk = rhs_params
+            value, *_ = rhs_params
             rhs = ",".join(["%s"] * len(value))
             return "%s %s array[%s]" % (lhs, self.lookup_operator, rhs), value
 
@@ -364,7 +364,7 @@ if django_version < (3, 1) or settings.COMMON_JSONFIELD:
         def as_postgresql(self, compiler, connection):
             lhs, lhs_params = self.process_lhs(compiler, connection)
             rhs, rhs_params = self.process_rhs(compiler, connection)
-            value, *junk = rhs_params
+            value, *_ = rhs_params
             return "%s %s %s::jsonb" % (lhs, self.lookup_operator, rhs), (value,)
 
     @JsonField.register_lookup
@@ -675,7 +675,7 @@ class JsonEmpty(Lookup):
     def as_sql(self, compiler, connection):
         lhs, lhs_params = self.process_lhs(compiler, connection)
         rhs, rhs_params = self.process_rhs(compiler, connection)
-        value, *junk = rhs_params
+        value, *_ = rhs_params
         rhs = ",".join(["%s"] * len(self.empty_values))
         cast = "::text" if is_postgresql(connection) else ""
         if str_to_bool(value):

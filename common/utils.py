@@ -1089,7 +1089,7 @@ def recursive_get_urls(module=None, namespaces=None, attributes=None, model=None
 
         patterns = list(chain(*(getattr(module, attribute, []) for attribute in attributes))) or patterns
         if patterns and isinstance(patterns[-1], str):
-            patterns, *junk = patterns
+            patterns, *_ = patterns
     except (TypeError, ValueError):
         patterns = []
 
@@ -1634,7 +1634,7 @@ def collect_deleted_data(object):
         from_model = model._meta.auto_created
         if from_model and from_model in models:  # Potential many-to-many
             from_model.meta = from_model._meta  # For template
-            from_field, to_field, *_junk = model._meta.fields[1:]
+            from_field, to_field, *_ = model._meta.fields[1:]
             field = next(
                 field
                 for field in from_model.meta.many_to_many

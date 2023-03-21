@@ -1,4 +1,5 @@
 # coding: utf-8
+import csv
 from datetime import timedelta
 
 from django.core.exceptions import EmptyResultSet, FieldDoesNotExist
@@ -10,7 +11,16 @@ from rest_framework import serializers, viewsets
 from rest_framework.exceptions import PermissionDenied, ValidationError
 
 from common.api.fields import ChoiceDisplayField, ReadOnlyObjectField
-from common.api.utils import AGGREGATES, CASTS, FUNCTIONS, RESERVED_QUERY_PARAMS, convert_arg, parse_filters, url_value
+from common.api.utils import (
+    AGGREGATES,
+    CASTS,
+    FUNCTIONS,
+    RESERVED_QUERY_PARAMS,
+    convert_arg,
+    parse_arg_value,
+    parse_filters,
+    url_value,
+)
 from common.models import Entity, MetaData
 from common.settings import settings
 from common.utils import get_field_by_path, get_model_permissions, get_models_from_queryset, get_pk_field, str_to_bool
@@ -33,7 +43,6 @@ class CommonModelViewSet(viewsets.ModelViewSet):
         query_params = getattr(self.request, "query_params", None)
         url_params = self.url_params or (query_params.dict() if query_params else {})
         if default_serializer:
-
             # Fonction utilitaire d'ajout de champ au serializer
             def add_field_to_serializer(fields, field_name):
                 source = field_name.replace(".", "__")
@@ -211,8 +220,7 @@ class CommonModelViewSet(viewsets.ModelViewSet):
                     filters, excludes = {}, {}
                     for key, value in url_params.items():
                         key = key.replace(".", "__")
-                        if value.startswith("[") and value.endswith("]"):
-                            value = F(value[1:-1].replace(".", "__"))
+                        value = parse_arg_value(value) or value
                         if key in reserved_query_params:
                             continue
                         if key.startswith("-"):
@@ -249,30 +257,25 @@ class CommonModelViewSet(viewsets.ModelViewSet):
                     for field_name in url_params.get(annotation).split(","):
                         field_name, field_rename = (field_name.split("|") + [""])[:2]
                         field_name, *args = field_name.split(";")
-                        function_args = []
+                        function_args, function_kwargs = [], {}
                         for index, arg in enumerate(args, start=1):
-                            try:
-                                value = convert_arg(annotation, index, arg)
-                                if value is not None:
-                                    function_args.append(value)
-                            except (SyntaxError, ValueError):
-                                arg = arg.replace(".", "__")
-                                if any(arg.endswith(":{}".format(cast)) for cast in CASTS):
-                                    arg, *junk, cast = arg.split(":")
-                                    output_field = CASTS.get(cast.lower())
-                                    arg = functions.Cast(arg, output_field=output_field) if output_field else arg
-                                function_args.append(arg)
+                            value = convert_arg(annotation, index, arg)
+                            if isinstance(value, dict):
+                                function_kwargs.update(value)
+                            else:
+                                function_args.append(value)
                         field_name = field_name.replace(".", "__")
                         field = field_name
                         if any(field_name.endswith(":{}".format(cast)) for cast in CASTS):
-                            field_name, *junk, cast = field_name.split(":")
+                            field_name, *_, cast = field_name.split(":")
                             output_field = CASTS.get(cast.lower())
                             field = (
                                 functions.Cast(field_name, output_field=output_field) if output_field else field_name
                             )
                         field_rename = field_rename or ((annotation + "__" + field_name) if field_name else annotation)
-                        function_call = function(field, *function_args) if field else function(*function_args)
-                        annotations[field_rename] = function_call
+                        if field:
+                            function_args.insert(0, field)
+                        annotations[field_rename] = function(*function_args, **function_kwargs)
                 if annotations:
                     queryset = queryset.annotate(**annotations)
                     options["annotates"] = True
@@ -295,10 +298,18 @@ class CommonModelViewSet(viewsets.ModelViewSet):
                             distinct = field_name.startswith(" ") or field_name.startswith("+")
                             field_name, field_rename = (field_name.split("|") + [""])[:2]
                             field_name = field_name[1:] if distinct else field_name
+                            field_name, *args = field_name.split(";")
+                            function_args, function_kwargs = [], {}
+                            for index, arg in enumerate(args, start=1):
+                                value = convert_arg(aggregate, index, arg)
+                                if isinstance(value, dict):
+                                    function_kwargs.update(value)
+                                else:
+                                    function_args.append(value)
                             field_name = field_name.replace(".", "__")
                             field = field_name
                             if any(field_name.endswith(":{}".format(cast)) for cast in CASTS):
-                                field_name, *junk, cast = field_name.split(":")
+                                field_name, *_, cast = field_name.split(":")
                                 output_field = CASTS.get(cast.lower())
                                 field = (
                                     functions.Cast(field_name, output_field=output_field)
@@ -306,7 +317,9 @@ class CommonModelViewSet(viewsets.ModelViewSet):
                                     else field_name
                                 )
                             field_rename = field_rename or (aggregate + "__" + field_name)
-                            aggregations[field_rename] = function(field, distinct=distinct)
+                            if distinct:
+                                function_kwargs.update(distinct=distinct)
+                            aggregations[field_rename] = function(field, *function_args, **function_kwargs)
                     group_by = url_params.get("group_by", "")
                     if group_by:
                         _queryset = queryset.values(*group_by.replace(".", "__").split(","))

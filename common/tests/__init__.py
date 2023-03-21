@@ -451,7 +451,7 @@ def create_api_test_class(
             """
             Méthode de test du simple
             """
-            recipe, *junk = self.recipes
+            recipe, *_ = self.recipes
             item = recipe.make()
             # Récupération submodels sans le simple
             self.client.force_authenticate(self.user_admin)

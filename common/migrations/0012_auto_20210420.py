@@ -7,7 +7,6 @@ import common.utils
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
         ("common", "0011_auto_20190201"),
     ]

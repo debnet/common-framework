@@ -63,7 +63,6 @@ class CreateIndexUnaccent(Operation):
         return
 
     def database_forwards(self, app_label, schema_editor, from_state, to_state):
-
         # Applicable uniquement sur une base de données PostgreSQL
         if schema_editor.connection.vendor != "postgresql":
             logger.error(_("L'opération ne peut s'exécuter que sur PostgreSQL."))

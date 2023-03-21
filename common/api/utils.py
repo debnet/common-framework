@@ -3,12 +3,13 @@ import ast
 import re
 import zoneinfo
 from datetime import timedelta
-from functools import partial, wraps
+from functools import wraps
 from json import JSONDecodeError
 
+from django.contrib.postgres import aggregates as pg_aggregates
 from django.core.exceptions import EmptyResultSet
 from django.db import models
-from django.db.models import Avg, Count, F, Max, Min, Q, QuerySet, StdDev, Sum, Value, Variance, functions
+from django.db.models import F, Q, QuerySet, Value, aggregates, functions
 from django.utils.timezone import now
 from rest_framework import serializers, viewsets
 from rest_framework.decorators import api_view
@@ -34,15 +35,35 @@ from common.utils import (
 # URLs dans les serializers
 HYPERLINKED = settings.REST_FRAMEWORK.get("HYPERLINKED", False)
 
+
 # Mots clés réservés dans les URLs des APIs
 AGGREGATES = {
-    "count": Count,
-    "sum": Sum,
-    "avg": Avg,
-    "min": Min,
-    "max": Max,
-    "stddev": StdDev,
-    "variance": Variance,
+    "count": aggregates.Count,
+    "sum": aggregates.Sum,
+    "avg": aggregates.Avg,
+    "min": aggregates.Min,
+    "max": aggregates.Max,
+    "stddev": aggregates.StdDev,
+    "variance": aggregates.Variance,
+    "arrayagg": pg_aggregates.ArrayAgg,
+    "bitand": pg_aggregates.BitAnd,
+    "bitor": pg_aggregates.BitOr,
+    "bitxor": pg_aggregates.BitXor,
+    "booland": pg_aggregates.BoolAnd,
+    "boolor": pg_aggregates.BoolOr,
+    "jsonbagg": pg_aggregates.JSONBAgg,
+    "stringagg": pg_aggregates.StringAgg,
+    "corr": pg_aggregates.Corr,
+    "covarpop": pg_aggregates.CovarPop,
+    "regravgx": pg_aggregates.RegrAvgX,
+    "regravgy": pg_aggregates.RegrAvgY,
+    "regrcount": pg_aggregates.RegrCount,
+    "regrintercept": pg_aggregates.RegrIntercept,
+    "regrr2": pg_aggregates.RegrR2,
+    "regrslope": pg_aggregates.RegrSlope,
+    "regrsxx": pg_aggregates.RegrSXX,
+    "regrsxy": pg_aggregates.RegrSXY,
+    "regrsyy": pg_aggregates.RegrSYY,
 }
 CASTS = {
     "bool": models.BooleanField(),
@@ -57,9 +78,7 @@ CASTS = {
 }
 FUNCTIONS = {
     "f": F,
-    "cast": lambda value, cast_type="", *args: (
-        partial(functions.Cast, output_field=CASTS.get(cast_type, models.CharField()))(value, *args)
-    ),
+    "cast": functions.Cast,
     "coalesce": functions.Coalesce,
     "collate": functions.Collate,
     "greatest": functions.Greatest,
@@ -137,34 +156,6 @@ FUNCTIONS = {
     "trim": functions.Trim,
     "upper": functions.Upper,
 }
-CONVERTS = {
-    "cast": (str, {}),
-    "collate": (Value, {1: str}),
-    "extract": (Value, {1: str, 2: zoneinfo.ZoneInfo}),
-    "now": (None, {}),
-    "trunc": (Value, {1: str, 2: CASTS.get, 3: zoneinfo.ZoneInfo, 4: bool}),
-    "trunc_year": (Value, {1: CASTS.get, 2: zoneinfo.ZoneInfo, 3: bool}),
-    "trunc_month": (Value, {1: CASTS.get, 2: zoneinfo.ZoneInfo, 3: bool}),
-    "trunc_week": (Value, {1: CASTS.get, 2: zoneinfo.ZoneInfo, 3: bool}),
-    "trunc_quarter": (Value, {1: CASTS.get, 2: zoneinfo.ZoneInfo, 3: bool}),
-    "trunc_date": (Value, {1: CASTS.get, 2: zoneinfo.ZoneInfo, 3: bool}),
-    "trunc_time": (Value, {1: CASTS.get, 2: zoneinfo.ZoneInfo, 3: bool}),
-    "trunc_day": (Value, {1: CASTS.get, 2: zoneinfo.ZoneInfo, 3: bool}),
-    "trunc_hour": (Value, {1: CASTS.get, 2: zoneinfo.ZoneInfo, 3: bool}),
-    "trunc_minute": (Value, {1: CASTS.get, 2: zoneinfo.ZoneInfo, 3: bool}),
-    "trunc_second": (Value, {1: CASTS.get, 2: zoneinfo.ZoneInfo, 3: bool}),
-    "pi": (None, {}),
-    "random": (None, {}),
-    "round": (Value, {1: int}),
-    "left": (Value, {1: int}),
-    "lpad": (Value, {1: int, 2: Value}),
-    "repeat": (Value, {1: int}),
-    "replace": (Value, {1: Value, 2: Value}),
-    "right": (Value, {1: int}),
-    "rpad": (Value, {1: int, 2: Value}),
-    "strindex": (Value, {1: Value}),
-    "substr": (Value, {1: int, 2: int}),
-}
 RESERVED_QUERY_PARAMS = (
     [
         "filters",
@@ -188,19 +179,47 @@ BOOL_LOOKUPS = ["__isnull", "__isempty"]
 JSON_LOOKUPS = ["__contains", "__contained_by", "__hasdict", "__indict"]
 
 
-def convert_arg(annotation, arg_index, arg_raw):
+def convert_arg(function, arg_index, arg_raw):
     """
-    Transforme un argument parsé de l'API en fonction de l'annotation utilisée
-    :param annotation: Nom de l'annotation
+    Transforme un argument parsé de l'API en fonction de l'annotation/aggregate utilisée
+    :param function: Nom de l'annotation/aggregate
     :param arg_index: Position de l'argument
     :param arg_raw: Valeur brute de l'argument
     :return: Valeur transformée
     """
-    default, converts = CONVERTS.get(annotation, (Value, {}))
-    if not default:
+    converts = CONVERTS.get(function, {})
+    if converts is None:
         return None
-    arg_value = ast.literal_eval(arg_raw)
-    return converts.get(arg_index, default)(arg_value)
+    arg_name, arg_value, *_ = arg_raw.split(":", maxsplit=1) + [""]
+    if not arg_value or arg_name not in converts:
+        arg_name, arg_value = None, arg_raw
+    try:
+        arg_value = ast.literal_eval(arg_value)
+    except (SyntaxError, ValueError):
+        pass
+    if value := parse_arg_value(arg_value):
+        arg_value = value
+    else:
+        arg_value = converts.get(arg_name or arg_index, Value)(arg_value)
+    if arg_name:
+        return {arg_name: arg_value}
+    return arg_value
+
+
+def parse_arg_value(value):
+    """
+    Parse une valeur d'argument afin d'en extraire le champ de base de données potentiel
+    :param value: Valeur d'argument
+    :return: Valeur ou champ de base de données
+    """
+    if isinstance(value, str) and value.startswith("[") and value.endswith("]"):
+        value = value[1:-1].replace(".", "__")
+        value, cast, *_ = value.split(":") + [""]
+        value = F(value)
+        if output_field := CASTS.get(cast.lower()):
+            value = functions.Cast(value, output_field=output_field)
+        return value
+    return None
 
 
 def url_value(filter, value):
@@ -256,7 +275,7 @@ def parse_filters(filters):
     if isinstance(filters, str):
         try:
             filters = filters.replace("'", "\\'").replace('"', '\\"')
-            filters = re.sub(r"([\w.]+):([^,()]*)", r'{"\1":"\2"}', filters)
+            filters = re.sub(r"([\w.]+):([^,/()]*)", r'{"\1":"\2"}', filters)
             filters = re.sub(r"(\w+)\(", r'("\1",', filters)
             filters = ast.literal_eval(filters)
         except Exception as exception:
@@ -272,8 +291,7 @@ def parse_filters(filters):
             fields = {}
             for key, value in filter.items():
                 key = key.replace(".", "__")
-                if value.startswith("[") and value.endswith("]"):
-                    value = F(value[1:-1].replace(".", "__"))
+                value = parse_arg_value(value) or value
                 fields[key] = url_value(key, value)
             elements.append(Q(**fields))
         elif isinstance(filter, str):
@@ -445,7 +463,7 @@ def create_model_serializer_and_viewset(
     _level=0,
     _origin=None,
     _field=None,
-    **options
+    **options,
 ):
     """
     Permet de créer les classes de serializer et de viewset associés à un modèle
@@ -906,7 +924,6 @@ def api_paginate(
 
     # Activation des options
     if enable_options:
-
         # Copie des modèles d'origine de la requête pour vérification des permissions
         if settings.ENABLE_API_PERMISSIONS:
             base_queryset_models = get_models_from_queryset(queryset)
@@ -948,8 +965,7 @@ def api_paginate(
                 filters, excludes = {}, {}
                 for key, value in url_params.items():
                     key = key.replace(".", "__")
-                    if value.startswith("[") and value.endswith("]"):
-                        value = F(value[1:-1].replace(".", "__"))
+                    value = parse_arg_value(value) or value
                     if key in reserved_query_params:
                         continue
                     if key.startswith("-"):
@@ -986,31 +1002,23 @@ def api_paginate(
                 for field_name in url_params.pop(annotation).split(","):
                     field_name, field_rename = (field_name.split("|") + [""])[:2]
                     field_name, *args = field_name.split(";")
-                    function_args = []
+                    function_args, function_kwargs = [], {}
                     for index, arg in enumerate(args, start=1):
-                        try:
-                            value = convert_arg(annotation, index, arg)
-                            if value is not None:
-                                function_args.append(value)
-                        except (SyntaxError, ValueError):
-                            if annotation == "cast":
-                                function_args.append(arg)
-                                break
-                            arg = arg.replace(".", "__")
-                            if any(arg.endswith(":{}".format(cast)) for cast in CASTS):
-                                arg, *junk, cast = arg.split(":")
-                                output_field = CASTS.get(cast.lower())
-                                arg = functions.Cast(arg, output_field=output_field) if output_field else arg
-                            function_args.append(arg)
+                        value = convert_arg(annotation, index, arg)
+                        if isinstance(value, dict):
+                            function_kwargs.update(value)
+                        else:
+                            function_args.append(value)
                     field_name = field_name.replace(".", "__")
                     field = field_name
                     if any(field_name.endswith(":{}".format(cast)) for cast in CASTS):
-                        field_name, *junk, cast = field_name.split(":")
+                        field_name, *_, cast = field_name.split(":")
                         output_field = CASTS.get(cast.lower())
                         field = functions.Cast(field_name, output_field=output_field) if output_field else field_name
                     field_rename = field_rename or ((annotation + "__" + field_name) if field_name else annotation)
-                    function_call = function(field, *function_args) if field else function(*function_args)
-                    annotations[field_rename] = function_call
+                    if field:
+                        function_args.insert(0, field)
+                    annotations[field_rename] = function(*function_args, **function_kwargs)
             if annotations:
                 queryset = queryset.annotate(**annotations)
                 options["annotates"] = True
@@ -1032,14 +1040,24 @@ def api_paginate(
                     distinct = field_name.startswith(" ") or field_name.startswith("+")
                     field_name, field_rename = (field_name.split("|") + [""])[:2]
                     field_name = field_name[1:] if distinct else field_name
+                    field_name, *args = field_name.split(";")
+                    function_args, function_kwargs = [], {}
+                    for index, arg in enumerate(args, start=1):
+                        value = convert_arg(aggregate, index, arg)
+                        if isinstance(value, dict):
+                            function_kwargs.update(value)
+                        else:
+                            function_args.append(value)
                     field_name = field_name.replace(".", "__")
                     field = field_name
                     if any(field_name.endswith(":{}".format(cast)) for cast in CASTS):
-                        field_name, *junk, cast = field_name.split(":")
+                        field_name, *_, cast = field_name.split(":")
                         output_field = CASTS.get(cast.lower())
                         field = functions.Cast(field_name, output_field=output_field) if output_field else field_name
                     field_rename = field_rename or ((aggregate + "__" + field_name) if field_name else aggregate)
-                    aggregations[field_rename] = function(field, distinct=distinct)
+                    if distinct:
+                        function_kwargs.update(distinct=distinct)
+                    aggregations[field_rename] = function(field, *function_args, **function_kwargs)
             group_by = url_params.get("group_by", "")
             if group_by:
                 _queryset = queryset.values(*group_by.replace(".", "__").split(","))
@@ -1222,7 +1240,7 @@ def create_api(
     all_querysets=None,
     all_metadata=None,
     all_configs=None,
-    **config
+    **config,
 ):
     """
     Crée les APIs REST standard pour les modèles donnés
@@ -1325,3 +1343,113 @@ def disable_relation_fields(*models, all_metadata=None):
             for key, value in metas.items():
                 extra_kwargs[key] = extra_kwargs.get(key, {})
                 extra_kwargs[key].update(value)
+
+
+def parse_ordering(ordering):
+    """
+    Parse une instruction de tri pour certaines fonctions d'aggregation
+    :param ordering: Chaîne de tri
+    :return: Liste de champs à trier
+    """
+    if isinstance(ordering, (list, tuple)):
+        return ordering
+    if isinstance(ordering, str):
+        return [item.replace(".", "__") for item in re.split(r"[^-\w\.]", ordering)]
+    return None
+
+
+# Conversion des arguments des fonctions
+FUNC_COMMON = {"output_field": CASTS.get}
+TRUNC_BASE_CONVERT = {
+    1: str,
+    2: CASTS.get,
+    3: zoneinfo.ZoneInfo,
+    4: bool,
+    "kind": str,
+    "tzinfo": zoneinfo.ZoneInfo,
+    "is_dst": bool,
+    **FUNC_COMMON,
+}
+TRUNC_CONVERT = {
+    1: CASTS.get,
+    2: zoneinfo.ZoneInfo,
+    3: bool,
+    "tzinfo": zoneinfo.ZoneInfo,
+    "is_dst": bool,
+    **FUNC_COMMON,
+}
+EXTRACT_CONVERT = {1: zoneinfo.ZoneInfo, "tzinfo": zoneinfo.ZoneInfo, **FUNC_COMMON}
+AGGREGATE_BASE = {"filter": parse_filters, "default": Value, **FUNC_COMMON}
+AGGREGATE_COMMON = {"distinct": bool, **AGGREGATE_BASE}
+AGGREGATE_STATS = {1: str, "y": str, **AGGREGATE_BASE}
+CONVERTS = {
+    # Functions
+    "cast": {1: CASTS.get, **FUNC_COMMON},
+    "coalesce": {**{i: str for i in range(10)}, **FUNC_COMMON},
+    "collate": {1: str, "collation": str, **FUNC_COMMON},
+    "greatest": {**{i: str for i in range(10)}, **FUNC_COMMON},
+    "least": {**{i: str for i in range(10)}, **FUNC_COMMON},
+    "nullif": {1: str, **FUNC_COMMON},
+    "extract": {1: str, 2: zoneinfo.ZoneInfo, "tzinfo": zoneinfo.ZoneInfo, **FUNC_COMMON},
+    "extract_year": EXTRACT_CONVERT,
+    "extract_iso_year": EXTRACT_CONVERT,
+    "extract_month": EXTRACT_CONVERT,
+    "extract_day": EXTRACT_CONVERT,
+    "extract_week_day": EXTRACT_CONVERT,
+    "extract_iso_week_day": EXTRACT_CONVERT,
+    "extract_week": EXTRACT_CONVERT,
+    "extract_quarter": EXTRACT_CONVERT,
+    "extract_hour": EXTRACT_CONVERT,
+    "extract_minute": EXTRACT_CONVERT,
+    "extract_second": EXTRACT_CONVERT,
+    "now": None,
+    "trunc": TRUNC_BASE_CONVERT,
+    "trunc_year": TRUNC_CONVERT,
+    "trunc_month": TRUNC_CONVERT,
+    "trunc_week": TRUNC_CONVERT,
+    "trunc_quarter": TRUNC_CONVERT,
+    "trunc_date": TRUNC_CONVERT,
+    "trunc_time": TRUNC_CONVERT,
+    "trunc_day": TRUNC_CONVERT,
+    "trunc_hour": TRUNC_CONVERT,
+    "trunc_minute": TRUNC_CONVERT,
+    "trunc_second": TRUNC_CONVERT,
+    "pi": None,
+    "random": None,
+    "round": {1: int, "precision": int, **FUNC_COMMON},
+    "left": {1: int, "length": int, **FUNC_COMMON},
+    "lpad": {1: int, 2: Value, "length": int, "fill_value": Value, **FUNC_COMMON},
+    "repeat": {1: int, "number": int, **FUNC_COMMON},
+    "replace": {1: Value, 2: Value, "text": Value, "replacement": Value, **FUNC_COMMON},
+    "right": {1: int, "length": int, **FUNC_COMMON},
+    "rpad": {1: int, 2: Value, "length": int, "fill_value": Value, **FUNC_COMMON},
+    "strindex": {1: Value, **FUNC_COMMON},
+    "substr": {1: int, 2: int, "pos": int, "length": int, **FUNC_COMMON},
+    # Aggregates
+    "count": AGGREGATE_COMMON,
+    "sum": AGGREGATE_COMMON,
+    "avg": AGGREGATE_COMMON,
+    "min": AGGREGATE_COMMON,
+    "max": AGGREGATE_COMMON,
+    "stddev": {"sample": bool, **AGGREGATE_COMMON},
+    "variance": {"sample": bool, **AGGREGATE_COMMON},
+    "arrayagg": {"ordering": parse_ordering, **AGGREGATE_COMMON},
+    "bitand": AGGREGATE_COMMON,
+    "bitor": AGGREGATE_COMMON,
+    "bitxor": AGGREGATE_COMMON,
+    "booland": AGGREGATE_COMMON,
+    "boolor": AGGREGATE_COMMON,
+    "jsonbagg": {"ordering": parse_ordering, **AGGREGATE_COMMON},
+    "stringagg": {1: str, "delimiter": str, "ordering": parse_ordering, **AGGREGATE_COMMON},
+    "corr": AGGREGATE_STATS,
+    "covarpop": {2: bool, "sample": bool, **AGGREGATE_STATS},
+    "regravgx": AGGREGATE_STATS,
+    "regravgy": AGGREGATE_STATS,
+    "regrcount": AGGREGATE_STATS,
+    "regrintercept": AGGREGATE_STATS,
+    "regrr2": AGGREGATE_STATS,
+    "regrslope": AGGREGATE_STATS,
+    "regrsxx": AGGREGATE_STATS,
+    "regrsxy": AGGREGATE_STATS,
+    "regrsyy": AGGREGATE_STATS,
+}
