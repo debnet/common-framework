@@ -1266,17 +1266,29 @@ class EntityQuerySet(CommonQuerySet):
 
         collector = Collector(using=del_query.db)
         collector.collect(del_query)
-        self._collector_update = {
-            key._meta.label: {
-                field.name: [instance.pk for instance in instances] for (field, value), instances in value.items()
+        if django_version >= (4, 2):
+            del_query.query.clear_ordering(force=True)
+            self._collector_update = {}
+            for (field, value), querysets in collector.field_updates.items():
+                ids = self._collector_update.setdefault(field.model._meta.label, {}).setdefault(field.name, set())
+                ids.update(*(queryset.values_list("pk", flat=True) for queryset in querysets))
+            self._collector_delete = {
+                model._meta.label: [to_dict(instance) for instance in instances]
+                for model, instances in collector.data.items()
+                if model._meta.auto_created
             }
-            for key, value in collector.field_updates.items()
-        }
-        self._collector_delete = {
-            key._meta.label: [to_dict(value, excludes=("id",)) for value in values]
-            for key, values in collector.data.items()
-            if key._meta.auto_created
-        }
+        else:
+            self._collector_update = {
+                model._meta.label: {
+                    field.name: [instance.pk for instance in instances] for (field, value), instances in data.items()
+                }
+                for model, data in collector.field_updates.items()
+            }
+            self._collector_delete = {
+                model._meta.label: [to_dict(instance) for instance in instances]
+                for model, instances in collector.data.items()
+                if model._meta.auto_created
+            }
         deleted, _rows_count = collector.delete()
 
         self._result_cache = None
@@ -1450,17 +1462,28 @@ class Entity(CommonModel):
         using = kwargs.get("using", False) or router.db_for_write(self.__class__, instance=self)
         collector = Collector(using=using)
         collector.collect([self], keep_parents=keep_parents)
-        self._collector_update = {
-            key._meta.label: {
-                field.name: [instance.pk for instance in instances] for (field, value), instances in value.items()
+        if django_version >= (4, 2):
+            self._collector_update = {}
+            for (field, value), querysets in collector.field_updates.items():
+                ids = self._collector_update.setdefault(field.model._meta.label, {}).setdefault(field.name, set())
+                ids.update(*(queryset.values_list("pk", flat=True) for queryset in querysets))
+            self._collector_delete = {
+                model._meta.label: [to_dict(instance) for instance in instances]
+                for model, instances in collector.data.items()
+                if model._meta.auto_created
             }
-            for key, value in collector.field_updates.items()
-        }
-        self._collector_delete = {
-            key._meta.label: [to_dict(value, excludes=("id",)) for value in values]
-            for key, values in collector.data.items()
-            if key._meta.auto_created
-        }
+        else:
+            self._collector_update = {
+                model._meta.label: {
+                    field.name: [instance.pk for instance in instances] for (field, value), instances in data.items()
+                }
+                for model, data in collector.field_updates.items()
+            }
+            self._collector_delete = {
+                model._meta.label: [to_dict(instance) for instance in instances]
+                for model, instances in collector.data.items()
+                if model._meta.auto_created
+            }
         for instances in collector.data.values():
             for instance in instances:
                 instance._ignore_log = self._ignore_log
@@ -2432,7 +2455,7 @@ def to_dict(instance, types=True, **options):
     elif isinstance(instance, CommonModel):
         data = instance.to_dict(types=types, **options)
     elif isinstance(instance, models.Model):
-        data = model_to_dict(instance)
+        data = model_to_dict(instance, **options)
         data.pop("_state", None)  # Donnée non serialisable
         if types:
             content_type = ContentType.objects.get_for_model(instance)
@@ -2461,11 +2484,11 @@ def model_to_dict(instance, fields=None, exclude=None, **kwargs):
     """
     model = instance._meta.model
     includes, excludes = (fields or kwargs.pop("includes", {}) or {}, exclude or kwargs.pop("excludes", {}) or {})
-    fields = includes.get(model) if isinstance(includes, dict) else includes
-    exclude = excludes.get(model) if isinstance(excludes, dict) else excludes
     if isinstance(instance, CommonModel):
         data = instance.to_dict(includes=includes, excludes=excludes, **kwargs)
     else:
+        fields = includes.get(model) if isinstance(includes, dict) else includes
+        exclude = excludes.get(model) if isinstance(excludes, dict) else excludes
         data = django_model_to_dict(instance, fields=fields, exclude=exclude)
         for key, value in data.items():
             if isinstance(value, models.Model):
