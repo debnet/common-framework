@@ -3,12 +3,13 @@ import ast
 import re
 import zoneinfo
 from datetime import timedelta
-from functools import wraps
+from functools import wraps, partial
 from json import JSONDecodeError
 
-from django.contrib.postgres import aggregates as pg_aggregates
+from django import VERSION as django_version
+from django.contrib.postgres import aggregates as pg_aggregates, search as pg_search
 from django.core.exceptions import EmptyResultSet
-from django.db import models
+from django.db import connection, models
 from django.db.models import F, Q, QuerySet, Value, aggregates, functions
 from django.utils.timezone import now
 from rest_framework import serializers, viewsets
@@ -32,9 +33,10 @@ from common.utils import (
     str_to_bool,
 )
 
+is_postgresql = connection.vendor == "postgresql"
+
 # URLs dans les serializers
 HYPERLINKED = settings.REST_FRAMEWORK.get("HYPERLINKED", False)
-
 
 # Mots clés réservés dans les URLs des APIs
 AGGREGATES = {
@@ -45,26 +47,31 @@ AGGREGATES = {
     "max": aggregates.Max,
     "stddev": aggregates.StdDev,
     "variance": aggregates.Variance,
-    "arrayagg": pg_aggregates.ArrayAgg,
-    "bitand": pg_aggregates.BitAnd,
-    "bitor": pg_aggregates.BitOr,
-    "bitxor": pg_aggregates.BitXor,
-    "booland": pg_aggregates.BoolAnd,
-    "boolor": pg_aggregates.BoolOr,
-    "jsonbagg": pg_aggregates.JSONBAgg,
-    "stringagg": pg_aggregates.StringAgg,
-    "corr": pg_aggregates.Corr,
-    "covarpop": pg_aggregates.CovarPop,
-    "regravgx": pg_aggregates.RegrAvgX,
-    "regravgy": pg_aggregates.RegrAvgY,
-    "regrcount": pg_aggregates.RegrCount,
-    "regrintercept": pg_aggregates.RegrIntercept,
-    "regrr2": pg_aggregates.RegrR2,
-    "regrslope": pg_aggregates.RegrSlope,
-    "regrsxx": pg_aggregates.RegrSXX,
-    "regrsxy": pg_aggregates.RegrSXY,
-    "regrsyy": pg_aggregates.RegrSYY,
 }
+if is_postgresql:
+    AGGREGATES.update(
+        {
+            "arrayagg": pg_aggregates.ArrayAgg,
+            "bitand": pg_aggregates.BitAnd,
+            "bitor": pg_aggregates.BitOr,
+            "bitxor": pg_aggregates.BitXor,
+            "booland": pg_aggregates.BoolAnd,
+            "boolor": pg_aggregates.BoolOr,
+            "jsonbagg": pg_aggregates.JSONBAgg,
+            "stringagg": pg_aggregates.StringAgg,
+            "corr": pg_aggregates.Corr,
+            "covarpop": pg_aggregates.CovarPop,
+            "regravgx": pg_aggregates.RegrAvgX,
+            "regravgy": pg_aggregates.RegrAvgY,
+            "regrcount": pg_aggregates.RegrCount,
+            "regrintercept": pg_aggregates.RegrIntercept,
+            "regrr2": pg_aggregates.RegrR2,
+            "regrslope": pg_aggregates.RegrSlope,
+            "regrsxx": pg_aggregates.RegrSXX,
+            "regrsxy": pg_aggregates.RegrSXY,
+            "regrsyy": pg_aggregates.RegrSYY,
+        }
+    )
 CASTS = {
     "bool": models.BooleanField(),
     "date": models.DateField(),
@@ -156,6 +163,26 @@ FUNCTIONS = {
     "trim": functions.Trim,
     "upper": functions.Upper,
 }
+if is_postgresql:
+    FUNCTIONS.update(
+        {
+            # Search
+            "search_vector": pg_search.SearchVector,
+            "search_rank": pg_search.SearchRank,
+            "search_headline": pg_search.SearchHeadline,
+            "trigram_similarity": pg_search.TrigramSimilarity,
+            "trigram_word_similarity": pg_search.TrigramWordSimilarity,
+            "trigram_distance": pg_search.TrigramDistance,
+            "trigram_word_distance": pg_search.TrigramWordDistance,
+        }
+    )
+    if django_version >= (4, 2):
+        FUNCTIONS.update(
+            {
+                "trigram_strict_word_similarity": pg_search.TrigramStrictWordSimilarity,
+                "trigram_strict_word_distance": pg_search.TrigramStrictWordDistance,
+            }
+        )
 RESERVED_QUERY_PARAMS = (
     [
         "filters",
@@ -177,6 +204,7 @@ RESERVED_QUERY_PARAMS = (
 MULTI_LOOKUPS = ["__in", "__range", "__hasany", "__hasall", "__has_keys", "__has_any_keys", "__overlap"]
 BOOL_LOOKUPS = ["__isnull", "__isempty"]
 JSON_LOOKUPS = ["__contains", "__contained_by", "__hasdict", "__indict"]
+SEARCH_FORMAT = re.compile(r"(?P<search_type>\w+)\((?P<query>.*)\)(?P<config>\w+)?")
 
 
 def convert_arg(function, arg_index, arg_raw):
@@ -206,20 +234,38 @@ def convert_arg(function, arg_index, arg_raw):
     return arg_value
 
 
-def parse_arg_value(value):
+def parse_arg_value(value, keep=False):
     """
-    Parse une valeur d'argument afin d'en extraire le champ de base de données potentiel
+    Parse une valeur contenant une référence de champ ou une fonction de recherche
     :param value: Valeur d'argument
+    :param keep: Garde la valeur d'entrée par défaut
     :return: Valeur ou champ de base de données
     """
-    if isinstance(value, str) and value.startswith("[") and value.endswith("]"):
-        value = value[1:-1].replace(".", "__")
-        value, cast, *_ = value.split(":") + [""]
-        value = F(value)
-        if output_field := CASTS.get(cast.lower()):
-            value = functions.Cast(value, output_field=output_field)
-        return value
-    return None
+    if isinstance(value, str):
+        if value.startswith("[") and value.endswith("]"):
+            value = value[1:-1].replace(".", "__")
+            value, cast, *_ = value.split(":") + [""]
+            value = F(value)
+            if output_field := CASTS.get(cast.lower()):
+                value = functions.Cast(value, output_field=output_field)
+            return value
+        if is_postgresql and (search := SEARCH_FORMAT.match(value)):
+            params = search.groupdict()
+            query = params.get("query")
+            config = parse_arg_value(params.get("config")) or params.get("config")
+            search_type = params.pop("search_type").lower()
+            search_type = {
+                "q": "plain",
+                "p": "phrase",
+                "r": "raw",
+                "w": "websearch",
+                "v": "vector",
+            }.get(search_type, search_type)
+            if search_type == "vector":
+                return pg_search.SearchVector(*query.split(), config=config)
+            else:
+                return pg_search.SearchQuery(query, config=config, search_type=search_type)
+    return value if keep else None
 
 
 def url_value(filter, value):
@@ -1359,29 +1405,31 @@ def parse_ordering(ordering):
 
 
 # Conversion des arguments des fonctions
+parse_param = partial(parse_arg_value, keep=True)
 FUNC_COMMON = {"output_field": CASTS.get}
 TRUNC_BASE_CONVERT = {
     1: str,
     2: CASTS.get,
     3: zoneinfo.ZoneInfo,
-    4: bool,
+    4: str_to_bool,
     "kind": str,
     "tzinfo": zoneinfo.ZoneInfo,
-    "is_dst": bool,
+    "is_dst": str_to_bool,
     **FUNC_COMMON,
 }
 TRUNC_CONVERT = {
     1: CASTS.get,
     2: zoneinfo.ZoneInfo,
-    3: bool,
+    3: str_to_bool,
     "tzinfo": zoneinfo.ZoneInfo,
-    "is_dst": bool,
+    "is_dst": str_to_bool,
     **FUNC_COMMON,
 }
 EXTRACT_CONVERT = {1: zoneinfo.ZoneInfo, "tzinfo": zoneinfo.ZoneInfo, **FUNC_COMMON}
 AGGREGATE_BASE = {"filter": parse_filters, "default": Value, **FUNC_COMMON}
-AGGREGATE_COMMON = {"distinct": bool, **AGGREGATE_BASE}
+AGGREGATE_COMMON = {"distinct": str_to_bool, **AGGREGATE_BASE}
 AGGREGATE_STATS = {1: str, "y": str, **AGGREGATE_BASE}
+TRIGRAM_COMMON = {1: str, 2: str}
 CONVERTS = {
     # Functions
     "cast": {1: CASTS.get, **FUNC_COMMON},
@@ -1431,8 +1479,8 @@ CONVERTS = {
     "avg": AGGREGATE_COMMON,
     "min": AGGREGATE_COMMON,
     "max": AGGREGATE_COMMON,
-    "stddev": {"sample": bool, **AGGREGATE_COMMON},
-    "variance": {"sample": bool, **AGGREGATE_COMMON},
+    "stddev": {"sample": str_to_bool, **AGGREGATE_COMMON},
+    "variance": {"sample": str_to_bool, **AGGREGATE_COMMON},
     "arrayagg": {"ordering": parse_ordering, **AGGREGATE_COMMON},
     "bitand": AGGREGATE_COMMON,
     "bitor": AGGREGATE_COMMON,
@@ -1442,7 +1490,7 @@ CONVERTS = {
     "jsonbagg": {"ordering": parse_ordering, **AGGREGATE_COMMON},
     "stringagg": {1: str, "delimiter": str, "ordering": parse_ordering, **AGGREGATE_COMMON},
     "corr": AGGREGATE_STATS,
-    "covarpop": {2: bool, "sample": bool, **AGGREGATE_STATS},
+    "covarpop": {2: str_to_bool, "sample": str_to_bool, **AGGREGATE_STATS},
     "regravgx": AGGREGATE_STATS,
     "regravgy": AGGREGATE_STATS,
     "regrcount": AGGREGATE_STATS,
@@ -1452,4 +1500,26 @@ CONVERTS = {
     "regrsxx": AGGREGATE_STATS,
     "regrsxy": AGGREGATE_STATS,
     "regrsyy": AGGREGATE_STATS,
+    # Search
+    "search_vector": {"config": parse_param, "weight": str},
+    "search_rank": {1: parse_param, 2: parse_param, "weights": tuple, "cover_density": str_to_bool},
+    "search_headline": {
+        1: str,
+        2: parse_param,
+        "config": str,
+        "start_sel": str,
+        "stop_sel": str,
+        "max_words": int,
+        "min_words": int,
+        "short_word": int,
+        "highlight_all": str_to_bool,
+        "max_fragments": int,
+        "fragment_delimiter": str,
+    },
+    "trigram_similarity": TRIGRAM_COMMON,
+    "trigram_word_similarity": TRIGRAM_COMMON,
+    "trigram_distance": TRIGRAM_COMMON,
+    "trigram_word_distance": TRIGRAM_COMMON,
+    "trigram_strict_word_similarity": TRIGRAM_COMMON,
+    "trigram_strict_word_distance": TRIGRAM_COMMON,
 }

@@ -965,10 +965,13 @@ def str_to_bool(value):
     :param value: valeur à analyser
     :return: le booleen correspondant ou None si aucune correspondance
     """
+    if isinstance(value, bool):
+        return value
+    if not value or not isinstance(value, str):
+        return bool(value)
     # Valeurs considérées comme vraies ou fausses (déclarées dans la fonction à cause du moteur i18n)
     TRUE_VALUES = {"true", "yes", "y", "1", _("vrai"), _("oui"), _("o"), _("v")}
     FALSE_VALUES = {"false", "no", "n", "0", _("faux"), _("non"), _("n"), _("f")}
-
     if value is True or value is False:
         return value
     if value is None or str(value).lower() not in TRUE_VALUES | FALSE_VALUES:
