@@ -225,7 +225,7 @@ def convert_arg(function, arg_index, arg_raw):
         arg_value = ast.literal_eval(arg_value)
     except (SyntaxError, ValueError):
         pass
-    if value := parse_arg_value(arg_value):
+    if value := parse_arg_value(arg_value, key=function):
         arg_value = value
     else:
         arg_value = converts.get(arg_name or arg_index, Value)(arg_value)
@@ -234,11 +234,12 @@ def convert_arg(function, arg_index, arg_raw):
     return arg_value
 
 
-def parse_arg_value(value, keep=False):
+def parse_arg_value(value, keep=False, key=None):
     """
     Parse une valeur contenant une référence de champ ou une fonction de recherche
     :param value: Valeur d'argument
     :param keep: Garde la valeur d'entrée par défaut
+    :param key: Nom du champ ou de la fonction appelante
     :return: Valeur ou champ de base de données
     """
     if isinstance(value, str):
@@ -249,10 +250,10 @@ def parse_arg_value(value, keep=False):
             if output_field := CASTS.get(cast.lower()):
                 value = functions.Cast(value, output_field=output_field)
             return value
-        if is_postgresql and (search := SEARCH_FORMAT.match(value)):
+        if is_postgresql and key != "filters" and (search := SEARCH_FORMAT.match(value)):
             params = search.groupdict()
             query = params.get("query")
-            config = parse_arg_value(params.get("config")) or params.get("config")
+            config = parse_arg_value(params.get("config"), key=key) or params.get("config")
             search_type = params.pop("search_type").lower()
             search_type = {
                 "q": "plain",
@@ -337,7 +338,7 @@ def parse_filters(filters):
             fields = {}
             for key, value in filter.items():
                 key = key.replace(".", "__")
-                value = parse_arg_value(value) or value
+                value = parse_arg_value(value, key=key) or value
                 fields[key] = url_value(key, value)
             elements.append(Q(**fields))
         elif isinstance(filter, str):
@@ -1011,7 +1012,7 @@ def api_paginate(
                 filters, excludes = {}, {}
                 for key, value in url_params.items():
                     key = key.replace(".", "__")
-                    value = parse_arg_value(value) or value
+                    value = parse_arg_value(value, key=key) or value
                     if key in reserved_query_params:
                         continue
                     if key.startswith("-"):

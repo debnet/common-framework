@@ -220,7 +220,7 @@ class CommonModelViewSet(viewsets.ModelViewSet):
                     filters, excludes = {}, {}
                     for key, value in url_params.items():
                         key = key.replace(".", "__")
-                        value = parse_arg_value(value) or value
+                        value = parse_arg_value(value, key=key) or value
                         if key in reserved_query_params:
                             continue
                         if key.startswith("-"):
