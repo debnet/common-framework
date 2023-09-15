@@ -1,5 +1,6 @@
 # coding: utf-8
 from django.db import models
+from django.urls import NoReverseMatch
 from rest_framework import serializers
 from rest_framework.fields import ChoiceField, Field, ReadOnlyField
 from rest_framework.relations import HyperlinkedIdentityField, HyperlinkedRelatedField
@@ -117,7 +118,7 @@ class CustomHyperlinkedField:
         kwargs = {self.lookup_url_kwarg: lookup_value}
         try:
             return self.reverse(view_name, kwargs=kwargs, request=request, format=format)
-        except Exception:
+        except NoReverseMatch:
             return None
 
 

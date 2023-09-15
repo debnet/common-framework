@@ -3,11 +3,12 @@ import ast
 import re
 import zoneinfo
 from datetime import timedelta
-from functools import wraps, partial
+from functools import partial, wraps
 from json import JSONDecodeError
 
 from django import VERSION as django_version
-from django.contrib.postgres import aggregates as pg_aggregates, search as pg_search
+from django.contrib.postgres import aggregates as pg_aggregates
+from django.contrib.postgres import search as pg_search
 from django.core.exceptions import EmptyResultSet
 from django.db import connection, models
 from django.db.models import F, Q, QuerySet, Value, aggregates, functions
@@ -15,7 +16,6 @@ from django.utils.timezone import now
 from rest_framework import serializers, viewsets
 from rest_framework.decorators import api_view
 from rest_framework.exceptions import NotFound, PermissionDenied, ValidationError
-from rest_framework.relations import PrimaryKeyRelatedField
 from rest_framework.response import Response
 
 from common.api.fields import ChoiceDisplayField, ReadOnlyObjectField
@@ -196,6 +196,7 @@ RESERVED_QUERY_PARAMS = (
         "simple",
         "meta",
         "cache",
+        "save_as",
         "timeout",
     ]
     + list(AGGREGATES.keys())
@@ -354,10 +355,13 @@ def parse_filters(filters):
     return q
 
 
-def to_model_serializer(model, **metadata):
+def to_model_serializer(model, read_only=False, display=True, related_ids=True, **metadata):
     """
     Décorateur permettant d'associer un modèle à une définition de serializer
     :param model: Modèle
+    :param read_only: Configure tous les champs en read-only
+    :param display: Ajoute la représentation humaine des champs ayant une liste de choix
+    :param related_ids: Ajoute les identifiants de clé étrangère en plus des liens
     :param metadata: Metadonnées du serializer
     :return: Serializer
     """
@@ -365,24 +369,29 @@ def to_model_serializer(model, **metadata):
     from common.fields import JsonField as ModelJsonField
 
     def wrapper(serializer):
+        read_only_fields = set(metadata.pop("read_only_fields", []))
         for field in model._meta.fields:
             if "fields" in metadata and field.name not in metadata.get("fields", []):
                 continue
             if "exclude" in metadata and field.name in metadata.get("exclude", []):
                 continue
+            if read_only:
+                read_only_fields.add(field.name)
 
             # Injection des identifiants de clés étrangères
-            if HYPERLINKED and field.related_model:
+            if HYPERLINKED and related_ids and field.related_model:
                 serializer._declared_fields[field.name + "_id"] = serializers.ReadOnlyField()
                 if "fields" in metadata and "exclude" not in metadata:
                     metadata["fields"] = list(metadata.get("fields", [])) + [field.name + "_id"]
 
             # Injection des valeurs humaines pour les champs ayant une liste de choix
-            if field.choices:
+            if display and field.choices:
                 serializer_field_name = "{}_display".format(field.name)
                 source_field_name = "get_{}".format(serializer_field_name)
                 serializer._declared_fields[serializer_field_name] = serializers.CharField(
-                    source=source_field_name, label=field.verbose_name or field.name, read_only=True
+                    source=source_field_name,
+                    label=field.verbose_name or field.name,
+                    read_only=True,
                 )
                 if "fields" in metadata and "exclude" not in metadata:
                     metadata["fields"] = list(metadata.get("fields", [])) + [serializer_field_name]
@@ -394,12 +403,14 @@ def to_model_serializer(model, **metadata):
                     help_text=field.help_text,
                     required=not field.blank,
                     allow_null=field.null,
-                    read_only=not field.editable,
+                    read_only=read_only or not field.editable,
                 )
 
         # Mise à jour des métadonnées du serializer
         if "fields" not in metadata and "exclude" not in metadata:
             metadata.update(fields="__all__")
+        if read_only_fields:
+            metadata.update(read_only_fields=tuple(read_only_fields))
         metadata.update(model=model)
         metadata.update(ref_name=model._meta.label)
         serializer.Meta = type("Meta", (), metadata)
@@ -453,7 +464,7 @@ def excludes_many_to_many_from_serializer(serializer):
         )
 
 
-def create_model_serializer(model, bases=None, attributes=None, hyperlinked=True, **metas):
+def create_model_serializer(model, bases=None, attributes=None, hyperlinked=HYPERLINKED, **metas):
     """
     Permet de créer le ModelSerializer pour le modèle fourni en paramètre
     :param model: Modèle à sérialiser
@@ -463,13 +474,13 @@ def create_model_serializer(model, bases=None, attributes=None, hyperlinked=True
     :param metas: Métadonnées du serializer
     :return: serializer
     """
-    from common.api.serializers import CommonModelSerializer
+    from common.api.serializers import BaseCommonModelSerializer, CommonHyperlinkedModelSerializer
 
     serializer = type(
-        "{}GenericSerializer".format(model._meta.object_name), (bases or (CommonModelSerializer,)), (attributes or {})
+        "{}GenericSerializer".format(model._meta.object_name),
+        (bases or (CommonHyperlinkedModelSerializer,) if hyperlinked else (BaseCommonModelSerializer,)),
+        (attributes or {}),
     )
-    if not hyperlinked:
-        serializer.serializer_related_field = PrimaryKeyRelatedField
     return to_model_serializer(model, **metas)(serializer)
 
 
@@ -505,6 +516,7 @@ def create_model_serializer_and_viewset(
     queryset=None,
     metas=None,
     exclude_related=None,
+    hyperlinked=HYPERLINKED,
     depth=1,
     height=1,
     _level=0,
@@ -529,6 +541,7 @@ def create_model_serializer_and_viewset(
     :param queryset: Surcharge du queryset dans le viewset
     :param metas: Metadonnées des serializers dépendants (dictionnaire organisé par modèle)
     :param exclude_related: Nom des relations inversées à exclure
+    :param hyperlinked: Génère des serializers avec des URLs
     :param depth: Profondeur de récupération des modèles dépendants
     :param height: Hauteur maximale de récupération des clés étrangères
     :param _level: Profondeur actuelle (utilisé par la récursivité)
@@ -540,10 +553,12 @@ def create_model_serializer_and_viewset(
     object_name = model._meta.object_name
 
     # Héritages du serializer et viewset
-    from common.api.serializers import CommonModelSerializer
+    from common.api.serializers import BaseCommonModelSerializer, CommonHyperlinkedModelSerializer
     from common.api.viewsets import CommonModelViewSet
 
-    _serializer_base = (serializer_base or {}).get(model, (CommonModelSerializer,))
+    _serializer_base = (serializer_base or {}).get(
+        model, (CommonHyperlinkedModelSerializer,) if hyperlinked else (BaseCommonModelSerializer,)
+    )
     _viewset_base = (viewset_base or {}).get(model, (CommonModelViewSet,))
 
     # Ajout du serializer des hyperlinks à la liste si ils sont activés
@@ -609,6 +624,7 @@ def create_model_serializer_and_viewset(
                 serializer_data=serializer_data,
                 viewset_data=viewset_data,
                 exclude_related=exclude_related,
+                hyperlinked=hyperlinked,
                 metas=metas,
                 depth=0,
                 height=height,
@@ -655,6 +671,7 @@ def create_model_serializer_and_viewset(
                 serializer_data=serializer_data,
                 viewset_data=viewset_data,
                 exclude_related=exclude_related,
+                hyperlinked=hyperlinked,
                 metas=metas,
                 depth=0,
                 height=0,
@@ -694,6 +711,7 @@ def create_model_serializer_and_viewset(
                 serializer_data=serializer_data,
                 viewset_data=viewset_data,
                 exclude_related=exclude_related,
+                hyperlinked=hyperlinked,
                 metas=metas,
                 depth=depth,
                 height=0,
@@ -739,6 +757,7 @@ def create_model_serializer_and_viewset(
                 serializer_data=serializer_data,
                 viewset_data=viewset_data,
                 exclude_related=exclude_related,
+                hyperlinked=hyperlinked,
                 metas=metas,
                 depth=depth,
                 height=0,
@@ -975,33 +994,44 @@ def api_paginate(
         if settings.ENABLE_API_PERMISSIONS:
             base_queryset_models = get_models_from_queryset(queryset)
 
+        base_url = request.build_absolute_uri(request.path)
+
         # Critères de recherche dans le cache
-        cache_key = url_params.pop("cache", None)
+        cache_key, save_as = url_params.pop("cache", None), url_params.pop("save_as", None)
         if cache_key:
             from django.core.cache import cache
 
             cache_params = cache.get(settings.API_CACHE_PREFIX + cache_key, {})
-            new_url_params = {}
-            new_url_params.update(**cache_params)
-            new_url_params.update(**url_params)
-            url_params = new_url_params
-            new_cache_params = {
-                key: value for key, value in url_params.items() if key not in default_reserved_query_params
-            }
-            if new_cache_params:
+            if cache_params:
+                new_url_params = {}
+                new_url_params.update(**cache_params)
+                new_url_params.update(**url_params)
+                url_params = new_url_params
+                raw_url, cache_url = "{}?".format(base_url), "{}?cache={}".format(base_url, cache_key)
+                for key, value in url_params.items():
+                    raw_url += "&{}={}".format(key, value)
+                options["raw_url"] = raw_url
+                options["cache_url"] = cache_url
+                options["cache_data"] = cache_params
+
+        # Enregistrement dans le cache
+        if save_as or options.get("cache_data"):
+            from django.core.cache import cache
+
+            cache_key = save_as or cache_key
+            cache_params = url_params if save_as else options.get("cache_data")
+            if cache_params:
                 cache_timeout = int(url_params.pop("timeout", settings.API_CACHE_TIMEOUT)) or None
-                cache.set(settings.API_CACHE_PREFIX + cache_key, new_cache_params, timeout=cache_timeout)
-                options["cache_expires"] = now() + timedelta(seconds=cache_timeout) if cache_timeout else "never"
-            cache_url = "{}?cache={}".format(request.build_absolute_uri(request.path), cache_key)
-            plain_url = cache_url
-            for key, value in url_params.items():
-                url_param = "&{}={}".format(key, value)
-                if key in default_reserved_query_params:
-                    cache_url += url_param
-                plain_url += url_param
-            options["cache_data"] = new_cache_params
-            options["cache_url"] = cache_url
-            options["raw_url"] = plain_url
+                cache_expires = now() + timedelta(seconds=cache_timeout) if cache_timeout else "never"
+                cache.set(settings.API_CACHE_PREFIX + cache_key, cache_params, timeout=cache_timeout)
+                if not options.get("cache_data"):
+                    raw_url, cache_url = "{}?".format(base_url), "{}?cache={}".format(base_url, cache_key)
+                    for key, value in url_params.items():
+                        raw_url += "&{}={}".format(key, value)
+                    options["raw_url"] = raw_url
+                    options["cache_url"] = cache_url
+                    options["cache_data"] = url_params
+                options["cache_expires"] = cache_expires
 
         # Erreurs silencieuses
         silent = str_to_bool(url_params.get("silent", ""))

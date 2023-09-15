@@ -19,6 +19,8 @@ from django.db.models.functions import Cast
 from django.db.models.signals import m2m_changed, post_init, post_save, pre_delete, pre_save
 from django.dispatch import receiver
 from django.forms.models import model_to_dict as django_model_to_dict
+from django.utils.encoding import force_str
+from django.utils.hashable import make_hashable
 from django.utils.text import camel_case_to_spaces
 from django.utils.timezone import now
 from django.utils.translation import gettext_lazy as _
@@ -399,6 +401,9 @@ class CommonModel(models.Model):
     _copy = {}
     _copy_m2m = None
     _content_type = None
+
+    # Cache des libellés pour les champs de choix
+    _choices_cache = {}
 
     def validate_unique(self, exclude=None):
         """
@@ -843,6 +848,14 @@ class CommonModel(models.Model):
     @classmethod
     def get_model_type(cls):
         return cls._model_type(cls)
+
+    def _get_FIELD_display(self, field):
+        choices_dict = self.__class__._choices_cache.get(field.attname)
+        if not choices_dict:
+            choices_dict = dict(make_hashable(field.flatchoices))
+            self.__class__._choices_cache[field.attname] = choices_dict
+        value = getattr(self, field.attname)
+        return force_str(choices_dict.get(value, value), strings_only=True)
 
     def has_webhook(self, status=None):
         """

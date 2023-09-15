@@ -18,11 +18,8 @@ from common.api.utils import create_model_serializer, to_model_serializer
 from common.settings import settings
 from common.utils import get_pk_field
 
-# URLs dans les serializers
-HYPERLINKED = settings.REST_FRAMEWORK.get("HYPERLINKED", False)
 
-
-class CommonModelSerializer(serializers.HyperlinkedModelSerializer if HYPERLINKED else serializers.ModelSerializer):
+class BaseCommonModelSerializer(serializers.ModelSerializer):
     """
     Définition commune de ModelSerializer pour l'API REST
     """
@@ -30,7 +27,7 @@ class CommonModelSerializer(serializers.HyperlinkedModelSerializer if HYPERLINKE
     metadata = serializers.SerializerMethodField(read_only=True)
 
     serializer_url_field = CustomHyperlinkedIdentityField
-    serializer_related_field = CustomHyperlinkedRelatedField if HYPERLINKED else PrimaryKeyRelatedField
+    serializer_related_field = PrimaryKeyRelatedField
 
     def get_metadata(self, instance):
         request = self.context.get("request", None)
@@ -43,22 +40,6 @@ class CommonModelSerializer(serializers.HyperlinkedModelSerializer if HYPERLINKE
                 else {meta.key: meta.value for meta in instance.metadata.all() if meta.valid}
             )
         return None
-
-    def __init__(self, *args, **kwargs):
-        """
-        Surcharge de l'initialisateur pour reprendre le nom de la clé primaire
-        """
-        if HYPERLINKED and self.Meta.model:
-            pk_field = get_pk_field(self.Meta.model)
-            pk_field_in_excludes = pk_field.name in getattr(self.Meta, "exclude", [])
-            pk_field_in_fields = any(f in getattr(self.Meta, "fields", [f]) for f in (pk_field.name, ALL_FIELDS))
-            if not pk_field_in_excludes and pk_field_in_fields and pk_field.name not in self._declared_fields:
-                field, options = self.build_standard_field(pk_field.name, pk_field)
-                if hasattr(field, "view_name") and pk_field.related_model:  # Arbitraire
-                    options["view_name"] = "{}-detail".format(pk_field.related_model._meta.model_name)
-                self._declared_fields[pk_field.name] = field(**options)
-                self._declared_fields.move_to_end(pk_field.name, last=False)
-        super().__init__(*args, **kwargs)
 
     def create(self, validated_data):
         """
@@ -113,6 +94,35 @@ class CommonModelSerializer(serializers.HyperlinkedModelSerializer if HYPERLINKE
         return model.objects.values().get(pk=data)
 
 
+class CommonHyperlinkedModelSerializer(BaseCommonModelSerializer, HyperlinkedModelSerializer):
+    """
+    Définition commune de ModelSerializer avec URLs pour l'API REST
+    """
+
+    serializer_related_field = CustomHyperlinkedRelatedField
+
+    def __init__(self, *args, **kwargs):
+        """
+        Surcharge de l'initialisateur pour reprendre le nom de la clé primaire
+        """
+        if self.Meta.model:
+            pk_field = get_pk_field(self.Meta.model)
+            pk_field_in_excludes = pk_field.name in getattr(self.Meta, "exclude", [])
+            pk_field_in_fields = any(f in getattr(self.Meta, "fields", [f]) for f in (pk_field.name, ALL_FIELDS))
+            if not pk_field_in_excludes and pk_field_in_fields and pk_field.name not in self._declared_fields:
+                field, options = self.build_standard_field(pk_field.name, pk_field)
+                if hasattr(field, "view_name") and pk_field.related_model:  # Arbitraire
+                    options["view_name"] = "{}-detail".format(pk_field.related_model._meta.model_name)
+                self._declared_fields[pk_field.name] = field(**options)
+                self._declared_fields.move_to_end(pk_field.name, last=False)
+        super().__init__(*args, **kwargs)
+
+
+# URLs dans les serializers
+HYPERLINKED = settings.REST_FRAMEWORK.get("HYPERLINKED", False)
+CommonModelSerializer = CommonHyperlinkedModelSerializer if HYPERLINKED else BaseCommonModelSerializer
+
+
 class BaseCustomSerializer(serializers.Serializer):
     """
     Serializer de base
@@ -130,7 +140,7 @@ class BaseCustomSerializer(serializers.Serializer):
         pass
 
 
-class CustomHyperlinkedModelSerializer(HyperlinkedModelSerializer):
+class CustomHyperlinkededModelSerializer(HyperlinkedModelSerializer):
     """
     Surcharge du serializer de modèle avec URLs
     """
@@ -139,7 +149,7 @@ class CustomHyperlinkedModelSerializer(HyperlinkedModelSerializer):
     serializer_related_field = CustomHyperlinkedRelatedField
 
 
-class GenericFormSerializer(CommonModelSerializer):
+class GenericFormSerializer(BaseCommonModelSerializer):
     """
     Serializer générique gérant le create des related_objects imbriqués pour la génération de formulaire de modèle
     """

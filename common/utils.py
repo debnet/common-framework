@@ -1335,7 +1335,7 @@ def is_namedtuple(obj):
     fields = getattr(_type, "_fields", None)
     if not isinstance(fields, tuple):
         return False
-    return all(type(i) == str for i in fields)
+    return all(isinstance(i, str) for i in fields)
 
 
 def to_dict(data):

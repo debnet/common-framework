@@ -1,5 +1,4 @@
 # coding: utf-8
-import csv
 from datetime import timedelta
 
 from django.core.exceptions import EmptyResultSet, FieldDoesNotExist
@@ -183,33 +182,44 @@ class CommonModelViewSet(viewsets.ModelViewSet):
             if settings.ENABLE_API_PERMISSIONS:
                 base_queryset_models = get_models_from_queryset(queryset)
 
+            base_url = self.request.build_absolute_uri(self.request.path)
+
             # Critères de recherche dans le cache
-            cache_key = url_params.pop("cache", None)
+            cache_key, save_as = url_params.pop("cache", None), url_params.pop("save_as", None)
             if cache_key:
                 from django.core.cache import cache
 
                 cache_params = cache.get(settings.API_CACHE_PREFIX + cache_key, {})
-                new_url_params = {}
-                new_url_params.update(**cache_params)
-                new_url_params.update(**url_params)
-                self.url_params = url_params = new_url_params
-                new_cache_params = {
-                    key: value for key, value in url_params.items() if key not in default_reserved_query_params
-                }
-                if new_cache_params:
+                if cache_params:
+                    new_url_params = {}
+                    new_url_params.update(**cache_params)
+                    new_url_params.update(**url_params)
+                    self.url_params = url_params = new_url_params
+                    raw_url, cache_url = "{}?".format(base_url), "{}?cache={}".format(base_url, cache_key)
+                    for key, value in url_params.items():
+                        raw_url += "&{}={}".format(key, value)
+                    options["raw_url"] = raw_url
+                    options["cache_url"] = cache_url
+                    options["cache_data"] = cache_params
+
+            # Enregistrement dans le cache
+            if save_as or options.get("cache_data"):
+                from django.core.cache import cache
+
+                cache_key = save_as or cache_key
+                cache_params = url_params if save_as else options.get("cache_data")
+                if cache_params:
                     cache_timeout = int(url_params.pop("timeout", settings.API_CACHE_TIMEOUT)) or None
-                    cache.set(settings.API_CACHE_PREFIX + cache_key, new_cache_params, timeout=cache_timeout)
-                    options["cache_expires"] = now() + timedelta(seconds=cache_timeout) if cache_timeout else "never"
-                cache_url = "{}?cache={}".format(self.request.build_absolute_uri(self.request.path), cache_key)
-                plain_url = cache_url
-                for key, value in url_params.items():
-                    url_param = "&{}={}".format(key, value)
-                    if key in default_reserved_query_params:
-                        cache_url += url_param
-                    plain_url += url_param
-                options["cache_data"] = new_cache_params
-                options["cache_url"] = cache_url
-                options["raw_url"] = plain_url
+                    cache_expires = now() + timedelta(seconds=cache_timeout) if cache_timeout else "never"
+                    cache.set(settings.API_CACHE_PREFIX + cache_key, cache_params, timeout=cache_timeout)
+                    if not options.get("cache_data"):
+                        raw_url, cache_url = "{}?".format(base_url), "{}?cache={}".format(base_url, cache_key)
+                        for key, value in url_params.items():
+                            raw_url += "&{}={}".format(key, value)
+                        options["raw_url"] = raw_url
+                        options["cache_url"] = cache_url
+                        options["cache_data"] = url_params
+                    options["cache_expires"] = cache_expires
 
             # Erreurs silencieuses
             silent = str_to_bool(url_params.get("silent", ""))
