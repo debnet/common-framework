@@ -354,10 +354,19 @@ class MetaData(models.Model):
         verbose_name = _("métadonnée")
         verbose_name_plural = _("métadonnées")
         unique_together = ("content_type", "object_id", "key")
-        index_together = (
-            ("content_type", "object_id"),
-            ("content_type", "object_id", "deletion_date"),
-            ("content_type", "object_id", "deletion_date", "key"),
+        indexes = (
+            models.Index(
+                fields=("content_type", "object_id"),
+                name="%(app_label)s_%(class)s_gfk_idx",
+            ),
+            models.Index(
+                fields=("content_type", "object_id", "deletion_date"),
+                name="%(app_label)s_%(class)s_gfk_idx2",
+            ),
+            models.Index(
+                fields=("content_type", "object_id", "deletion_date", "key"),
+                name="%(app_label)s_%(class)s_gfk_idx3",
+            ),
         )
 
 
@@ -1057,7 +1066,12 @@ class History(HistoryCommon):
     class Meta:
         verbose_name = _("historique")
         verbose_name_plural = _("historiques")
-        index_together = ("content_type", "object_id")
+        indexes = (
+            models.Index(
+                fields=("content_type", "object_id"),
+                name="%(app_label)s_%(class)s_gfk_idx",
+            ),
+        )
 
 
 class HistoryField(HistoryCommon):
@@ -1692,7 +1706,12 @@ class PerishableEntity(Entity):
 
     class Meta:
         abstract = True
-        index_together = ["start_date", "end_date"]
+        indexes = (
+            models.Index(
+                fields=("start_date", "end_date"),
+                name="%(app_label)s_%(class)s_perishable_idx",
+            ),
+        )
 
 
 class BaseWebhook(CommonModel):

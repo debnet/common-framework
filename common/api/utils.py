@@ -1166,13 +1166,17 @@ def api_paginate(
             order_by = url_params.get("order_by", "")
             if order_by:
                 for order in order_by.replace(".", "__").split(","):
-                    nulls_first, nulls_last = order.endswith("<"), order.endswith(">")
-                    order = order[:-1] if nulls_first or nulls_last else order
+                    order_by_kwargs = {}
+                    if order.endswith("<"):
+                        order_by_kwargs.update(nulls_first=True)
+                    elif order.endswith(">"):
+                        order_by_kwargs.update(nulls_last=True)
+                    order = order[:-1] if order_by_kwargs else order
                     if order.startswith("-"):
-                        orders.append(F(order[1:]).desc(nulls_first=nulls_first, nulls_last=nulls_last))
+                        orders.append(F(order[1:]).desc(**order_by_kwargs))
                     else:
                         order = order[1:] if order.startswith(" ") or order.startswith("+") else order
-                        orders.append(F(order).asc(nulls_first=nulls_first, nulls_last=nulls_last))
+                        orders.append(F(order).asc(**order_by_kwargs))
                 temp_queryset = queryset.order_by(*orders)
                 str(temp_queryset.query)  # Force SQL evaluation to retrieve exception
                 queryset = temp_queryset
@@ -1442,18 +1446,14 @@ TRUNC_BASE_CONVERT = {
     1: str,
     2: CASTS.get,
     3: zoneinfo.ZoneInfo,
-    4: str_to_bool,
     "kind": str,
     "tzinfo": zoneinfo.ZoneInfo,
-    "is_dst": str_to_bool,
     **FUNC_COMMON,
 }
 TRUNC_CONVERT = {
     1: CASTS.get,
     2: zoneinfo.ZoneInfo,
-    3: str_to_bool,
     "tzinfo": zoneinfo.ZoneInfo,
-    "is_dst": str_to_bool,
     **FUNC_COMMON,
 }
 EXTRACT_CONVERT = {1: zoneinfo.ZoneInfo, "tzinfo": zoneinfo.ZoneInfo, **FUNC_COMMON}
