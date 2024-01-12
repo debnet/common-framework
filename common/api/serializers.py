@@ -1,5 +1,6 @@
 # coding: utf-8
 from operator import itemgetter
+from typing import Dict, Union
 
 from django.contrib.auth import get_user_model
 from django.contrib.auth.models import Group, Permission
@@ -29,7 +30,7 @@ class BaseCommonModelSerializer(serializers.ModelSerializer):
     serializer_url_field = CustomHyperlinkedIdentityField
     serializer_related_field = PrimaryKeyRelatedField
 
-    def get_metadata(self, instance):
+    def get_metadata(self, instance) -> Union[Dict, None]:
         request = self.context.get("request", None)
         meta = request and getattr(request, "query_params", None) and request.query_params.get("meta", False)
         if meta and hasattr(instance, "metadata"):
