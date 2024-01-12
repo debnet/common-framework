@@ -14,9 +14,11 @@ class JsonField(JSONField):
     """
 
     def __init__(self, *args, **kwargs):
+        if "encoder" not in kwargs:
+            kwargs["encoder"] = JsonEncoder
+        if "decoder" not in kwargs:
+            kwargs["decoder"] = JsonDecoder
         super().__init__(*args, **kwargs)
-        self.encoder = kwargs.pop("encoder", JsonEncoder)
-        self.encoder = kwargs.pop("decoder", JsonDecoder)
 
 
 class QuerySetChoiceField(ChoiceField):
