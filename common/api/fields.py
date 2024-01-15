@@ -1,24 +1,49 @@
 # coding: utf-8
+from django import VERSION as django_version
 from django.db import models
 from django.urls import NoReverseMatch
 from rest_framework import serializers
-from rest_framework.fields import ChoiceField, ReadOnlyField, JSONField
+from rest_framework.fields import ChoiceField, Field, ReadOnlyField
 from rest_framework.relations import HyperlinkedIdentityField, HyperlinkedRelatedField
 
-from common.utils import get_pk_field, recursive_get_urls, JsonDecoder, JsonEncoder
+from common.settings import settings
+from common.utils import get_pk_field, json_encode, recursive_get_urls, JsonDecoder, JsonEncoder
 
 
-class JsonField(JSONField):
-    """
-    JsonField representation for Django REST Framework
-    """
+# Substitue le champ JSON du common par la version générique introduite par Django 3.1
+if django_version < (3, 1) or settings.COMMON_JSONFIELD:
 
-    def __init__(self, *args, **kwargs):
-        if "encoder" not in kwargs:
-            kwargs["encoder"] = JsonEncoder
-        if "decoder" not in kwargs:
-            kwargs["decoder"] = JsonDecoder
-        super().__init__(*args, **kwargs)
+    class JsonField(Field):
+        """
+        JsonField representation for Django REST Framework
+        """
+
+        def to_native(self, obj):
+            return obj
+
+        def from_native(self, data):
+            return json_encode(data)
+
+        def to_internal_value(self, data):
+            return data
+
+        def to_representation(self, value):
+            return value
+
+else:
+    from rest_framework.fields import JSONField
+
+    class JsonField(JSONField):
+        """
+        JsonField representation for Django REST Framework
+        """
+
+        def __init__(self, *args, **kwargs):
+            if "encoder" not in kwargs:
+                kwargs["encoder"] = JsonEncoder
+            if "decoder" not in kwargs:
+                kwargs["decoder"] = JsonDecoder
+            super().__init__(*args, **kwargs)
 
 
 class QuerySetChoiceField(ChoiceField):
