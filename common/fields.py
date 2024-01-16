@@ -675,12 +675,13 @@ class JsonEmpty(Lookup):
     def as_sql(self, compiler, connection):
         lhs, lhs_params = self.process_lhs(compiler, connection)
         rhs, rhs_params = self.process_rhs(compiler, connection)
+        lhs_field = lhs % tuple(repr(lhs_param) for lhs_param in lhs_params)
         value, *_ = rhs_params
         rhs = ",".join(["%s"] * len(self.empty_values))
         cast = "::text" if is_postgresql(connection) else ""
         if str_to_bool(value):
-            return "(%s IS NULL OR %s%s IN (%s))" % (lhs, lhs, cast, rhs), self.empty_values
-        return "(%s IS NOT NULL AND %s%s NOT IN (%s))" % (lhs, lhs, cast, rhs), self.empty_values
+            return "(%s IS NULL OR %s%s IN (%s))" % (lhs_field, lhs_field, cast, rhs), self.empty_values
+        return "(%s IS NOT NULL AND %s%s NOT IN (%s))" % (lhs_field, lhs_field, cast, rhs), self.empty_values
 
 
 # Bakery monkey-patch for CustomDecimalField and JsonField
