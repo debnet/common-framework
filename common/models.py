@@ -423,16 +423,21 @@ class CommonModel(models.Model):
         for unique_together in model._meta.unique_together:
             queryset = model.objects.exclude(pk=self.pk) if self.pk else model.objects.all()
             fields = []
-            has_null = False
+            has_null, has_unsaved_model = False, False
             for field_name in unique_together:
                 fields.append(field_name)
                 value = getattr(self, field_name, None)
+                if isinstance(value, models.Model) and not value.pk:
+                    has_unsaved_model = True
+                    break
                 field = model._meta.get_field(field_name)
                 if field.null and value is None:
                     queryset = queryset.filter(**{field_name + "__isnull": True})
                     has_null = True
                 else:
                     queryset = queryset.filter(**{field_name: value})
+            if has_unsaved_model:
+                continue
             if has_null and queryset.count() > 0:
                 raise ValidationError(self.unique_error_message(model, fields))
         super().validate_unique(exclude)
