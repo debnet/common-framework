@@ -1,4 +1,4 @@
-Django==5.0.1
+Django==5.0.2
 Pillow==10.2.0
 PyYAML==6.0.1
 celery==5.3.6
@@ -6,9 +6,9 @@ djangorestframework==3.14.0
 flake8==7.0.0
 model-bakery==1.17.0
 python-dateutil==2.8.2
-pip==23.3.2
-psycopg[c]==3.1.17
+pip==24.0
+psycopg[c]==3.1.18
 requests==2.31.0
-setuptools==69.0.3
+setuptools==69.1.0
 uritemplate==4.1.1
 wheel==0.42.0

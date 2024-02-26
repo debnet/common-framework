@@ -1954,3 +1954,29 @@ def hash_file(path, func=hashlib.sha1, chunks=None):
         else:
             digest.update(file.read())
     return digest.hexdigest()
+
+
+def web_to_raw_tsquery(text):
+    """
+    Convert extended websearch tsquery to raw tsquery
+    :param text: Webseearch tsquery
+    :return: Raw tsquery
+    """
+    text = re.sub(r"\bOR\b", "|", text)
+    text = re.sub(r"\bAND\b", "&", text)
+    text = re.sub(r"\B-\b", "!", text)
+    text = re.sub(r"\b\+\b", "<->", text)
+    patterns = chain(
+        re.findall(r"(([-!]?)\'([^\']+)\')", text),
+        re.findall(r"(([-!]?)\"([^\"]+)\")", text),
+    )
+    for outer, neg, inner in patterns:
+        neg = "!" if neg else ""
+        if " " not in inner:
+            text = text.replace(outer, f"{neg}{inner}")
+            continue
+        value = " <-> ".join(inner.split())
+        text = text.replace(outer, f"{neg}({value})")
+    if not any(op in text for op in ("&", "|", "<->")):
+        return "&".join(text.split())
+    return text

@@ -31,6 +31,7 @@ from common.utils import (
     parsedate,
     prefetch_metadata,
     str_to_bool,
+    web_to_raw_tsquery,
 )
 
 is_postgresql = connection.vendor == "postgresql"
@@ -205,7 +206,7 @@ RESERVED_QUERY_PARAMS = (
 MULTI_LOOKUPS = ["__in", "__range", "__hasany", "__hasall", "__has_keys", "__has_any_keys", "__overlap"]
 BOOL_LOOKUPS = ["__isnull", "__isempty"]
 JSON_LOOKUPS = ["__contains", "__contained_by", "__hasdict", "__indict"]
-SEARCH_FORMAT = re.compile(r"(?P<search_type>\w+)\((?P<query>.*)\)(?P<config>\w+)?")
+SEARCH_FORMAT = re.compile(r"(?P<search_type>\w+)?\((?P<query>.*)\)(?P<config>\[?[\w.]+]?)?")
 
 
 def convert_arg(function, arg_index, arg_raw):
@@ -255,18 +256,20 @@ def parse_arg_value(value, keep=False, key=None):
             params = search.groupdict()
             query = params.get("query")
             config = parse_arg_value(params.get("config"), key=key) or params.get("config")
-            search_type = params.pop("search_type").lower()
+            search_type = (params.pop("search_type") or "custom").lower()
             search_type = {
-                "q": "plain",
+                "c": "custom",
                 "p": "phrase",
+                "q": "plain",
                 "r": "raw",
-                "w": "websearch",
                 "v": "vector",
+                "w": "websearch",
             }.get(search_type, search_type)
             if search_type == "vector":
                 return pg_search.SearchVector(*query.split(), config=config)
-            else:
-                return pg_search.SearchQuery(query, config=config, search_type=search_type)
+            elif search_type == "custom":
+                query, search_type = web_to_raw_tsquery(query), "raw"
+            return pg_search.SearchQuery(query, config=config, search_type=search_type)
     return value if keep else None
 
 
