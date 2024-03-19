@@ -1,4 +1,5 @@
 # coding: utf-8
+from collections import OrderedDict
 from operator import itemgetter
 from typing import Dict, Union
 
@@ -114,8 +115,13 @@ class CommonHyperlinkedModelSerializer(BaseCommonModelSerializer, HyperlinkedMod
                 field, options = self.build_standard_field(pk_field.name, pk_field)
                 if hasattr(field, "view_name") and pk_field.related_model:  # Arbitraire
                     options["view_name"] = "{}-detail".format(pk_field.related_model._meta.model_name)
-                self._declared_fields[pk_field.name] = field(**options)
-                self._declared_fields.move_to_end(pk_field.name, last=False)
+                declared_fields = OrderedDict(self._declared_fields)
+                declared_fields[pk_field.name] = field(**options)
+                declared_fields.move_to_end(pk_field.name, last=False)
+                if isinstance(self._declared_fields, OrderedDict):
+                    self._declared_fields = declared_fields
+                else:
+                    self._declared_fields = dict(declared_fields)
         super().__init__(*args, **kwargs)
 
 
