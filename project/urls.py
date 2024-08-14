@@ -11,7 +11,4 @@ urlpatterns = [
     # Common Framework
     path(r"common/", include("common.urls", namespace="common")),
     path(r"api/common/", include("common.api.urls", namespace="common-api")),
-    # Test App
-    path(r"test/", include("testapp.urls", namespace="testapp")),
-    path(r"api/test/", include("testapp.api", namespace="testapp-api")),
 ]

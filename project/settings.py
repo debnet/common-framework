@@ -28,7 +28,6 @@ INSTALLED_APPS = [
     "rest_framework.authtoken",
     "pytz",
     "common",
-    "testapp",
 ]
 
 MIDDLEWARE = [

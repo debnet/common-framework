@@ -793,9 +793,7 @@ def create_admin(*args, baseclass=None, **kwargs):
         admin_superclass = baseclass or (
             PerishableEntityAdmin
             if issubclass(model, PerishableEntity)
-            else EntityAdmin
-            if issubclass(model, Entity)
-            else CommonAdmin
+            else EntityAdmin if issubclass(model, Entity) else CommonAdmin
         )
         fk_fields = tuple(
             field for field in model._meta.get_fields() if isinstance(field, (models.ForeignKey, models.OneToOneField))

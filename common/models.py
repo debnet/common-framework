@@ -2237,22 +2237,28 @@ def notify_changes(instance, status, status_m2m=None):
             "status_m2m": status_m2m,
             "status_m2m_display": str(dict(HistoryField.LOG_STATUS_M2M).get(status_m2m, "")) or None,
         },
-        "changes": {
-            "data": {
-                "previous": diff_data_prev,
-                "current": diff_data_next,
+        "changes": (
+            {
+                "data": (
+                    {
+                        "previous": diff_data_prev,
+                        "current": diff_data_next,
+                    }
+                    if has_diff_data
+                    else None
+                ),
+                "m2m": (
+                    {
+                        "previous": diff_m2m_prev,
+                        "current": diff_m2m_next,
+                    }
+                    if has_diff_m2m
+                    else None
+                ),
             }
-            if has_diff_data
-            else None,
-            "m2m": {
-                "previous": diff_m2m_prev,
-                "current": diff_m2m_next,
-            }
-            if has_diff_m2m
-            else None,
-        }
-        if (has_diff_data or has_diff_m2m)
-        else None,
+            if (has_diff_data or has_diff_m2m)
+            else None
+        ),
         "data": get_data(status=status, status_m2m=status_m2m),
     }
 
