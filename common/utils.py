@@ -1239,7 +1239,7 @@ class Null(object):
     __nonzero__ = __bool__ = lambda self: False
 
     # Null se retourne lui-même en toutes circonstances
-    nullify = lambda self, *args, **kwargs: self
+    nullify = lambda self, *args, **kwargs: self  # noqa
 
     __call__ = nullify
     __getattr__ = __setattr__ = __delattr__ = nullify
@@ -1330,7 +1330,7 @@ def is_namedtuple(obj):
     """
     _type = type(obj)
     bases = _type.__bases__
-    if len(bases) != 1 or bases[0] != tuple:
+    if len(bases) != 1 or bases[0] is not tuple:
         return False
     fields = getattr(_type, "_fields", None)
     if not isinstance(fields, tuple):
@@ -1368,7 +1368,7 @@ def file_is_text(file):
     :return: Vrai si le fichier est au format texte, faux s'il est au format binaire
     """
     textchars = bytearray([7, 8, 9, 10, 12, 13, 27]) + bytearray(range(0x20, 0x100))
-    is_plaintext = lambda _bytes: not bool(_bytes.translate(None, textchars))
+    is_plaintext = lambda _bytes: not bool(_bytes.translate(None, textchars))  # noqa
     with open(file, "rb") as f:
         return is_plaintext(f.read(1024))
 

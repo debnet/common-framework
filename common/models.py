@@ -59,7 +59,7 @@ logger = logging.getLogger(__name__)
 app = get_current_app()
 
 # Vérifie si une valeur est considérée comme "vide" ou non
-is_empty = lambda value: value is None or value == "" or value == [] or value == {}
+is_empty = lambda value: value is None or value == "" or value == [] or value == {}  # noqa
 
 
 def to_boolean(label_field, sort_order=None):
@@ -1532,12 +1532,12 @@ class Entity(CommonModel):
                     continue
                 if isinstance(field, models.ForeignKey):
                     suffix = "_uid"
-                    fget = lambda self, field_name=field.name: self._get_uid(field_name)
-                    fset = lambda self, value, field_name=field.name: self._set_uid(field_name, value)
+                    fget = lambda self, field_name=field.name: self._get_uid(field_name)  # noqa
+                    fset = lambda self, value, field_name=field.name: self._set_uid(field_name, value)  # noqa
                 elif isinstance(field, models.ManyToManyField):
                     suffix = "_uids"
-                    fget = lambda self, field_name=field.name: self._get_uids(field_name)
-                    fset = lambda self, values, field_name=field.name: self._set_uids(field_name, values)
+                    fget = lambda self, field_name=field.name: self._get_uids(field_name)  # noqa
+                    fset = lambda self, values, field_name=field.name: self._set_uids(field_name, values)  # noqa
                 else:
                     continue
                 setattr(self.__class__, field.name + suffix, property(fget, fset))

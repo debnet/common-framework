@@ -12,10 +12,10 @@ from django.utils.translation import gettext_lazy as _
 from common.settings import settings
 from common.utils import base64_decode, base64_encode, json_decode, json_encode, str_to_bool
 
-is_postgresql = lambda connection: connection.vendor == "postgresql"
-is_oracle = lambda connection: connection.vendor == "oracle"
-is_mysql = lambda connection: connection.vendor == "mysql"
-is_sqlite = lambda connection: connection.vendor == "sqlite"
+is_postgresql = lambda connection: connection.vendor == "postgresql"  # noqa
+is_oracle = lambda connection: connection.vendor == "oracle"  # noqa
+is_mysql = lambda connection: connection.vendor == "mysql"  # noqa
+is_sqlite = lambda connection: connection.vendor == "sqlite"  # noqa
 
 
 class CustomDecimalField(models.DecimalField):
