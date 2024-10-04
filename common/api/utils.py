@@ -1042,27 +1042,21 @@ def api_paginate(
         # Filtres (dans une fonction pour être appelé par les aggregations sans group_by)
         def do_filter(queryset):
             try:
-                filters, excludes = {}, {}
+                filters = []
                 for key, value in url_params.items():
-                    key = key.replace(".", "__")
-                    value = parse_arg_value(value, key=key) or value
                     if key in reserved_query_params:
                         continue
-                    if key.startswith("-"):
-                        key = key[1:].strip()
-                        excludes[key] = url_value(key, value)
-                    else:
-                        key = (key[1:] if key.startswith(" ") or key.startswith("+") else key).strip()
-                        filters[key] = url_value(key, value)
-                if filters:
-                    queryset = queryset.filter(**filters)
-                if excludes:
-                    queryset = queryset.exclude(**excludes)
+                    is_exclude = key.startswith("-")
+                    key = key.strip().strip("-").strip("+").strip("@").replace(".", "__")
+                    value = url_value(key, parse_arg_value(value, key=key) or value)
+                    filters.append(~Q(**{key: value}) if is_exclude else Q(**{key: value}))
+                for filter in filters:
+                    queryset = queryset.filter(filter)
                 # Filtres génériques
                 others = url_params.get("filters", "")
                 if others:
                     queryset = queryset.filter(parse_filters(others))
-                if filters or excludes or others:
+                if filters or others:
                     options["filters"] = True
             except Exception as error:
                 if not silent:
