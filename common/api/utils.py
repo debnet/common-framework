@@ -1163,17 +1163,19 @@ def api_paginate(
             order_by = url_params.get("order_by", "")
             if order_by:
                 for order in order_by.replace(".", "__").split(","):
+                    if order == "?":
+                        orders.append(order)
+                        continue
                     order_by_kwargs = {}
                     if order.endswith("<"):
                         order_by_kwargs.update(nulls_first=True)
                     elif order.endswith(">"):
                         order_by_kwargs.update(nulls_last=True)
-                    order = order[:-1] if order_by_kwargs else order
+                    order = order.removesuffix("<").removesuffix(">")
                     if order.startswith("-"):
-                        orders.append(F(order[1:]).desc(**order_by_kwargs))
+                        orders.append(F(order.strip().removeprefix("-")).desc(**order_by_kwargs))
                     else:
-                        order = order[1:] if order.startswith(" ") or order.startswith("+") else order
-                        orders.append(F(order).asc(**order_by_kwargs))
+                        orders.append(F(order.strip().removeprefix("+")).asc(**order_by_kwargs))
                 temp_queryset = queryset.order_by(*orders)
                 str(temp_queryset.query)  # Force SQL evaluation to retrieve exception
                 queryset = temp_queryset

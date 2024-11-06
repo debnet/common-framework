@@ -7,8 +7,7 @@ from rest_framework.fields import ChoiceField, Field, ReadOnlyField
 from rest_framework.relations import HyperlinkedIdentityField, HyperlinkedRelatedField
 
 from common.settings import settings
-from common.utils import get_pk_field, json_encode, recursive_get_urls, JsonDecoder, JsonEncoder
-
+from common.utils import JsonDecoder, JsonEncoder, get_pk_field, json_encode, recursive_get_urls
 
 # Substitue le champ JSON du common par la version générique introduite par Django 3.1
 if django_version < (3, 1) or settings.COMMON_JSONFIELD:

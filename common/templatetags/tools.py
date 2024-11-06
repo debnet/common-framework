@@ -8,7 +8,7 @@ from operator import attrgetter, itemgetter
 from urllib import parse
 
 from django.conf import settings
-from django.db.models import functions
+from django.db.models import Q, functions
 from django.http import QueryDict
 from django.template import Context, Library, Node, Template
 from django.utils.formats import localize
@@ -116,29 +116,21 @@ def tag_query(context, queryset, save="", **kwargs):
 
     # Filtres (dans une fonction pour être appelé par les aggregations sans group_by)
     def do_filter(queryset):
-        filters = {}
-        excludes = {}
+        from common.api.utils import parse_arg_value, parse_filters
+
+        filters = []
         for key, value in kwargs.items():
             if key in reserved_keywords:
                 continue
-            key = key.replace(".", "__")
-            if isinstance(value, str) and value.startswith("[") and value.endswith("]"):
-                value = F(value[1:-1].replace(".", "__"))
-            if key.startswith("_"):
-                key = key[1:].strip()
-                excludes[key] = url_value(key, value)
-            else:
-                key = key.strip()
-                filters[key] = url_value(key, value)
-        if filters:
-            queryset = queryset.filter(**filters)
-        if excludes:
-            queryset = queryset.exclude(**excludes)
+            is_exclude = key.startswith("-")
+            key = key.strip().strip("-").strip("+").strip("@").replace(".", "__")
+            value = url_value(key, parse_arg_value(value, key=key) or value)
+            filters.append(~Q(**{key: value}) if is_exclude else Q(**{key: value}))
+        for filter in filters:
+            queryset = queryset.filter(filter)
         # Filtres génériques
-        others = kwargs.get("filters", None)
+        others = kwargs.get("filters", "")
         if others:
-            from common.api.utils import parse_filters
-
             queryset = queryset.filter(parse_filters(others))
         return queryset
 
@@ -250,9 +242,24 @@ def tag_query(context, queryset, save="", **kwargs):
     # Tris
     order_by = get("order_by")
     if order_by:
-        _queryset = queryset.order_by(*order_by.split(","))
-        str(_queryset.query)  # Force SQL evaluation to retrieve exception
-        queryset = _queryset
+        orders = []
+        for order in order_by.replace(".", "__").split(","):
+            if order == "?":
+                orders.append(order)
+                continue
+            order_by_kwargs = {}
+            if order.endswith("<"):
+                order_by_kwargs.update(nulls_first=True)
+            elif order.endswith(">"):
+                order_by_kwargs.update(nulls_last=True)
+            order = order.removesuffix("<").removesuffix(">")
+            if order.startswith("-"):
+                orders.append(F(order.strip().removeprefix("-")).desc(**order_by_kwargs))
+            else:
+                orders.append(F(order.strip().removeprefix("+")).asc(**order_by_kwargs))
+        temp_queryset = queryset.order_by(*orders)
+        str(temp_queryset.query)  # Force SQL evaluation to retrieve exception
+        queryset = temp_queryset
 
     # Distinct
     distinct = get("distinct")
