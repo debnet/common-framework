@@ -7,7 +7,7 @@ name = "common-framework"
 dynamic = ["version"]
 description = "All-in-one framework for Django and Django REST Framework"
 readme = "README.md"
-license = ""
+license = { text = "MIT License" }
 authors = [
     { name = "Marc Debureaux", email = "marc@debureaux.fr" },
 ]
