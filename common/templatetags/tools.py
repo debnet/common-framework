@@ -286,8 +286,9 @@ class PermNode(Node):
     Classe utilitaire pour le template tag des permissions
     """
 
-    def __init__(self, nodelist, *perms, obj=None, any=False):
+    def __init__(self, nodelist, elselist=None, *perms, obj=None, any=False):
         self.nodelist = nodelist
+        self.elselist = elselist
         self.perms = perms
         self.obj = obj
         self.any = any
@@ -303,7 +304,7 @@ class PermNode(Node):
         )
         if valid:
             return self.nodelist.render(context)
-        return ""
+        return self.elselist.render(context) if self.elselist else ""
 
 
 @register.tag(name="perm")
@@ -311,10 +312,13 @@ def tag_perm(parser, token):
     """
     Permet d'afficher ou non un contenu en fonction des permissions de l'utilisateur connecté (toutes)
     """
-    nodelist = parser.parse(("endperm",))
-    parser.delete_first_token()
+    nodelist, elselist = parser.parse(("else", "endperm",)), None
+    next_token = parser.next_token()
+    if next_token.contents == "else":
+        elselist = parser.parse(("endperm",))
+        parser.delete_first_token()
     args = [ast.literal_eval(bit) for bit in token.split_contents()[1:]]
-    return PermNode(nodelist, *args)
+    return PermNode(nodelist, elselist, *args)
 
 
 @register.tag(name="anyperm")
@@ -322,10 +326,13 @@ def tag_anyperm(parser, token):
     """
     Permet d'afficher ou non un contenu en fonction des permissions de l'utilisateur connecté (au moins une)
     """
-    nodelist = parser.parse(("endanyperm",))
-    parser.delete_first_token()
+    nodelist, elselist = parser.parse(("else", "endanyperm",)), None
+    next_token = parser.next_token()
+    if next_token.contents == "else":
+        elselist = parser.parse(("endanyperm",))
+        parser.delete_first_token()
     args = [ast.literal_eval(bit) for bit in token.split_contents()[1:]]
-    return PermNode(nodelist, *args, any=True)
+    return PermNode(nodelist, elselist, *args, any=True)
 
 
 @register.filter(name="conf")

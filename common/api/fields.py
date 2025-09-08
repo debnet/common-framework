@@ -3,8 +3,9 @@ from django import VERSION as django_version
 from django.db import models
 from django.urls import NoReverseMatch
 from rest_framework import serializers
+from rest_framework.exceptions import ValidationError
 from rest_framework.fields import ChoiceField, Field, ReadOnlyField
-from rest_framework.relations import HyperlinkedIdentityField, HyperlinkedRelatedField
+from rest_framework.relations import HyperlinkedIdentityField, HyperlinkedRelatedField, PrimaryKeyRelatedField
 
 from common.settings import settings
 from common.utils import JsonDecoder, JsonEncoder, get_pk_field, json_encode, recursive_get_urls
@@ -109,8 +110,18 @@ class CustomHyperlinkedField:
     Surcharge des méthodes pour les champs identifiants par URL
     """
 
-    urls_for_model = {}
+    views_for_model = {}
     pk_field = None
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        # Tente de récupérer l'URL dans les APIs qui correspondent exactement au modèle ciblé
+        if self.view_name and self.queryset:
+            model = self.queryset.model
+            views = self.views_for_model.setdefault(model, list(recursive_get_urls(model=model)))
+            for view_name, url in views:
+                if view_name.endswith(self.view_name):
+                    self.view_name = view_name
 
     def get_name(self, obj):
         # Retourne juste la clé primaire pour éviter de multiplier les requêtes
@@ -128,10 +139,10 @@ class CustomHyperlinkedField:
             model = getattr(getattr(self, "queryset", None), "model", None) or type(obj)
 
         # Tente de récupérer l'URL dans les APIs qui correspondent exactement au modèle ciblé
-        urls = self.urls_for_model[model] = self.urls_for_model.get(model) or list(recursive_get_urls(model=model))
-        for urlname, url in urls:
-            if urlname.endswith(view_name):
-                view_name = urlname
+        views = self.views_for_model.setdefault(model, list(recursive_get_urls(model=model)))
+        for try_view_name, url in views:
+            if try_view_name.endswith(view_name):
+                view_name = try_view_name
 
         lookup_value = getattr(obj, self.lookup_field)
         kwargs = {self.lookup_url_kwarg: lookup_value}
@@ -139,6 +150,12 @@ class CustomHyperlinkedField:
             return self.reverse(view_name, kwargs=kwargs, request=request, format=format)
         except NoReverseMatch:
             return None
+
+    def to_internal_value(self, value):
+        try:
+            return super().to_internal_value(value)
+        except ValidationError:
+            return PrimaryKeyRelatedField.to_internal_value(self, value)
 
 
 class CustomHyperlinkedIdentityField(CustomHyperlinkedField, HyperlinkedIdentityField):

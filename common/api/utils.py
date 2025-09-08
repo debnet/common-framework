@@ -481,7 +481,7 @@ def create_model_serializer(model, bases=None, attributes=None, hyperlinked=HYPE
 
     serializer = type(
         "{}GenericSerializer".format(model._meta.object_name),
-        (bases or (CommonHyperlinkedModelSerializer,) if hyperlinked else (BaseCommonModelSerializer,)),
+        (bases or ((CommonHyperlinkedModelSerializer,) if hyperlinked else (BaseCommonModelSerializer,))),
         (attributes or {}),
     )
     return to_model_serializer(model, **metas)(serializer)
