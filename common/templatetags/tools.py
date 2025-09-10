@@ -312,7 +312,7 @@ def tag_perm(parser, token):
     """
     Permet d'afficher ou non un contenu en fonction des permissions de l'utilisateur connecté (toutes)
     """
-    nodelist, elselist = parser.parse(("else", "endperm",)), None
+    nodelist, elselist = parser.parse(("else", "endperm")), None
     next_token = parser.next_token()
     if next_token.contents == "else":
         elselist = parser.parse(("endperm",))
@@ -326,7 +326,7 @@ def tag_anyperm(parser, token):
     """
     Permet d'afficher ou non un contenu en fonction des permissions de l'utilisateur connecté (au moins une)
     """
-    nodelist, elselist = parser.parse(("else", "endanyperm",)), None
+    nodelist, elselist = parser.parse(("else", "endanyperm")), None
     next_token = parser.next_token()
     if next_token.contents == "else":
         elselist = parser.parse(("endanyperm",))

@@ -820,7 +820,14 @@ def perishable_view(func):
     return wrapper
 
 
-def api_view_with_serializer(http_method_names=None, input_serializer=None, serializer=None, validation=True):
+def api_view_with_serializer(
+    http_method_names=None,
+    input_serializer=None,
+    serializer=None,
+    validation=True,
+    model=None,
+    **kwargs,
+):
     """
     Décorateur permettant de créer une APIView à partir d'une fonction suivant la structure d'un serializer
     Elle remplace le décorateur @api_view fourni par défaut dans Django REST Framework
@@ -828,6 +835,7 @@ def api_view_with_serializer(http_method_names=None, input_serializer=None, seri
     :param input_serializer: Serializer des données d'entrée
     :param serializer: Serializer des données de sortie
     :param validation: Exécuter la validation des données d'entrée ? (request contiendra alors "validated_data")
+    :param model: Modèle associé à la vue pour les permissions
     :return: APIView
     """
 
@@ -842,7 +850,7 @@ def api_view_with_serializer(http_method_names=None, input_serializer=None, seri
             try:
                 many = isinstance(result, (list, QuerySet))
                 return Response(serializer(result, many=many, context=dict(request=request)).data)
-            except:  # noqa
+            except Exception as exception:  # noqa
                 return Response(result)
 
         view = api_view(http_method_names)(inner_func)
@@ -881,6 +889,11 @@ def api_view_with_serializer(http_method_names=None, input_serializer=None, seri
                         return post_handler(self, request, *args, **kwargs)
 
                     view_class.put = handler
+
+        if model:
+            view.view_class.queryset = model.objects.all()
+        for key, value in kwargs.items():
+            setattr(view.view_class, key, value)
         return view
 
     return decorator
