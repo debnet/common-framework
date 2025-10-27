@@ -325,9 +325,13 @@ def parse_filters(filters):
     """
     if isinstance(filters, str):
         try:
-            filters = filters.replace("'", "\\'").replace('"', '\\"')
-            filters = re.sub(r"([\w.]+):([^,/()]*)", r'{"\1":"\2"}', filters)
+            filters = re.sub(r"""([\w.]+):(("[^"]*")|('[^']*')|([^,/()]*))""", r'{¤\1¤:¤\2¤}', filters)
+            filters = re.sub(r"""(¤['"])|(['"]¤)""", r'¤', filters)
+            filters = re.sub(r"""(['"])""", r'\\\1', filters).replace('¤', '"')
             filters = re.sub(r"(\w+)\(", r'("\1",', filters)
+            for items in re.findall(r'"([^:;]+;[^"]+)"', filters):
+                values = ",".join(f'"{item}"' for item in items.split(";"))
+                filters = filters.replace(f'"{items}"', f'({values})')
             filters = ast.literal_eval(filters)
         except Exception as exception:
             raise Exception("{filters}: {exception}".format(filters=filters, exception=exception))
@@ -1225,7 +1229,8 @@ def api_paginate(
         fields = url_params.get("fields", "")
         if fields:
             # Supprime la récupération des relations
-            queryset = queryset.select_related(None).prefetch_related(None)
+            if queryset.query.select_related:
+                queryset = queryset.select_related(None).prefetch_related(None)
             # Champs spécifiques
             try:
                 relateds = set()
@@ -1237,7 +1242,7 @@ def api_paginate(
                     *related, field_name = field.split("__")
                     if related and field not in annotations:
                         relateds.add("__".join(related))
-                if relateds:
+                if relateds and not queryset.query.values_select:
                     queryset = queryset.select_related(*relateds)
                 if field_names:
                     queryset = queryset.values(*field_names)

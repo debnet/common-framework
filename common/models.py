@@ -740,7 +740,7 @@ class CommonModel(models.Model):
                     continue
                 item = getattr(self, field, None)
                 # Liste d'entités
-                if isinstance(item, list) and item and isinstance(item[0], Entity):
+                if isinstance(item, list) and item and isinstance(item[0], CommonModel):
                     data[field] = [i.to_dict(**keywords, _depth=_depth + 1) for i in item]
                 # QuerySet d'entités
                 elif isinstance(item, (CommonModel, CommonQuerySet)):

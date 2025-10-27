@@ -417,7 +417,7 @@ class CommonModelViewSet(viewsets.ModelViewSet):
                         *related, field_name = field.split("__")
                         if related and field not in annotations:
                             relateds.add("__".join(related))
-                    if relateds:
+                    if relateds and not queryset.query.values_select:
                         queryset = queryset.select_related(*relateds)
                     if field_names:
                         queryset = queryset.values(*field_names)
