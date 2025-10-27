@@ -1,12 +1,12 @@
 celery==5.5.3
-django==5.2.6
+django==5.2.7
 djangorestframework==3.16.1
 flake8==7.3.0
 model-bakery==1.20.5
 python-dateutil<2.9.0
-pip==25.2
-pillow==11.3.0
-pyyaml==6.0.2
+pip==25.3
+pillow==12.0.0
+pyyaml==6.0.3
 pytz==2025.2
 requests==2.32.5
 setuptools==80.9.0
