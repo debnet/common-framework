@@ -58,6 +58,7 @@ artifacts = ["common/locale/*/LC_MESSAGES/*.mo"]
 [tool.hatch.build.targets.sdist]
 include = [
     "/common",
+    "/requirements.txt",
 ]
 
 [tool.hatch.build.targets.wheel]
