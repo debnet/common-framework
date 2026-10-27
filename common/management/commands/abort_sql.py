@@ -11,15 +11,33 @@ logger = logging.getLogger(__name__)
 
 
 class Command(BaseCommand):
-    help = _("Interrompt une ou plusieurs connexions à la base de données correspondant au nom de l'application")
+    help = _(
+        "Interrompt une ou plusieurs connexions à la base de données correspondant au nom de l'application"
+    )
     leave_locale_alone = True
 
     def add_arguments(self, parser):
+        """Déclare le nom d'application PostgreSQL, l'alias, le délai et le mode kill.
+
+        La commande agit sur les connexions du serveur : ses options ne doivent
+        être accessibles qu'aux opérateurs autorisés de la base concernée.
+        """
         parser.add_argument("name", type=str, help=_("Nom de l'application"))
-        parser.add_argument("--kill", dest="kill", action="store_true", help=_("Tue la connexion au lieu de l'annuler"))
-        parser.add_argument("--using", dest="using", type=str, help=_("Nom de la base de donnée ciblée"))
-        parser.add_argument("--timeout", dest="timeout", type=int, help=_("Temps d'exécution maximal"))
+        parser.add_argument(
+            "--kill",
+            dest="kill",
+            action="store_true",
+            help=_("Tue la connexion au lieu de l'annuler"),
+        )
+        parser.add_argument(
+            "--using", dest="using", type=str, help=_("Nom de la base de donnée ciblée")
+        )
+        parser.add_argument(
+            "--timeout", dest="timeout", type=int, help=_("Temps d'exécution maximal")
+        )
 
     def handle(self, name, kill=False, using=None, timeout=None, **options):
         count = abort_sql(name, kill=kill, using=using, timeout=timeout)
-        logger.info(_("{} connexion(s) à la base de données interrompues(s).").format(count))
+        logger.info(
+            _("{} connexion(s) à la base de données interrompues(s).").format(count)
+        )

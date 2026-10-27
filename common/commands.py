@@ -1,4 +1,6 @@
 # coding: utf-8
+"""Base de commandes Django pour l'import tabulaire Excel de modèles."""
+
 import logging
 
 from django.core.management.base import BaseCommand
@@ -15,9 +17,22 @@ class ImportExcelCommand(BaseCommand):
     workbook = None
     models = {}
 
-    def importer(self, sheet, model=None, fields=None, keys=None, actions=None, ordre=None, force=False):
+    def importer(
+        self,
+        sheet,
+        model=None,
+        fields=None,
+        keys=None,
+        actions=None,
+        ordre=None,
+        force=False,
+    ):
         """
         Permet d'importer les données d'une feuille Excel
+        Ignore la première ligne, transforme les cellules puis résout les FK/M2M
+        à partir du cache self.models. Sans force, un objet existant selon keys
+        est refusé ; force réutilise l'objet. N'ouvre pas de transaction globale :
+        un échec peut laisser les lignes précédentes enregistrées.
         :param sheet: Libellé de la feuille dans le classeur
         :param model: Classe du modèle lié
         :param fields: Liste des champs ordonnées par rapport à la feuille
@@ -64,9 +79,15 @@ class ImportExcelCommand(BaseCommand):
                 if f.remote_field and f.related_model and field not in actions:
                     related_class = f.related_model
                     rel_model_name = related_class._meta.model_name
-                    models = results if rel_model_name == model_name else self.models[f.related_model._meta.model_name]
+                    models = (
+                        results
+                        if rel_model_name == model_name
+                        else self.models[f.related_model._meta.model_name]
+                    )
                     if hasattr(f.remote_field, "through"):
-                        m2ms[field] = [models[code.strip()] for code in value.split(",")]
+                        m2ms[field] = [
+                            models[code.strip()] for code in value.split(",")
+                        ]
                         continue
                     else:
                         value = models[value]
@@ -80,7 +101,11 @@ class ImportExcelCommand(BaseCommand):
             # Récupère l'entité depuis la base si elle existe
             filters = {key: data.get(key, None) for key in keys}
             if not force and model.objects.filter(**filters).exists():
-                raise Exception("Un objet {} avec les clés {} existe déjà".format(model_name, filter))
+                raise Exception(
+                    "Un objet {} avec les clés {} existe déjà".format(
+                        model_name, filter
+                    )
+                )
             obj = model.objects.filter(**filters).first() or obj
             # Ajoute l'ordre dans le modèle
             if ordre and ordre not in data and hasattr(obj, ordre):
@@ -102,7 +127,9 @@ class ImportExcelCommand(BaseCommand):
                 m2m.add(*values)
             # Conserve l'instance selon son code
             code = "|".join(
-                str(value.pk if hasattr(value, "pk") else value) for key, value in data.items() if key in keys
+                str(value.pk if hasattr(value, "pk") else value)
+                for key, value in data.items()
+                if key in keys
             )
             if code:
                 results[code] = obj

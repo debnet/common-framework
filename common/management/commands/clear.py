@@ -17,12 +17,31 @@ class Command(BaseCommand):
     leave_locale_alone = True
 
     def add_arguments(self, parser):
+        """Déclare l'application ciblée et les listes de noms de modèles à inclure/exclure."""
         parser.add_argument("app_label", type=str, help=_("Nom de l'application"))
-        parser.add_argument("--excludes", dest="excludes", type=str, nargs="+", help=_("Modèle(s) à exclure"))
-        parser.add_argument("--includes", dest="includes", type=str, nargs="+", help=_("Modèle(s) à inclure"))
+        parser.add_argument(
+            "--excludes",
+            dest="excludes",
+            type=str,
+            nargs="+",
+            help=_("Modèle(s) à exclure"),
+        )
+        parser.add_argument(
+            "--includes",
+            dest="includes",
+            type=str,
+            nargs="+",
+            help=_("Modèle(s) à inclure"),
+        )
 
     @transaction.atomic
     def handle(self, *args, app_label=None, excludes=None, includes=None, **options):
+        """Supprime les lignes des modèles sélectionnés, avec leurs cascades Django.
+
+        Commande destructive sans confirmation interactive : vérifier les noms
+        et sauvegardes avant usage. Les exceptions annulent la transaction.
+        Les filtres includes/excludes utilisent les object_name des modèles.
+        """
         excludes = excludes or []
         includes = includes or []
         if app_label:
@@ -41,5 +60,9 @@ class Command(BaseCommand):
             else:
                 count = model.objects.all().count()
                 model.objects.all().delete()
-            model_name = str(model._meta.verbose_name) if count == 1 else str(model._meta.verbose_name_plural)
+            model_name = (
+                str(model._meta.verbose_name)
+                if count == 1
+                else str(model._meta.verbose_name_plural)
+            )
             logger.info(_("{} {} supprimé(s).").format(count, model_name))

@@ -1,4 +1,6 @@
 # coding: utf-8
+"""Journalisation applicative avec historique facultatif et messages par contexte."""
+
 import logging
 from collections import namedtuple
 
@@ -37,11 +39,23 @@ class Logger(object):
     }
 
     def __init__(self, name=None, keep_messages=False):
+        """Choisit le logger Python et, si demandé, conserve les entrées en mémoire.
+
+        entries appartient à l'instance et n'est pas borné ; ne pas activer
+        keep_messages durablement sur une instance globale sans politique de purge.
+        """
         self.logger = logging.getLogger(name or __name__)
         self.entries = []
         self.keep_messages = keep_messages
 
     def _log(self, level, message, _context=None, *args, **kwargs):
+        """Formate, journalise et renvoie le message, ou une liste de messages.
+
+        Les listes sont traitées récursivement. Les args/kwargs servent au
+        format str.format, pas au format '%' du logging standard. Un contexte
+        non vide reçoit les messages par niveau et déduplique leurs émissions ;
+        keep_messages conserve néanmoins chaque entrée dans l'historique local.
+        """
         # Si le message est une liste, les fragments sont journalisés à la suite
         if isinstance(message, list):
             messages = []
@@ -59,7 +73,10 @@ class Logger(object):
         # Conservation du message si demandé
         if self.keep_messages:
             logentry = LogEntry(
-                date=now(), level=logging.getLevelName(level), color=Logger.COLORS[level], message=message
+                date=now(),
+                level=logging.getLevelName(level),
+                color=Logger.COLORS[level],
+                message=message,
             )
             self.entries.append(logentry)
 
@@ -76,6 +93,7 @@ class Logger(object):
 
     @property
     def messages(self):
+        """Renvoie les textes des entrées conservées, sans dates ni niveaux."""
         return [logentry.message for logentry in self.entries]
 
     def debug(self, message, *args, **kwargs):
@@ -118,6 +136,7 @@ class InternalError(Exception):
     """
 
     def __init__(self, message, *args, **kwargs):
+        """Conserve le message affichable et les arguments supplémentaires sans formatage."""
         self.message = str(message)
         self.args = args
         self.kwargs = kwargs

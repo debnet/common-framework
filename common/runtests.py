@@ -84,7 +84,16 @@ SETTINGS_DICT = {
 }
 
 
-def run_tests():
+def run_tests(test_labels=None):
+    """Configure une application de test autonome puis lance les labels Django fournis.
+
+    Sans label, découvre common.tests ; le runner n'est pas interactif. Appeler
+    dans un processus sans settings Django déjà configurés. Le code de sortie
+    vaut 0 sans échec inattendu, 1 sinon, via SystemExit.
+
+    :param test_labels: Liste facultative de domaines, modules, classes ou méthodes
+    :raises SystemExit: Statut du runner une fois la base de test nettoyée
+    """
     # Making Django run this way is a two-step process. First,
     # call settings.configure() to give Django settings to work with:
     from django.conf import settings
@@ -103,10 +112,10 @@ def run_tests():
     TestRunner = get_runner(settings)
 
     # And then we run tests and return the results.
-    test_runner = TestRunner(verbosity=1, interactive=True)
-    failures = test_runner.run_tests(["common.tests"])
+    test_runner = TestRunner(verbosity=1, interactive=False)
+    failures = test_runner.run_tests(test_labels or ["common.tests"])
     sys.exit(bool(failures))
 
 
 if __name__ == "__main__":  # pragma: no cover
-    run_tests()  # pragma: no cover
+    run_tests(sys.argv[1:])  # pragma: no cover

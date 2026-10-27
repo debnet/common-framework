@@ -1,4 +1,10 @@
 # coding: utf-8
+"""Opérations de migration PostgreSQL pour f_unaccent et les index associés.
+
+Elles modifient la base mais pas l'état des modèles Django. Les extensions
+unaccent/pg_trgm ne sont pas installées ici ; leur provisionnement est externe.
+"""
+
 import logging
 
 from django.db.migrations.operations.base import Operation
@@ -18,6 +24,11 @@ class CreateFunctionUnaccent(Operation):
         return
 
     def database_forwards(self, app_label, schema_editor, from_state, to_state):
+        """Crée f_unaccent si le moteur est PostgreSQL et unaccent déjà installé.
+
+        Un autre moteur ou l'extension absente produit un log d'erreur et aucune
+        DDL. Les erreurs de privilèges/exécution SQL restent propagées.
+        """
         # Applicable uniquement sur une base de données PostgreSQL
         if schema_editor.connection.vendor != "postgresql":
             logger.error(_("L'opération ne peut s'exécuter que sur PostgreSQL."))
@@ -25,9 +36,13 @@ class CreateFunctionUnaccent(Operation):
 
         # Vérification de l'existence de l'extension "unaccent"
         cursor = schema_editor.connection.cursor()
-        cursor.execute("SELECT COUNT(extname) FROM pg_extension WHERE extname = 'unaccent';")
+        cursor.execute(
+            "SELECT COUNT(extname) FROM pg_extension WHERE extname = 'unaccent';"
+        )
         if not cursor.fetchall()[0][0]:
-            logger.error(_("L'extension 'unaccent' n'est pas installée sur la base de données."))
+            logger.error(
+                _("L'extension 'unaccent' n'est pas installée sur la base de données.")
+            )
             return
 
         query = (
@@ -63,6 +78,12 @@ class CreateIndexUnaccent(Operation):
         return
 
     def database_forwards(self, app_label, schema_editor, from_state, to_state):
+        """Crée les index BTREE et, si pg_trgm existe, GIN sur les groupes de champs.
+
+        Résout le modèle dans to_state, crée f_unaccent au besoin et utilise
+        schema_editor pour exécuter les DDL. Les noms de champs sont des données
+        de migration de confiance, pas des paramètres de requête utilisateur.
+        """
         # Applicable uniquement sur une base de données PostgreSQL
         if schema_editor.connection.vendor != "postgresql":
             logger.error(_("L'opération ne peut s'exécuter que sur PostgreSQL."))
@@ -70,15 +91,23 @@ class CreateIndexUnaccent(Operation):
 
         # Vérification de l'extension "unaccent"
         cursor = schema_editor.connection.cursor()
-        cursor.execute("SELECT COUNT(extname) FROM pg_extension WHERE extname = 'unaccent';")
+        cursor.execute(
+            "SELECT COUNT(extname) FROM pg_extension WHERE extname = 'unaccent';"
+        )
         if not cursor.fetchall()[0][0]:
-            logger.error(_("L'extension 'unaccent' n'est pas installée sur la base de données."))
+            logger.error(
+                _("L'extension 'unaccent' n'est pas installée sur la base de données.")
+            )
             return
 
         # Vérification que la fonction "f_unaccent" est bien créée
-        cursor.execute("SELECT COUNT(proname) FROM pg_proc WHERE proname = 'f_unaccent';")
+        cursor.execute(
+            "SELECT COUNT(proname) FROM pg_proc WHERE proname = 'f_unaccent';"
+        )
         if not cursor.fetchall()[0][0]:
-            CreateFunctionUnaccent().database_forwards(app_label, schema_editor, from_state, to_state)
+            CreateFunctionUnaccent().database_forwards(
+                app_label, schema_editor, from_state, to_state
+            )
 
         # Template de la requête de création d'index
         query = "CREATE INDEX IF NOT EXISTS {index_name}_{method} ON {db_table} USING {method} ({fields});"
@@ -91,7 +120,9 @@ class CreateIndexUnaccent(Operation):
 
         # Contrôle que l'extension "pg_trgm" est installée
         pg_trgm_installed = True
-        cursor.execute("SELECT COUNT(extname) FROM pg_extension WHERE extname = 'pg_trgm';")
+        cursor.execute(
+            "SELECT COUNT(extname) FROM pg_extension WHERE extname = 'pg_trgm';"
+        )
         if not cursor.fetchall()[0][0]:
             logger.warning(
                 _(
@@ -103,28 +134,51 @@ class CreateIndexUnaccent(Operation):
 
         for fields in self.fields:
             # Création du nom de l'index
-            index_name = schema_editor._create_index_name(model._meta.db_table, fields, suffix="_unaccent")
+            index_name = schema_editor._create_index_name(
+                model._meta.db_table, fields, suffix="_unaccent"
+            )
 
             # Ajout de la classe d'opérateur pour la méthode BTREE
             fields_btree = ", ".join(
-                [method_sql.format(field=field, operator_class="varchar_pattern_ops") for field in fields]
+                [
+                    method_sql.format(field=field, operator_class="varchar_pattern_ops")
+                    for field in fields
+                ]
             )
             # Création de l'index BTREE
             schema_editor.execute(
-                query.format(index_name=index_name, db_table=model._meta.db_table, fields=fields_btree, method="btree")
+                query.format(
+                    index_name=index_name,
+                    db_table=model._meta.db_table,
+                    fields=fields_btree,
+                    method="btree",
+                )
             )
 
             if pg_trgm_installed:
                 # Ajout de la classe d'opérateur pour la méthode GIN
                 fields_gin = ", ".join(
-                    [method_sql.format(field=field, operator_class="gin_trgm_ops") for field in fields]
+                    [
+                        method_sql.format(field=field, operator_class="gin_trgm_ops")
+                        for field in fields
+                    ]
                 )
                 # Création de l'index GIN
                 schema_editor.execute(
-                    query.format(index_name=index_name, db_table=model._meta.db_table, fields=fields_gin, method="gin")
+                    query.format(
+                        index_name=index_name,
+                        db_table=model._meta.db_table,
+                        fields=fields_gin,
+                        method="gin",
+                    )
                 )
 
     def database_backwards(self, app_label, schema_editor, from_state, to_state):
+        """Supprime les index GIN/BTREE calculés avec les mêmes noms que forwards.
+
+        Sans PostgreSQL, journalise et ne fait rien. La fonction f_unaccent et
+        les extensions restent présentes : elles peuvent servir à d'autres index.
+        """
         # Applicable uniquement sur une base de données PostgreSQL
         if schema_editor.connection.vendor != "postgresql":
             logger.error(_("L'opération ne peut s'exécuter que sur PostgreSQL."))
@@ -138,7 +192,9 @@ class CreateIndexUnaccent(Operation):
 
         for fields in self.fields:
             # Création du nom de l'index
-            index_name = schema_editor._create_index_name(model._meta.db_table, fields, suffix="_unaccent")
+            index_name = schema_editor._create_index_name(
+                model._meta.db_table, fields, suffix="_unaccent"
+            )
 
             # Suppression des index de la base de données
             schema_editor.execute(query.format(index_name=index_name, method="gin"))

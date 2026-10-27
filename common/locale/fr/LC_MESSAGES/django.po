@@ -1,679 +1,970 @@
-# SOME DESCRIPTIVE TITLE.
-# Copyright (C) YEAR THE PACKAGE'S COPYRIGHT HOLDER
-# This file is distributed under the same license as the PACKAGE package.
-# FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
+# Traductions françaises de common-framework.
+# Copyright (C) Marc Debureaux
+# Distribué sous licence MIT.
 #
-#, fuzzy
 msgid ""
 msgstr ""
-"Project-Id-Version: PACKAGE VERSION\n"
+"Project-Id-Version: common-framework 2026.10.25\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2021-06-29 17:01+0200\n"
-"PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
-"Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
-"Language-Team: LANGUAGE <LL@li.org>\n"
-"Language: \n"
+"POT-Creation-Date: 2026-10-27 10:36+0100\n"
+"PO-Revision-Date: 2026-10-27 10:36+0100\n"
+"Last-Translator: Marc Debureaux <marc@debureaux.fr>\n"
+"Language-Team: French\n"
+"Language: fr\n"
 "MIME-Version: 1.0\n"
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
 "Plural-Forms: nplurals=2; plural=(n > 1);\n"
 
+#: admin.py:109
 msgid "méta"
 msgstr "méta"
 
+#: admin.py:169
 msgid "validité"
 msgstr "validité"
 
+#: admin.py:174
 msgid "Valides uniquement"
 msgstr "Valides uniquement"
 
+#: admin.py:175
 msgid "Non valides uniquement"
 msgstr "Non valides uniquement"
 
+#: admin.py:228 admin.py:263
 msgid "Dates d'effet"
 msgstr "Dates d'effet"
 
+#: admin.py:331 admin.py:390 admin.py:522
 msgid "Entité"
 msgstr "Entité"
 
+#: admin.py:421
+#, python-brace-format
 msgid "{} élément(s) ont été restaurés avec succès !"
 msgstr "{} élément(s) ont été restaurés avec succès !"
 
-msgid "{} élément(s) n'ont pas pu être restaurés car leurs relations sont manquantes !"
-msgstr "{} élément(s) n'ont pas pu être restaurés car leurs relations sont manquantes !"
+#: admin.py:427
+#, python-brace-format
+msgid ""
+"{} élément(s) n'ont pas pu être restaurés car leurs relations sont "
+"manquantes !"
+msgstr ""
+"{} élément(s) n'ont pas pu être restaurés car leurs relations sont "
+"manquantes !"
 
+#: admin.py:433
+#, python-brace-format
 msgid "L'élément {} n'a pu être restauré pour la raison suivante : {}"
 msgstr "L'élément {} n'a pu être restauré pour la raison suivante : {}"
 
+#: admin.py:439
 msgid "Annuler les modifications"
 msgstr "Annuler les modifications"
 
+#: admin.py:449
 msgid "Annuler toutes les modifications"
 msgstr "Annuler toutes les modifications"
 
+#: admin.py:540
 msgid "Champs modifiés"
 msgstr "Champs modifiés"
 
+#: admin.py:547
 msgid "Motif"
 msgstr "Motif"
 
+#: admin.py:620
 msgid "Champ"
 msgstr "Champ"
 
+#: admin.py:626
 msgid "Ancienne valeur"
 msgstr "Ancienne valeur"
 
+#: admin.py:632
 msgid "Nouvelle valeur"
 msgstr "Nouvelle valeur"
 
+#: admin.py:673
 msgid "Historique"
 msgstr "Historique"
 
+#: admin.py:729
 msgid "Réseau"
 msgstr "Réseau"
 
+#: admin.py:740
 msgid "Authentification"
 msgstr "Authentification"
 
+#: admin.py:749
 msgid "Types"
 msgstr "Types"
 
+#: admin.py:773
 msgid "Actions"
 msgstr "Actions"
 
-msgid "Nom d'utilisateur ou e-mail requis pour la réinitialisation de mot de passe."
-msgstr "Nom d'utilisateur ou e-mail requis pour la réinitialisation de mot de passe."
+#: api/api_views.py:111
+msgid ""
+"Un dictionnaire avec des clés non vides de 100 caractères maximum est requis."
+msgstr "Un dictionnaire avec des clés non vides de 100 caractères maximum est requis."
 
-msgid "Utilisateur non trouvé."
-msgstr "Utilisateur non trouvé."
-
-msgid "Plusieurs utilisateurs correspondent à ces critères."
-msgstr "Plusieurs utilisateurs correspondent à ces critères."
-
-msgid "Clé secrète invalide."
-msgstr "Clé secrète invalide."
-
-msgid "Jeton invalide."
-msgstr "Jeton invalide."
-
+#: api/api_views.py:116
 msgid "Entité inconnue."
 msgstr "Entité inconnue."
 
-msgid "nom d'utilisateur"
-msgstr "nom d'utilisateur"
-
-msgid "e-mail"
-msgstr "e-mail"
-
-msgid "clé secrète"
-msgstr "clé secrète"
-
-msgid "identifiant"
-msgstr "identifiant"
-
-msgid "token"
-msgstr "token"
-
-msgid "mot de passe"
-msgstr "mot de passe"
-
+#: api/input_serializers.py:24 models.py:294
 msgid "clé"
 msgstr "clé"
 
+#: api/input_serializers.py:25 models.py:295
 msgid "valeur"
 msgstr "valeur"
 
+#: api/input_serializers.py:26
 msgid "date péremption"
 msgstr "date péremption"
 
+#: apps.py:8
 msgid "Common Framework"
 msgstr "Framework Commun"
 
+#: auth.py:120
 #, python-brace-format
 msgid "Utilisateur {username} non trouvé dans le répertoire LDAP."
 msgstr "Utilisateur {username} non trouvé dans le répertoire LDAP."
 
+#: auth.py:126
 #, python-brace-format
 msgid "Erreur lors de l'authentification LDAP : {erreur}"
 msgstr "Erreur lors de l'authentification LDAP : {erreur}"
 
+#: excel.py:29
 msgid "Identifiant"
 msgstr "Identifiant"
 
+#: excel.py:30 excel.py:44 excel.py:51
 msgid "Nombre entier"
 msgstr "Nombre entier"
 
+#: excel.py:31
 msgid "Données binaires"
 msgstr "Données binaires"
 
+#: excel.py:32
 msgid "Booléen"
 msgstr "Booléen"
 
+#: excel.py:33
 msgid "Chaîne de caractères"
 msgstr "Chaîne de caractères"
 
+#: excel.py:34
 msgid "Nombres entiers séparés par des virgules"
 msgstr "Nombres entiers séparés par des virgules"
 
+#: excel.py:35
 msgid "Date"
 msgstr "Date"
 
+#: excel.py:36
 msgid "Date & heure"
 msgstr "Date & heure"
 
+#: excel.py:37
 msgid "Nombre décimal"
 msgstr "Nombre décimal"
 
+#: excel.py:38
 msgid "Durée"
 msgstr "Durée"
 
+#: excel.py:39
 msgid "E-mail"
 msgstr "E-mail"
 
+#: excel.py:40
 msgid "Fichier"
 msgstr "Fichier"
 
+#: excel.py:41
 msgid "Chemin de fichier"
 msgstr "Chemin de fichier"
 
+#: excel.py:42
 msgid "Nombre flottant"
 msgstr "Nombre flottant"
 
+#: excel.py:43
 msgid "Image"
 msgstr "Image"
 
+#: excel.py:45
 msgid "Adresse IP"
 msgstr "Adresse IP"
 
+#: excel.py:46
 msgid "Adresse IP générique"
 msgstr "Adresse IP générique"
 
+#: excel.py:47
 msgid "Booléen à 3 états"
 msgstr "Booléen à 3 états"
 
+#: excel.py:48 excel.py:49
 msgid "Nombre entier positif"
 msgstr "Nombre entier positif"
 
+#: excel.py:50
 msgid "Slug"
 msgstr "Slug"
 
+#: excel.py:52
 msgid "Texte"
 msgstr "Texte"
 
+#: excel.py:53
 msgid "Heure"
 msgstr "Heure"
 
+#: excel.py:54
 msgid "URL"
 msgstr "URL"
 
+#: excel.py:55 models.py:1173 models.py:1507 models.py:1690
 msgid "UUID"
 msgstr "UUID"
 
+#: excel.py:56 excel.py:58
 msgid "Référence"
 msgstr "Référence"
 
+#: excel.py:57
 msgid "Références multiples"
 msgstr "Références multiples"
 
+#: excel.py:62
 msgid "Métadonnées"
 msgstr "Métadonnées"
 
+#: excel.py:63
 msgid "Listes"
 msgstr "Listes"
 
+#: excel.py:148
 #, python-brace-format
-msgid "La feuille correspondant au modèle '{model_name}' n'a pu être trouvée dans le fichier."
-msgstr "La feuille correspondant au modèle '{model_name}' n'a pu être trouvée dans le fichier."
+msgid ""
+"La feuille correspondant au modèle '{model_name}' n'a pu être trouvée dans "
+"le fichier."
+msgstr ""
+"La feuille correspondant au modèle '{model_name}' n'a pu être trouvée dans "
+"le fichier."
 
+#: excel.py:280
 msgid "Informations"
 msgstr "Informations"
 
+#: excel.py:281
 msgid "modèle"
 msgstr "modèle"
 
+#: excel.py:281
 msgid "champ"
 msgstr "champ"
 
+#: excel.py:281
 msgid "type"
 msgstr "type"
 
+#: excel.py:281
 msgid "description"
 msgstr "description"
 
-msgid "Impossible de récupérer la valeur de clé étrangère correspondant à [{}] pour le champ [{}] de [{}]"
-msgstr "Impossible de récupérer la valeur de clé étrangère correspondant à [{}] pour le champ [{}] de [{}]"
+#: excel.py:395 excel.py:403
+#, python-brace-format
+msgid ""
+"Impossible de récupérer la valeur de clé étrangère correspondant à [{}] pour "
+"le champ [{}] de [{}]"
+msgstr ""
+"Impossible de récupérer la valeur de clé étrangère correspondant à [{}] pour "
+"le champ [{}] de [{}]"
 
+#: excel.py:433
+#, python-brace-format
 msgid "Impossible d'ajouter la métadata [{},{}] pour l'instance '[{}]'"
 msgstr "Impossible d'ajouter la métadata [{},{}] pour l'instance '[{}]'"
 
-msgid "Impossible de récupérer les valeurs de relation correspondantes à [{}] pour le champ [{}] de [{}]"
-msgstr "Impossible de récupérer les valeurs de relation correspondantes à [{}] pour le champ [{}] de [{}]"
+#: excel.py:451
+#, python-brace-format
+msgid ""
+"Impossible de récupérer les valeurs de relation correspondantes à [{}] pour "
+"le champ [{}] de [{}]"
+msgstr ""
+"Impossible de récupérer les valeurs de relation correspondantes à [{}] pour "
+"le champ [{}] de [{}]"
 
+#: fields.py:178
 msgid "A JSON object"
 msgstr "Un objet JSON"
 
+#: fields.py:179
 msgid "Value must be valid JSON"
 msgstr "La valeur doit être du JSON valide."
 
+#: forms.py:411
 #, python-format
 msgid "'%(value)s' value must be valid JSON."
 msgstr "La valeur '%(value)s' doit être du JSON valide."
 
+#: logger.py:71
 msgid "Le message n'est pas correctement formaté."
 msgstr "Le message n'est pas correctement formaté."
 
-msgid "Interrompt une ou plusieurs connexions à la base de données correspondant au nom de l'application"
-msgstr "Interrompt une ou plusieurs connexions à la base de données correspondant au nom de l'application"
+#: management/commands/abort_sql.py:15
+msgid ""
+"Interrompt une ou plusieurs connexions à la base de données correspondant au "
+"nom de l'application"
+msgstr ""
+"Interrompt une ou plusieurs connexions à la base de données correspondant au "
+"nom de l'application"
 
+#: management/commands/abort_sql.py:25 management/commands/clear.py:21
 msgid "Nom de l'application"
 msgstr "Nom de l'application"
 
+#: management/commands/abort_sql.py:30
 msgid "Tue la connexion au lieu de l'annuler"
 msgstr "Tue la connexion au lieu de l'annuler"
 
+#: management/commands/abort_sql.py:33
 msgid "Nom de la base de donnée ciblée"
 msgstr "Nom de la base de donnée ciblée"
 
+#: management/commands/abort_sql.py:36
 msgid "Temps d'exécution maximal"
 msgstr "Temps d'exécution maximal"
 
+#: management/commands/abort_sql.py:42
+#, python-brace-format
 msgid "{} connexion(s) à la base de données interrompues(s)."
 msgstr "{} connexion(s) à la base de données interrompues(s)."
 
+#: management/commands/clear.py:16
 msgid "Supprime les données de l'application"
 msgstr "Supprime les données de l'application"
 
+#: management/commands/clear.py:27
 msgid "Modèle(s) à exclure"
 msgstr "Modèle(s) à exclure"
 
+#: management/commands/clear.py:34
 msgid "Modèle(s) à inclure"
 msgstr "Modèle(s) à inclure"
 
+#: management/commands/clear.py:68
+#, python-brace-format
 msgid "{} {} supprimé(s)."
 msgstr "{} {} supprimé(s)."
 
-msgid "Le nombre maximal d'appels ({limit}) de ce service pour cet utilisateur ({user}) a été atteint et sera réinitialisé le {date:%d/%m/%Y %H:%M:%S}."
-msgstr "Le nombre maximal d'appels ({limit}) de ce service pour cet utilisateur ({user}) a été atteint et sera réinitialisé le {date:%d/%m/%Y %H:%M:%S}."
-
-#, python-brace-format
-msgid "Le nombre maximal d'appels ({limit}) de ce service pour cet utilisateur ({user}) a été atteint et ne peut plus être utilisé."
-msgstr "Le nombre maximal d'appels ({limit}) de ce service pour cet utilisateur ({user}) a été atteint et ne peut plus être utilisé."
-
+#: models.py:289 models.py:1170 models.py:1504
 msgid "type d'entité"
 msgstr "type d'entité"
 
+#: models.py:291 models.py:1172 models.py:1506
+msgid "identifiant"
+msgstr "identifiant"
+
+#: models.py:297 models.py:1693
 msgid "date de création"
 msgstr "date de création"
 
+#: models.py:300 models.py:1696
 msgid "date de modification"
 msgstr "date de modification"
 
+#: models.py:303
 msgid "date de suppression"
 msgstr "date de suppression"
 
+#: models.py:308
 #, python-brace-format
 msgid "{key}: {value}"
 msgstr "{key}: {value}"
 
+#: models.py:330
 msgid "Unable to get metadata from an unsaved model instance."
-msgstr "Impossible de récupérer des métadonnées d'une instance de modèle non sauvegardée."
+msgstr ""
+"Impossible de récupérer des métadonnées d'une instance de modèle non "
+"sauvegardée."
 
+#: models.py:360 models.py:395
 msgid "Unable to set metadata for an unsaved model instance."
-msgstr "Impossible de définir une métadonnée sur une instance de modèle non sauvegardée."
+msgstr ""
+"Impossible de définir une métadonnée sur une instance de modèle non "
+"sauvegardée."
 
+#: models.py:430
 msgid "Unable to delete metadata from an unsaved model instance."
-msgstr "Impossible de supprimer des métadonnées d'une instance de modèle non sauvegardée."
+msgstr ""
+"Impossible de supprimer des métadonnées d'une instance de modèle non "
+"sauvegardée."
 
+#: models.py:447
 msgid "métadonnée"
 msgstr "métadonnée"
 
+#: models.py:448
 msgid "métadonnées"
 msgstr "métadonnées"
 
+#: models.py:572
 msgid "Unable to update an instance which have no unique fields."
 msgstr "Impossible de mettre à jour une instance qui n'a pas de champ unique."
 
+#: models.py:801
 msgid " (IDs)"
 msgstr " (IDs)"
 
+#: models.py:817
 msgid " (UIDs)"
 msgstr " (UIDs)"
 
+#: models.py:832
 msgid " (ID)"
 msgstr " (ID)"
 
+#: models.py:845
 msgid " (UID)"
 msgstr " (UID)"
 
+#: models.py:893
 msgid " (libellé)"
 msgstr " (libellé)"
 
+#: models.py:1116 models.py:3009
 msgid "date"
 msgstr "date"
 
+#: models.py:1119
 msgid "dernière restauration"
 msgstr "dernière restauration"
 
+#: models.py:1122
 msgid "restauré"
 msgstr "restauré"
 
+#: models.py:1124 models.py:2854 models.py:2924
 msgid "données"
 msgstr "données"
 
+#: models.py:1126
 msgid "taille données"
 msgstr "taille données"
 
+#: models.py:1144
 msgid "Création"
 msgstr "Création"
 
+#: models.py:1145
 msgid "Modification"
 msgstr "Modification"
 
+#: models.py:1146 models.py:1322
 msgid "Suppression"
 msgstr "Suppression"
 
+#: models.py:1147
 msgid "Restauration"
 msgstr "Restauration"
 
+#: models.py:1148
 msgid "Many-to-many"
 msgstr "Many-to-many"
 
+#: models.py:1158 models.py:2851 models.py:2998
 msgid "utilisateur"
 msgstr "utilisateur"
 
+#: models.py:1161
 msgid "statut"
 msgstr "statut"
 
+#: models.py:1174
 msgid "entité"
 msgstr "entité"
 
+#: models.py:1176
 msgid "motif"
 msgstr "motif"
 
+#: models.py:1178
 msgid "admin"
 msgstr "admin"
 
+#: models.py:1180
 msgid "modifications"
 msgstr "modifications"
 
+#: models.py:1183
 msgid "mises à jour"
 msgstr "mises à jour"
 
+#: models.py:1186
 msgid "suppressions"
 msgstr "suppressions"
 
+#: models.py:1200
 #, python-brace-format
 msgid "[{status}] {content_type} #{object_id}"
 msgstr "[{status}] {content_type} #{object_id}"
 
+#: models.py:1301 models.py:1330
 msgid "historique"
 msgstr "historique"
 
+#: models.py:1302
 msgid "historiques"
 msgstr "historiques"
 
+#: models.py:1320
 msgid "Purge"
 msgstr "Purge"
 
+#: models.py:1321
 msgid "Ajout"
 msgstr "Ajout"
 
+#: models.py:1333
 msgid "nom du champ"
 msgstr "nom du champ"
 
+#: models.py:1336
 msgid "ancienne valeur"
 msgstr "ancienne valeur"
 
+#: models.py:1339
 msgid "nouvelle valeur"
 msgstr "nouvelle valeur"
 
+#: models.py:1347
 msgid "statut M2M"
 msgstr "statut M2M"
 
+#: models.py:1350
 msgid "éditable"
 msgstr "éditable"
 
+#: models.py:1409
 #, python-brace-format
 msgid "[{entity}] ({field}) {old} ~ {new}"
 msgstr "[{entity}] ({field}) {old} ~ {new}"
 
+#: models.py:1471
 msgid "historique de champ modifié"
 msgstr "historique de champ modifié"
 
+#: models.py:1472
 msgid "historiques de champs modifiés"
 msgstr "historiques de champs modifiés"
 
+#: models.py:1512
 #, python-brace-format
 msgid "({object_uid}) {content_type} #{object_id}"
 msgstr "({object_uid}) {content_type} #{object_id}"
 
+#: models.py:1519
 msgid "globale"
 msgstr "globale"
 
+#: models.py:1520
 msgid "globales"
 msgstr "globales"
 
+#: models.py:1557
 msgid "Cannot use 'limit' or 'offset' with delete."
 msgstr "Impossible d'utiliser 'limit' ou 'offset' avec delete()."
 
+#: models.py:1560
 msgid "Cannot call delete() after .values() or .values_list()"
 msgstr "Impossible d'appeler delete() après .values() ou .values_list()"
 
+#: models.py:1705
 msgid "dernier utilisateur"
 msgstr "dernier utilisateur"
 
+#: models.py:1792
+#, python-brace-format
 msgid "{} can't be deleted because it doesn't exists in database."
 msgstr "{} ne peut être supprimé car inexistant en base en données."
 
+#: models.py:1893 models.py:1922
+#, python-brace-format
 msgid "Unexpected model '{}' used instead of expected model '{}'."
 msgstr "Modèle inattendu '{}' utilisé en place du modèle attendu '{}'."
 
+#: models.py:1916
 msgid "Multiple model types are found in values."
 msgstr "Plusieurs types de modèles ont été trouvés dans les valeurs."
 
+#: models.py:2007
 msgid "date d'effet"
 msgstr "date d'effet"
 
+#: models.py:2010
 msgid "date de fin"
 msgstr "date de fin"
 
+#: models.py:2074
 msgid "La date de fin doit être ultérieure à la date d'effet."
 msgstr "La date de fin doit être ultérieure à la date d'effet."
 
+#: models.py:2078
 msgid "Valide"
 msgstr "Valide"
 
+#: models.py:2107
 msgid "JSON"
 msgstr "JSON"
 
+#: models.py:2108
 msgid "XML"
 msgstr "XML"
 
+#: models.py:2109
 msgid "YAML"
 msgstr "YAML"
 
+#: models.py:2116
 msgid "POST"
 msgstr "POST"
 
+#: models.py:2117
 msgid "PUT"
 msgstr "PUT"
 
+#: models.py:2118
 msgid "PATCH"
 msgstr "PATCH"
 
+#: models.py:2127
 msgid "Basic"
 msgstr "Basic"
 
+#: models.py:2128
 msgid "Digest"
 msgstr "Digest"
 
+#: models.py:2129
 msgid "Token"
 msgstr "Token"
 
+#: models.py:2130
 msgid "Bearer"
 msgstr "Bearer"
 
+#: models.py:2131
 msgid "JWT"
 msgstr "JWT"
 
+#: models.py:2155 models.py:2993
 msgid "nom"
 msgstr "nom"
 
+#: models.py:2157
 msgid "url"
 msgstr "url"
 
+#: models.py:2159
 msgid "method"
 msgstr "méthode"
 
+#: models.py:2162
 msgid "format"
 msgstr "format"
 
+#: models.py:2169
 msgid "authentification"
 msgstr "authentification"
 
+#: models.py:2171
+msgid "token"
+msgstr "token"
+
+#: models.py:2173
 msgid "délai d'attente"
 msgstr "délai d'attente"
 
+#: models.py:2175
 msgid "tentatives"
 msgstr "tentatives"
 
+#: models.py:2177
 msgid "délai entre tentatives"
 msgstr "délai entre tentatives"
 
+#: models.py:2269
 msgid "types"
 msgstr "types"
 
+#: models.py:2270
 msgid "création"
 msgstr "création"
 
+#: models.py:2271
 msgid "modification"
 msgstr "modification"
 
+#: models.py:2272
 msgid "suppression"
 msgstr "suppression"
 
+#: models.py:2273
 msgid "restauration"
 msgstr "restauration"
 
+#: models.py:2274
 msgid "many-to-many"
 msgstr "many-to-many"
 
+#: models.py:2277
 msgid "webhook"
 msgstr "webhook"
 
+#: models.py:2278
 msgid "webhooks"
 msgstr "webhooks"
 
+#: models.py:2909
 msgid "métadonnées d'utilisateur"
 msgstr "métadonnées d'utilisateur"
 
+#: models.py:2910
 msgid "métadonnées d'utilisateurs"
 msgstr "métadonnées d'utilisateurs"
 
+#: models.py:2921
 msgid "groupe"
 msgstr "groupe"
 
+#: models.py:2960
 msgid "métadonnées de groupe"
 msgstr "métadonnées de groupe"
 
+#: models.py:2961
 msgid "métadonnées de groupes"
 msgstr "métadonnées de groupes"
 
+#: models.py:2979
 msgid "Toutes les heures"
 msgstr "Toutes les heures"
 
+#: models.py:2980
 msgid "Tous les jours"
 msgstr "Tous les jours"
 
+#: models.py:2981
 msgid "Toutes les semaines"
 msgstr "Toutes les semaines"
 
+#: models.py:2982
 msgid "Tous les mois"
 msgstr "Tous les mois"
 
+#: models.py:2983
 msgid "Tous les ans"
 msgstr "Tous les ans"
 
+#: models.py:3000
 msgid "nombre"
 msgstr "nombre"
 
+#: models.py:3001
 msgid "limite"
 msgstr "limite"
 
+#: models.py:3003
 msgid "réinitialisation"
 msgstr "réinitialisation"
 
+#: models.py:3006
 msgid "date réinitialisation"
 msgstr "date réinitialisation"
 
+#: models.py:3008
 msgid "adresse"
 msgstr "adresse"
 
+#: models.py:3010
 msgid "extra"
 msgstr "extra"
 
+#: models.py:3033
+#, python-brace-format
 msgid "{} ({} : {})"
 msgstr "{} ({} : {})"
 
+#: models.py:3036
 msgid "utilisation de service"
 msgstr "utilisation de service"
 
+#: models.py:3037
 msgid "utilisation des services"
 msgstr "utilisation des services"
 
+#: operations.py:34 operations.py:60 operations.py:89 operations.py:184
 msgid "L'opération ne peut s'exécuter que sur PostgreSQL."
 msgstr "L'opération ne peut s'exécuter que sur PostgreSQL."
 
+#: operations.py:44 operations.py:99
 msgid "L'extension 'unaccent' n'est pas installée sur la base de données."
 msgstr "L'extension 'unaccent' n'est pas installée sur la base de données."
 
-msgid "L'extension 'pg_trgm' n'est pas installée sur la base de données, l'index de type GIN ne sera donc pas créé et seul l'index de type BTREE sera créé."
-msgstr "L'extension 'pg_trgm' n'est pas installée sur la base de données, l'index de type GIN ne sera donc pas créé et seul l'index de type BTREE sera créé."
+#: operations.py:129
+msgid ""
+"L'extension 'pg_trgm' n'est pas installée sur la base de données, l'index de "
+"type GIN ne sera donc pas créé et seul l'index de type BTREE sera créé."
+msgstr ""
+"L'extension 'pg_trgm' n'est pas installée sur la base de données, l'index de "
+"type GIN ne sera donc pas créé et seul l'index de type BTREE sera créé."
 
+#: templates/common/cache.html:12
 msgid "Voir"
 msgstr "Voir"
 
+#: templates/common/cache.html:21
 msgid "Supprimer"
 msgstr "Supprimer"
 
+#: templates/common/delete_selected.html:14
+msgid "Home"
+msgstr "Accueil"
+
+#: templates/common/delete_selected.html:17
+msgid "Delete multiple objects"
+msgstr "Supprimer plusieurs objets"
+
+#: templates/common/delete_selected.html:23
+#, python-format
+msgid ""
+"Deleting the selected %(objects_name)s would result in deleting related "
+"objects, but your account doesn't have permission to delete the following "
+"types of objects:"
+msgstr ""
+"La suppression des %(objects_name)s sélectionnés entraînerait la suppression "
+"d’objets liés, mais votre compte ne dispose pas de la permission de supprimer "
+"les types d’objets suivants :"
+
+#: templates/common/delete_selected.html:30
+#, python-format
+msgid ""
+"Deleting the selected %(objects_name)s would require deleting the following "
+"protected related objects:"
+msgstr ""
+"La suppression des %(objects_name)s sélectionnés nécessiterait de supprimer "
+"les objets liés protégés suivants :"
+
+#: templates/common/delete_selected.html:37
+#, python-format
+msgid ""
+"Are you sure you want to delete the selected %(objects_name)s? All of the "
+"following objects and their related items will be deleted:"
+msgstr ""
+"Voulez-vous vraiment supprimer les %(objects_name)s sélectionnés ? Tous les "
+"objets suivants et les éléments qui leur sont liés seront supprimés :"
+
+#: templates/common/delete_selected.html:39
+msgid "Objects"
+msgstr "Objets"
+
+#: templates/common/delete_selected.html:50
+msgid "Yes, I’m sure"
+msgstr "Oui, je confirme"
+
+#: templates/common/delete_selected.html:51
+msgid "No, take me back"
+msgstr "Non, revenir en arrière"
+
+#: templatetags/tools.py:396
+msgid ", "
+msgstr ", "
+
+#: utils.py:124
+#, python-brace-format
 msgid "[{}] démarré..."
 msgstr "[{}] démarré..."
 
+#: utils.py:128
+#, python-brace-format
 msgid "[{}] en échec : {}"
 msgstr "[{}] en échec : {}"
 
+#: utils.py:131
+#, python-brace-format
 msgid "[{}] terminé en {} !"
 msgstr "[{}] terminé en {} !"
 
+#: utils.py:311
+#, python-brace-format
 msgid "Erreur lors de la sauvegarde du fichier : {}"
 msgstr "Erreur lors de la sauvegarde du fichier : {}"
 
+#: utils.py:1122
 msgid "vrai"
 msgstr "vrai"
 
+#: utils.py:1122
 msgid "oui"
 msgstr "oui"
 
+#: utils.py:1122
 msgid "o"
 msgstr "o"
 
+#: utils.py:1122
 msgid "v"
 msgstr "v"
 
+#: utils.py:1123
 msgid "faux"
 msgstr "faux"
 
+#: utils.py:1123
 msgid "non"
 msgstr "non"
 
+#: utils.py:1123
 msgid "n"
 msgstr "n"
 
+#: utils.py:1123
 msgid "f"
 msgstr "f"
 
+#: utils.py:1739
+#, python-brace-format
 msgid "Erreur lors du désarchivage : {}"
 msgstr "Erreur lors du désarchivage : {}"
 
+#: utils.py:1888
 msgid "Cette fonction ne peut être utilisée que sur PostgreSQL."
 msgstr "Cette fonction ne peut être utilisée que sur PostgreSQL."
+
+#: utils.py:2370
+msgid ""
+"Le nombre maximal d'appels ({limit}) de ce service pour cet utilisateur "
+"({user}) a été atteint et sera réinitialisé le {date:%d/%m/%Y %H:%M:%S}."
+msgstr ""
+"Le nombre maximal d'appels ({limit}) de ce service pour cet utilisateur "
+"({user}) a été atteint et sera réinitialisé le {date:%d/%m/%Y %H:%M:%S}."
+
+#: utils.py:2375
+#, python-brace-format
+msgid ""
+"Le nombre maximal d'appels ({limit}) de ce service pour cet utilisateur "
+"({user}) a été atteint et ne peut plus être utilisé."
+msgstr ""
+"Le nombre maximal d'appels ({limit}) de ce service pour cet utilisateur "
+"({user}) a été atteint et ne peut plus être utilisé."

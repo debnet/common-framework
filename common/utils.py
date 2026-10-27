@@ -1,4 +1,11 @@
 # coding: utf-8
+"""Utilitaires Django publics, conservés dans ce module pour compatibilité d'import.
+
+Les sections regroupent décorateurs, vues HTTP, évaluation de code de confiance,
+introspection ORM, conversions, fichiers, sérialisation, permissions et quotas.
+Les imports de modèles dans les fonctions évitent les cycles d'initialisation.
+"""
+
 import abc
 import ast
 import collections
@@ -47,6 +54,10 @@ from rest_framework.utils.encoders import JSONEncoder
 logger = logging.getLogger(__name__)
 
 
+# Décorateurs, cache et exécution de tâches
+# ---------------------------------------
+
+
 class singleton:
     """
     Décorateur pour définir une classe singleton
@@ -64,8 +75,14 @@ class singleton:
 
 def timed_cache(**dkwargs):
     """
-    Décorateur de cache avec durée d'expiration
-    :param dkwargs: Paramètres d'expiration (timedelta)
+    Mémorise les résultats avec un lru_cache vidé à intervalles réguliers.
+
+    L'expiration concerne tout le cache de la fonction, pas chaque entrée.
+    Le premier appel et le premier appel après expiration le vident avant
+    exécution. Les exceptions de la fonction ne sont pas mémorisées.
+
+    :param dkwargs: Arguments de timedelta, plus maxsize et typed pour lru_cache
+    :return: Décorateur conservant la signature introspectable via wraps
     """
 
     def _wrapper(func):
@@ -89,6 +106,58 @@ def timed_cache(**dkwargs):
     return _wrapper
 
 
+def timeit(name, log=logger.info):
+    """Journalise le début, la fin et la durée d'un appel synchrone.
+
+    Les exceptions sont journalisées puis propagées sans modification. Ce
+    décorateur ne mesure pas l'exécution différée d'une coroutine/générateur.
+
+    :param name: Nom lisible de l'opération dans les messages
+    :param log: Fonction de journalisation acceptant un message
+    :return: Décorateur renvoyant le résultat de la fonction originale
+    """
+
+    def decorator(func):
+        @wraps(func)
+        def wrapped(*args, **kwargs):
+            ts = datetime.now()
+            log(_("[{}] démarré...").format(name))
+            try:
+                result = func(*args, **kwargs)
+            except Exception as error:
+                log(_("[{}] en échec : {}").format(name, error))
+                raise
+            te = datetime.now()
+            log(_("[{}] terminé en {} !").format(name, te - ts))
+            return result
+
+        return wrapped
+
+    return decorator
+
+
+def synchronized(lock=None):
+    """Sérialise les appels synchrones avec un verrou de threads.
+
+    Sans lock fourni, chaque fonction décorée reçoit son propre Lock. Fournir
+    un verrou commun permet de sérialiser plusieurs fonctions ; utiliser un
+    RLock si les appels doivent être réentrants. Le verrou est libéré même
+    après exception. Ce n'est ni un verrou de processus ni un verrou asyncio.
+    """
+
+    def decorator(func):
+        func.__lock__ = lock or threading.Lock()
+
+        @wraps(func)
+        def wrapped(*args, **kwargs):
+            with func.__lock__:
+                return func(*args, **kwargs)
+
+        return wrapped
+
+    return decorator
+
+
 @singleton
 class CeleryFake:
     """
@@ -96,12 +165,21 @@ class CeleryFake:
     """
 
     def task(self, *dargs, **dkwargs):
+        """Imite @app.task(...) et ses entrées apply/apply_async sans broker.
+
+        Toutes les entrées exécutent immédiatement la fonction et renvoient
+        son résultat brut, pas un AsyncResult ; leurs erreurs sont propagées.
+        Les options de publication et de retry sont ignorées.
+        """
+
         def decorator(func):
             @wraps(func)
             def wrapped(*args, **kwargs):
                 return func(*args, **kwargs)
 
-            wrapped.apply = lambda args=None, kwargs=None, **options: func(*(args or []), **(kwargs or {}))
+            wrapped.apply = lambda args=None, kwargs=None, **options: func(
+                *(args or []), **(kwargs or {})
+            )
             wrapped.apply_async = wrapped.apply
             return wrapped
 
@@ -110,8 +188,13 @@ class CeleryFake:
 
 def get_current_app():
     """
-    Récupère l'application Celery actuelle ou un mock
-    :return: Application Celery ou mock
+    Choisit l'application Celery ou le substitut synchrone CeleryFake.
+
+    Celery n'est chargé que si CELERY_ENABLE est vrai. Les modules qui décorent
+    leurs tâches à l'import conservent ensuite ce choix : modifier le setting
+    à chaud ne reconfigure pas leurs fonctions déjà décorées.
+
+    :return: current_app si activé et installé, sinon le singleton CeleryFake
     """
     try:
         _assert(getattr(settings, "CELERY_ENABLE", False))
@@ -122,11 +205,24 @@ def get_current_app():
         return CeleryFake()
 
 
+# Dates et fuseaux horaires
+# -----------------------
+
 # Regex de date au format DMY
-DMY_DATE_REGEX = re.compile(r"^(\d{2})[^\d]?(\d{2})[^\d]?(\d{2,4})([^\d]?(\d{2})[^\d]?(\d{2})[^\d]?(\d{2}))?$")
+DMY_DATE_REGEX = re.compile(
+    r"^(\d{2})[^\d]?(\d{2})[^\d]?(\d{2,4})([^\d]?(\d{2})[^\d]?(\d{2})[^\d]?(\d{2}))?$"
+)
 
 
-def parsedate(input_date, start_day=False, end_day=False, date_only=False, utc=False, dmy=False, **kwargs):
+def parsedate(
+    input_date,
+    start_day=False,
+    end_day=False,
+    date_only=False,
+    utc=False,
+    dmy=False,
+    **kwargs,
+):
     """
     Permet de parser une date quelconque (chaîne, date ou datetime) en un datetime standardisée avec time zone
     :param input_date: Date quelconque
@@ -181,51 +277,8 @@ def parsedate(input_date, start_day=False, end_day=False, date_only=False, utc=F
         return _date
 
 
-def timeit(name, log=logger.info):
-    """
-    Decorateur pour évaluer le temps d'exécution d'une méthode
-    :param name: Nom lisible de la méthode
-    :param log: Logger
-    :return: Decorateur
-    """
-
-    def decorator(func):
-        @wraps(func)
-        def wrapped(*args, **kwargs):
-            ts = datetime.now()
-            log(_("[{}] démarré...").format(name))
-            try:
-                result = func(*args, **kwargs)
-            except Exception as error:
-                log(_("[{}] en échec : {}").format(name, error))
-                raise
-            te = datetime.now()
-            log(_("[{}] terminé en {} !").format(name, te - ts))
-            return result
-
-        return wrapped
-
-    return decorator
-
-
-def synchronized(lock=None):
-    """
-    Décorateur permettant de verrouiller l'accès simultané à une méthode
-    :param lock: Verrou externe partagé
-    :return: Decorateur
-    """
-
-    def decorator(func):
-        func.__lock__ = lock or threading.Lock()
-
-        @wraps(func)
-        def wrapped(*args, **kwargs):
-            with func.__lock__:
-                return func(*args, **kwargs)
-
-        return wrapped
-
-    return decorator
+# Vues HTTP, transferts et rendu de templates
+# ------------------------------------------
 
 
 class TemporaryFile(TemporaryUploadedFile):
@@ -233,9 +286,18 @@ class TemporaryFile(TemporaryUploadedFile):
     Fichier temporaire avec conservation du nom d'origine
     """
 
-    def __init__(self, name, content_type, size, charset, content_type_extra=None, folder=None):
+    def __init__(
+        self, name, content_type, size, charset, content_type_extra=None, folder=None
+    ):
+        """Crée un fichier temporaire en conservant son nom et la destination de clôture.
+
+        folder n'est utilisé qu'à close() pour une éventuelle copie vers le
+        stockage MEDIA_ROOT. L'appelant doit s'assurer que cette cible est autorisée.
+        """
         file = temp.NamedTemporaryFile(suffix="." + name)
-        super(TemporaryUploadedFile, self).__init__(file, name, content_type, size, charset, content_type_extra)
+        super(TemporaryUploadedFile, self).__init__(
+            file, name, content_type, size, charset, content_type_extra
+        )
         self.folder = folder
 
     def close(self):
@@ -245,7 +307,10 @@ class TemporaryFile(TemporaryUploadedFile):
                 to = os.path.join(self.folder, file_name)
                 FileSystemStorage(location=settings.MEDIA_ROOT).save(to, self.file)
             except (IOError, OSError):
-                logger.error(_("Erreur lors de la sauvegarde du fichier : {}").format(file_name), exc_info=True)
+                logger.error(
+                    _("Erreur lors de la sauvegarde du fichier : {}").format(file_name),
+                    exc_info=True,
+                )
         return super().close()
 
 
@@ -261,7 +326,12 @@ class TemporaryFileHandler(TemporaryFileUploadHandler):
     def new_file(self, file_name, *args, **kwargs):
         super(TemporaryFileUploadHandler, self).new_file(file_name, *args, **kwargs)
         self.file = TemporaryFile(
-            self.file_name, self.content_type, 0, self.charset, self.content_type_extra, folder=self.folder
+            self.file_name,
+            self.content_type,
+            0,
+            self.charset,
+            self.content_type_extra,
+            folder=self.folder,
         )
 
 
@@ -284,7 +354,11 @@ def temporary_upload(folder=None):
     return decorateur
 
 
-class DownloadFile(collections.namedtuple("DownloadFile", ["file", "name", "delete", "mimetype", "charset"])):
+class DownloadFile(
+    collections.namedtuple(
+        "DownloadFile", ["file", "name", "delete", "mimetype", "charset"]
+    )
+):
     """
     Objet permettant de définir un fichier à télécharger
     file : fichier ou chemin du fichier,
@@ -295,7 +369,9 @@ class DownloadFile(collections.namedtuple("DownloadFile", ["file", "name", "dele
     """
 
     def __new__(cls, file, name, delete, mimetype=None, charset=None):
-        return super(DownloadFile, cls).__new__(cls, file, name, delete, mimetype, charset)
+        return super(DownloadFile, cls).__new__(
+            cls, file, name, delete, mimetype, charset
+        )
 
 
 def download_file(function):
@@ -319,10 +395,17 @@ def download_file(function):
             file_wrapper = FileWrapper(file)
             if not mimetype:
                 mimetype, charset = mimetypes.guess_type(name)
-            mimetype, charset = mimetype or "application/octet-stream", charset or settings.DEFAULT_CHARSET
-            response = HttpResponse(file_wrapper, content_type=mimetype, charset=charset)
+            mimetype, charset = (
+                mimetype or "application/octet-stream",
+                charset or settings.DEFAULT_CHARSET,
+            )
+            response = HttpResponse(
+                file_wrapper, content_type=mimetype, charset=charset
+            )
             response["Content-Disposition"] = "attachment; filename={0}".format(name)
-            response["Content-Type"] = "{mimetype}; charset={charset}".format(mimetype=mimetype, charset=charset)
+            response["Content-Type"] = "{mimetype}; charset={charset}".format(
+                mimetype=mimetype, charset=charset
+            )
             file.close()
             if delete:
                 os.unlink(file.name)
@@ -334,44 +417,19 @@ def download_file(function):
 
 
 def render_to(template=None, content_type=None):
-    """
-    Decorator for Django views that sends returned dict to render_to_response function.
+    """Transforme le dictionnaire renvoyé par une vue en réponse HTML Django.
 
-    Template name can be decorator parameter or TEMPLATE item in returned dictionary.
-    RequestContext always added as context instance.
-    If view doesn't return dict then decorator simply returns output.
+    La clé spéciale TEMPLATE, si présente, est retirée du dictionnaire et
+    remplace le template du décorateur. Toute autre valeur de retour (dont
+    HttpResponse) est transmise sans modification. Le rendu reçoit la requête
+    et les context processors Django habituels.
 
-    Parameters:
-     - template: template name to use
-     - content_type: content type to send in response headers
+    Fournir un template explicite : l'inférence historique sans template utilise
+    func_name, attribut hérité de Python 2 qui n'est pas disponible partout.
 
-    Examples:
-    # 1. Template name in decorator parameters
-
-    @render_to('template.html')
-    def foo(request):
-        bar = Bar.object.all()
-        return {'bar': bar}
-
-    # equals to
-    def foo(request):
-        bar = Bar.object.all()
-        return render_to_response('template.html', {'bar': bar}, context_instance=RequestContext(request))
-
-
-    # 2. Template name as _template item value in return dictionary.
-         If _template is given then its value will have higher priority than render_to argument.
-
-    @render_to()
-    def foo(request, category):
-        template_name = '%s.html' % category
-        return {'bar': bar, '_template': template_name}
-
-    # equals to
-    def foo(request, category):
-        template_name = '%s.html' % category
-        return render_to_response(template_name, {'bar': bar}, context_instance=RequestContext(request))
-
+    :param template: Chemin de template, sauf surcharge par la clé TEMPLATE
+    :param content_type: Type MIME facultatif transmis à django.shortcuts.render
+    :return: Décorateur de vue synchrone
     """
 
     def renderer(function):
@@ -455,6 +513,9 @@ def ajax_request(func):
 
 
 # Liste des built-ins considérés comme "sûrs"
+# Évaluation de code de confiance et surcharge temporaire des settings
+# -------------------------------------------------------------------
+
 SAFE_GLOBALS = dict(
     __builtins__=dict(
         abs=abs,
@@ -531,7 +592,13 @@ SAFE_GLOBALS = dict(
 
 def evaluate(expression, _globals=None, _locals=None, default=False):
     """
-    Evalue une expression Python
+    Évalue une expression Python de confiance et renvoie son résultat.
+
+    Par défaut les contextes sont copiés depuis l'appelant ; SAFE_GLOBALS
+    remplace certains builtins sauf si default=True. Cette restriction n'est
+    PAS une sandbox : introspection et objets injectés peuvent donner accès
+    à des opérations arbitraires. Ne jamais utiliser avec une entrée non fiable.
+    Les exceptions d'évaluation sont propagées.
     :param expression: Expression
     :param _globals: Contexte global
     :param _locals: Contexte local
@@ -549,7 +616,12 @@ def evaluate(expression, _globals=None, _locals=None, default=False):
 
 def execute(statement, _globals=None, _locals=None, default=False):
     """
-    Exécute un statement Python
+    Exécute du code Python de confiance dans les contextes fournis.
+
+    Les règles de contexte et les limites de sécurité sont celles de evaluate.
+    Un dictionnaire _locals explicite reçoit les affectations ; les contextes
+    implicites sont des copies de ceux de l'appelant. Aucun résultat n'est
+    renvoyé et les exceptions ne sont pas absorbées. Ne pas exposer au public.
     :param statement: Statement
     :param _globals: Contexte global
     :param _locals: Contexte local
@@ -568,28 +640,50 @@ def execute(statement, _globals=None, _locals=None, default=False):
 @contextmanager
 def patch_settings(**kwargs):
     """
-    Permet de patcher temporairement les settings Django
+    Remplace temporairement des settings Django, puis restaure leur état.
+
+    Le finally restaure aussi les attributs initialement absents et les valeurs
+    None, même si le bloc lève une exception. Les contextes imbriqués sont
+    possibles, mais les settings restent globaux au processus : ne pas employer
+    pour isoler des requêtes concurrentes. override_settings convient mieux
+    aux tests qui ont besoin des signaux de reconfiguration de Django.
     :param kwargs: Valeurs à changer
     :return: Rien
     """
+    missing = object()
     old_settings = {}
-    for key, new_value in kwargs.items():
-        old_value = getattr(settings, key, None)
-        old_settings[key] = old_value
-        setattr(settings, key, new_value)
-    yield
-    for key, old_value in old_settings.items():
-        if old_value is None:
-            delattr(settings, key)
-        else:
-            setattr(settings, key, old_value)
+    try:
+        for key, new_value in kwargs.items():
+            old_settings[key] = getattr(settings, key, missing)
+            setattr(settings, key, new_value)
+        yield
+    finally:
+        for key, old_value in old_settings.items():
+            if old_value is missing:
+                if hasattr(settings, key):
+                    delattr(settings, key)
+            else:
+                setattr(settings, key, old_value)
+
+
+# Collections, objets de données et combinaisons
+# ---------------------------------------------
 
 
 def recursive_dict_product(
-    input_dict, all_keys=None, long_keys=False, separator="_", ignore="*", auto_id="id", prefix=""
+    input_dict,
+    all_keys=None,
+    long_keys=False,
+    separator="_",
+    ignore="*",
+    auto_id="id",
+    prefix="",
 ):
     """
     Retourne le produit de combinaisons d'un dictionnaire (avec listes et dictionnaires imbriqués) en renommant les clés
+    Les listes de dictionnaires produisent un produit cartésien, pas un zip.
+    auto_id ajoute des identifiants aux dictionnaires d'entrée : l'argument
+    peut donc être modifié ; fournir une copie si cet effet n'est pas souhaité.
     :param input_dict: Dictionnaire à mettre à plat
     :param all_keys: (Facultatif) L'ensemble des clés au pluriel et leur équivalent au singulier pour la transformation
     :param long_keys: Utilise des clés longues (avec l'historique de la hiérarchie)
@@ -605,7 +699,11 @@ def recursive_dict_product(
     all_keys = all_keys or {}
 
     # Ajout des identifiants uniques
-    if auto_id and prefix is not None and ((auto_id not in input_dict) or not input_dict[auto_id]):
+    if (
+        auto_id
+        and prefix is not None
+        and ((auto_id not in input_dict) or not input_dict[auto_id])
+    ):
         input_dict[auto_id] = short_identifier()
 
     # Récupère les clés mises à plat
@@ -622,7 +720,9 @@ def recursive_dict_product(
             continue
         elif isinstance(value, dict):
             # Les dictionnaires imbriqués dans des dictionnaires sont récupérés immédiatement par récursivité
-            for result in recursive_dict_product(value, all_keys, long_keys, separator, ignore, auto_id, result_key):
+            for result in recursive_dict_product(
+                value, all_keys, long_keys, separator, ignore, auto_id, result_key
+            ):
                 dicts.append(result)
             continue
         result[result_key] = value
@@ -645,7 +745,13 @@ def recursive_dict_product(
                 results = [
                     dict(r, **result)
                     for result in recursive_dict_product(
-                        nested_value, all_keys, long_keys, separator, ignore, auto_id, nested_key
+                        nested_value,
+                        all_keys,
+                        long_keys,
+                        separator,
+                        ignore,
+                        auto_id,
+                        nested_key,
                     )
                     for r in results
                 ]
@@ -655,6 +761,10 @@ def recursive_dict_product(
                 result.update(d)
             # Retourne le résultat de l'itération
             yield result
+
+
+# Introspection des modèles et chargement de relations
+# ---------------------------------------------------
 
 
 def get_choices_fields(*included_apps):
@@ -675,8 +785,12 @@ def get_choices_fields(*included_apps):
             for field in model._meta.fields:
                 if field.choices and field.choices not in choices_fields:
                     choices_fields.append(field.choices)
-                    choice_value = " ".join([app_label, model._meta.model_name, field.name])
-                    choice_libelle = "{} ({})".format(field.verbose_name, model._meta.verbose_name)
+                    choice_value = " ".join(
+                        [app_label, model._meta.model_name, field.name]
+                    )
+                    choice_libelle = "{} ({})".format(
+                        field.verbose_name, model._meta.verbose_name
+                    )
                     if app_label in results:
                         results[app_label].append(
                             (
@@ -698,7 +812,9 @@ def get_choices_fields(*included_apps):
 
     def choices_by_application():
         for app_label, choices in sorted(results.items()):
-            yield str(apps.get_app_config(app_label).verbose_name), tuple(ordered_choices(choices))
+            yield str(apps.get_app_config(app_label).verbose_name), tuple(
+                ordered_choices(choices)
+            )
 
     return tuple(choices_by_application())
 
@@ -718,8 +834,12 @@ def prefetch_metadata(model, lookup=None, name=None):
 
     for field in model._meta.private_fields:
         if field.related_model is MetaData:
-            lookup = field.name if lookup is None else "{}__{}".format(lookup, field.name)
-            return [Prefetch(lookup, queryset=MetaData.objects.select_valid(), to_attr=name)]
+            lookup = (
+                field.name if lookup is None else "{}__{}".format(lookup, field.name)
+            )
+            return [
+                Prefetch(lookup, queryset=MetaData.objects.select_valid(), to_attr=name)
+            ]
     return []
 
 
@@ -769,12 +889,22 @@ def get_prefetchs(
             (field.one_to_one and one_to_one)
             or (field.one_to_many and one_to_many)
             or (field.many_to_many and many_to_many and field.related_model == parent)
-            or (field.many_to_many and reverse_many_to_many and field.related_model != parent)
+            or (
+                field.many_to_many
+                and reverse_many_to_many
+                and field.related_model != parent
+            )
         ):
-            accessor_name = field.get_accessor_name() if field.auto_created else field.name
+            accessor_name = (
+                field.get_accessor_name() if field.auto_created else field.name
+            )
             if not accessor_name:
                 continue
-            recursive_prefetch = accessor_name if model == parent else "__".join((_prefetch, accessor_name))
+            recursive_prefetch = (
+                accessor_name
+                if model == parent
+                else "__".join((_prefetch, accessor_name))
+            )
             prefetchs = None
             if model == parent or _level < depth:
                 prefetchs = get_prefetchs(
@@ -870,7 +1000,9 @@ def get_related(
                 field_name = field.get_accessor_name()
                 if field_name in excludes:
                     continue
-                related_path = "__".join((_related, field_name)) if _related else field_name
+                related_path = (
+                    "__".join((_related, field_name)) if _related else field_name
+                )
                 results.update(
                     get_related(
                         field.related_model,
@@ -888,7 +1020,12 @@ def get_related(
 
 def prefetch_generics(weak_queryset):
     """
-    Permet un prefetch des GenericForeignKey
+    Précharge récursivement les cibles des GenericForeignKey d'un QuerySet.
+
+    Évalue le QuerySet, regroupe ses identifiants par ContentType puis alimente
+    les relations des instances. Le chemin historique convertit les PK en int
+    et n'inclut pas de détection de cycles : ne convient pas aux PK arbitraires
+    ni aux graphes génériques cycliques. Les erreurs ORM sont propagées.
     :param weak_queryset: QuerySet d'origine
     :return: QuerySet avec prefetch
     """
@@ -907,11 +1044,14 @@ def prefetch_generics(weak_queryset):
     for weak_model in weak_queryset:
         for gfk_name, gfk_field in gfks.items():
             related_content_type_id = getattr(
-                weak_model, gfk_field.model._meta.get_field(gfk_field.ct_field).get_attname()
+                weak_model,
+                gfk_field.model._meta.get_field(gfk_field.ct_field).get_attname(),
             )
             if not related_content_type_id:
                 continue
-            related_content_type = ContentType.objects.get_for_id(related_content_type_id)
+            related_content_type = ContentType.objects.get_for_id(
+                related_content_type_id
+            )
             related_object_id = int(getattr(weak_model, gfk_field.fk_field))
 
             if related_content_type not in data.keys():
@@ -925,11 +1065,16 @@ def prefetch_generics(weak_queryset):
             for weak_model in weak_queryset:
                 for gfk_name, gfk_field in gfks.items():
                     related_content_type_id = getattr(
-                        weak_model, gfk_field.model._meta.get_field(gfk_field.ct_field).get_attname()
+                        weak_model,
+                        gfk_field.model._meta.get_field(
+                            gfk_field.ct_field
+                        ).get_attname(),
                     )
                     if not related_content_type_id:
                         continue
-                    related_content_type = ContentType.objects.get_for_id(related_content_type_id)
+                    related_content_type = ContentType.objects.get_for_id(
+                        related_content_type_id
+                    )
                     related_object_id = int(getattr(weak_model, gfk_field.fk_field))
 
                     if related_object_id != model.pk:
@@ -959,6 +1104,10 @@ def get_field_by_path(model, path):
     return field
 
 
+# Conversions scalaires et normalisation des données
+# -------------------------------------------------
+
+
 def str_to_bool(value):
     """
     Permet de renvoyer le booleen correspondant à la valeur entrée en paramètre
@@ -982,6 +1131,9 @@ def str_to_bool(value):
 def str_to_num(value, force_int=False):
     """
     Permet de renvoyer le nombre correspondant à la valeur chaîne entrée en paramètre
+    Les valeurs falsy et les nombres déjà convertis sont conservés. Le parsing
+    essaie literal_eval puis int/float ; les entrées non numériques ne sont pas
+    toutes strictement rejetées par le chemin historique literal_eval.
     :param value: valeur à analyser
     :param force_int: Forcer le résultat en entier
     :return: valeur numérique correspondante ou None sinon
@@ -1061,19 +1213,42 @@ def decimal(value=None, precision=None, rounding=ROUND_HALF_EVEN, context=None):
 
 def decimal_to_str(value):
     """
-    Reformate un nombre décimal en chaîne de caractères
+    Formate un nombre sans notation scientifique ni zéros fractionnaires finaux.
+
+    Les chaînes sont conservées telles quelles, None devient une chaîne vide.
+    Les zéros entiers sont préservés (Decimal('100') donne '100') ; cette règle
+    sert notamment à normaliser les clés décimales de idict sans collision.
     :param value: Valeur
     """
-    return "" if value is None else value if isinstance(value, str) else format(value, "f").rstrip("0").rstrip(".")
+    if value is None:
+        return ""
+    if isinstance(value, str):
+        return value
+    text = format(value, "f")
+    return text.rstrip("0").rstrip(".") if "." in text else text
 
+
+# Découverte du routage Django et représentation des paramètres d'URL
+# -----------------------------------------------------------------
 
 # Regex permettant d'extraire les paramètres d'une URL
 REGEX_URL_PARAMS = re.compile(r"\(\?P<([\w_]+)>[^\)]+\)")
 
 
-def recursive_get_urls(module=None, namespaces=None, attributes=None, model=None, _namespace=None, _current="/"):
+def recursive_get_urls(
+    module=None,
+    namespaces=None,
+    attributes=None,
+    model=None,
+    _namespace=None,
+    _current="/",
+):
     """
     Récupère les URLs d'un module
+    Parcourt récursivement les include et namespaces et produit des couples
+    (nom_de_vue_qualifié, chemin_avec_paramètres). Les paramètres de regex sont
+    représentés par des marqueurs :nom: destinés notamment au helper JavaScript.
+    Ce n'est pas un contrôle d'accès : publier ce résultat révèle le routage.
     :param module: Module à explorer
     :param namespaces: Liste des namespaces à récupérer
     :param attributes: Liste des propriétés à vérifier dans le module
@@ -1090,7 +1265,10 @@ def recursive_get_urls(module=None, namespaces=None, attributes=None, model=None
             module = import_module(settings.ROOT_URLCONF)
         patterns = module
 
-        patterns = list(chain(*(getattr(module, attribute, []) for attribute in attributes))) or patterns
+        patterns = (
+            list(chain(*(getattr(module, attribute, []) for attribute in attributes)))
+            or patterns
+        )
         if patterns and isinstance(patterns[-1], str):
             patterns, *_ = patterns
     except (TypeError, ValueError):
@@ -1101,12 +1279,20 @@ def recursive_get_urls(module=None, namespaces=None, attributes=None, model=None
             namespace = _namespace or getattr(pattern, "namespace", None)
             if namespaces and namespace not in namespaces:
                 continue
-            url = _current + pattern.pattern.regex.pattern.strip("^$\\Z").replace("\\", "")
+            url = _current + pattern.pattern.regex.pattern.strip("^$\\Z").replace(
+                "\\", ""
+            )
             url = re.sub(REGEX_URL_PARAMS, r":\1:", url).replace("?", "")
             url = url.replace("(.+)", ":pk:")
             if getattr(pattern.pattern, "name", None):
-                key = "{}:{}".format(namespace, pattern.pattern.name) if namespace else pattern.name
-                current_model = getattr(getattr(pattern.callback, "cls", None), "model", None)
+                key = (
+                    "{}:{}".format(namespace, pattern.pattern.name)
+                    if namespace
+                    else pattern.name
+                )
+                current_model = getattr(
+                    getattr(pattern.callback, "cls", None), "model", None
+                )
                 if not model or model is current_model:
                     yield key, url
             elif getattr(pattern, "namespace", None) and pattern.urlconf_module:
@@ -1120,6 +1306,10 @@ def recursive_get_urls(module=None, namespaces=None, attributes=None, model=None
                 )
         except AttributeError:
             continue
+
+
+# Dictionnaires, objets de données et représentation mémoire
+# ---------------------------------------------------------
 
 
 class CustomDict(MutableMapping):
@@ -1169,6 +1359,7 @@ class idict(CustomDict):
     """
 
     def _transform(self, key):
+        """Normalise récursivement les clés composées et les Decimal en clés stables."""
         if isinstance(key, (list, tuple)):
             return tuple(self._transform(k) for k in key)
         if isinstance(key, Decimal):
@@ -1182,7 +1373,9 @@ def sort_dict(idict):
     :param idict: Dictionnaire
     :return: Dictionnaire trié
     """
-    return json_decode(json_encode(idict), object_pairs_hook=collections.OrderedDict)
+    return json_decode(
+        json_encode(idict, sort_keys=True), object_pairs_hook=collections.OrderedDict
+    )
 
 
 def merge_dict(mdict, *idicts, **kwargs):
@@ -1196,7 +1389,11 @@ def merge_dict(mdict, *idicts, **kwargs):
     mdict = mdict if mdict is not None else {}
     for idict in idicts:
         for key, value in idict.items():
-            if key in mdict and isinstance(mdict[key], dict) and isinstance(idict[key], dict):
+            if (
+                key in mdict
+                and isinstance(mdict[key], dict)
+                and isinstance(idict[key], dict)
+            ):
                 merge_dict(mdict[key], idict[key])
             else:
                 mdict[key] = idict[key]
@@ -1274,7 +1471,9 @@ def to_tuple(data):
     if isinstance(data, (list, set)):
         return tuple(to_tuple(element) for element in data)
     if isinstance(data, dict):
-        return tuple({key: to_tuple(value) for key, value in sorted(data.items())}.items())
+        return tuple(
+            {key: to_tuple(value) for key, value in sorted(data.items())}.items()
+        )
     return data
 
 
@@ -1361,37 +1560,12 @@ dict_to_object = to_object
 namedtuple_to_dict = to_dict
 
 
-def file_is_text(file):
-    """
-    Vérifie qu'un fichier est au format texte et non binaire
-    :param file: Chemin vers le fichier
-    :return: Vrai si le fichier est au format texte, faux s'il est au format binaire
-    """
-    textchars = bytearray([7, 8, 9, 10, 12, 13, 27]) + bytearray(range(0x20, 0x100))
-    is_plaintext = lambda _bytes: not bool(_bytes.translate(None, textchars))  # noqa
-    with open(file, "rb") as f:
-        return is_plaintext(f.read(1024))
-
-
-def seek_end(file, count=1):
-    """
-    Récupère un nombre défini d'octets à la fin d'un fichier
-    :param file: Chemin vers le fichier
-    :param count: Nombre d'octets à récupérer
-    :return: Bytes
-    """
-    try:
-        with open(file, "rb") as f:
-            f.seek(-count, 2)
-            result = f.read()
-        return result
-    except OSError:
-        return b""
-
-
 def get_size(obj, _seen=None):
     """
     Calcule la taille en octets d'un objet Python quelconque
+    Estimation récursive par getsizeof, avec détection des objets déjà visités.
+    Peut consommer un itérable/générateur et ne mesure pas tous les buffers
+    natifs d'extensions ; ce n'est pas un outil de comptabilité mémoire exact.
     :param obj: Objet
     :param _seen: Liste des objets déjà calculés (utilisé uniquement par la récursivité)
     :return: Taille en octets de l'objet
@@ -1418,19 +1592,99 @@ def get_size(obj, _seen=None):
     return size
 
 
+# Inspection de fichiers, empreintes et extraction d'archives
+# ---------------------------------------------------------
+
+
+def file_is_text(file):
+    """Estime si les 1 024 premiers octets ressemblent à du texte.
+
+    Cette heuristique ne valide ni l'encodage ni l'intégrité du fichier. Les
+    erreurs d'ouverture sont propagées ; le fichier est ouvert en mode binaire.
+    """
+    textchars = bytearray([7, 8, 9, 10, 12, 13, 27]) + bytearray(range(0x20, 0x100))
+    is_plaintext = lambda _bytes: not bool(_bytes.translate(None, textchars))  # noqa
+    with open(file, "rb") as f:
+        return is_plaintext(f.read(1024))
+
+
+def seek_end(file, count=1):
+    """Lit count octets depuis la fin d'un fichier binaire.
+
+    Renvoie b'' sur OSError, notamment si le fichier est trop court pour le
+    seek demandé. Ne confondre ni cette valeur avec une preuve d'absence du
+    fichier, ni la stabilité des octets avec une fin de transfert garantie.
+    """
+    try:
+        with open(file, "rb") as f:
+            f.seek(-count, 2)
+            result = f.read()
+        return result
+    except OSError:
+        return b""
+
+
+def hash_file(path, func=hashlib.sha1, chunks=None):
+    """Calcule l'empreinte hexadécimale d'un fichier existant, sinon renvoie None.
+
+    func est une fabrique hashlib ; chunks borne les lectures en octets, sinon
+    tout le fichier est chargé. SHA-1 est conservé pour compatibilité, pas pour
+    l'authenticité cryptographique : fournir sha256 pour les nouveaux usages.
+    Les erreurs d'ouverture/lecture d'un fichier existant sont propagées.
+    """
+    if not os.path.exists(path):
+        return
+    digest = func()
+    with open(path, "rb") as file:
+        if chunks:
+            while chunk := file.read(chunks):
+                digest.update(chunk)
+        else:
+            digest.update(file.read())
+    return digest.hexdigest()
+
+
+def _archive_member_path(directory, name):
+    """Valide un nom d'archive et renvoie sa destination réelle sous directory.
+
+    Refuse les chemins absolus Windows/POSIX, les segments '..' et les chemins
+    qui s'échappent par un symlink préexistant. Lève ValueError avant extraction.
+    Le répertoire cible doit rester non modifiable par un tiers pendant celle-ci.
+    """
+    import ntpath
+
+    normalized = name.replace("\\", "/")
+    if (
+        ntpath.splitdrive(normalized)[0]
+        or normalized.startswith("/")
+        or ".." in normalized.split("/")
+    ):
+        raise ValueError("Unsafe archive member: {}".format(name))
+    destination = os.path.realpath(directory)
+    target = os.path.realpath(os.path.join(destination, normalized))
+    if os.path.commonpath((destination, target)) != destination:
+        raise ValueError("Archive member escapes destination: {}".format(name))
+    return target
+
+
 def process_file(file_path, sleep=5, extract_directory=None):
     """
     Vérifie qu'un fichier quelconque est complet et lisible
     Si le fichier est une archive, elle sera décompressée dans le dossier selectionné
+    La stabilisation repose sur les derniers octets, sans délai maximal : elle
+    ne prouve pas que le producteur a définitivement terminé son écriture.
+    Les chemins et liens d'archives sont validés avant extraction, mais aucun
+    plafond de volume décompressé n'est appliqué. Utiliser une destination privée
+    et des quotas pour les fichiers non fiables. Les erreurs sont propagées.
     :param file_path: Chemin vers le fichier
     :param sleep: Temps d'attente entre deux vérifications de la complétude du fichier
     :param extract_directory: (Facultatif) Répertoire d'extraction sinon répertoire courant du fichier
-    :return:
+    :return: Chemin d'origine pour un fichier ordinaire, None après extraction
     """
     import time
 
     file_base = os.path.abspath(file_path)
-    extract_directory = extract_directory or os.path.dirname(file_path)
+    extract_directory = os.path.abspath(extract_directory or os.path.dirname(file_base))
     # Boucle tant que la copie n'est pas terminée
     while True:
         try:
@@ -1447,22 +1701,49 @@ def process_file(file_path, sleep=5, extract_directory=None):
         extension = extension.lower()
     try:
         if extension == ".zip":
+            import stat
             from zipfile import ZipFile
 
             with ZipFile(file_path) as zip:
+                for member in zip.infolist():
+                    _archive_member_path(extract_directory, member.filename)
+                    if stat.S_ISLNK(member.external_attr >> 16):
+                        raise ValueError(
+                            "Archive links are not allowed: {}".format(member.filename)
+                        )
                 zip.extractall(path=extract_directory)
             return
-        elif extension in [".tar", ".gz", ".bz2"]:
+        elif extension in [".tar", ".gz", ".bz2", ".xz", ".tgz", ".tbz2", ".txz"]:
             import tarfile
 
-            tar = tarfile.open(file_path, "r:*")
-            tar.extractall()
-            tar.close()
+            with tarfile.open(file_path, "r:*") as tar:
+                members = tar.getmembers()
+                for member in members:
+                    _archive_member_path(extract_directory, member.name)
+                    if not (member.isfile() or member.isdir()):
+                        raise ValueError(
+                            "Archive links and special files are not allowed: {}".format(
+                                member.name
+                            )
+                        )
+                # Le filtre natif est disponible sur les versions Python récentes.
+                if hasattr(tarfile, "data_filter"):
+                    tar.extractall(
+                        path=extract_directory, members=members, filter="data"
+                    )
+                else:
+                    tar.extractall(path=extract_directory, members=members)
             return
     except Exception:
-        logger.error(_("Erreur lors du désarchivage : {}").format(file_base), exc_info=True)
+        logger.error(
+            _("Erreur lors du désarchivage : {}").format(file_base), exc_info=True
+        )
         raise
     return file_path
+
+
+# Encodages, identifiants et sérialisation JSON
+# -------------------------------------------
 
 
 def base64_encode(data):
@@ -1479,7 +1760,10 @@ def base64_encode(data):
 
 def base64_decode(data):
     """
-    Décode une chaîne en base64
+    Décode du Base64 URL-safe vers une chaîne Unicode via force_str.
+
+    Le padding manquant est géré par Django ; les erreurs de décodage sont
+    propagées. Utiliser directement base64 pour un résultat binaire brut.
     :param data: Chaîne base64 à décoder
     :return: Chaîne décodée
     """
@@ -1491,7 +1775,11 @@ def base64_decode(data):
 
 def short_identifier():
     """
-    Crée un identifiant court et (presque) unique
+    Encode la composante time d'un UUID4 avec un alphabet Base62.
+
+    L'identifiant est compact mais n'offre pas une garantie d'unicité ni les
+    propriétés d'un jeton d'authentification. Utiliser une contrainte en base
+    pour les identifiants persistants et secrets pour les jetons de sécurité.
     """
     alphabet = tuple("0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz")
     base = len(alphabet)
@@ -1516,6 +1804,12 @@ class JsonEncoder(JSONEncoder):
         super().__init__(*args, **kwargs)
 
     def default(self, obj):
+        """Applique les extensions Common puis le fallback de l'encodeur DRF.
+
+        encoding permet d'enregistrer des conversions par type. null devient
+        None, les FieldFile donnent leur nom et les bytes du Base64. Les autres
+        types non pris en charge entraînent TypeError via le parent.
+        """
         for type, func in self.encoding.items():
             if isinstance(obj, type):
                 return func(obj)
@@ -1545,14 +1839,28 @@ class JsonDecoder(JSONDecoder):
 
 # JSON serialization
 def json_encode(data, cls=None, **options):
+    """Sérialise en JSON avec JsonEncoder, ou une classe explicitement fournie.
+
+    options est transmis à json.dumps ; les erreurs de type et références
+    circulaires restent visibles. Le résultat est une chaîne, pas des octets.
+    """
     return json.dumps(data, cls=cls or JsonEncoder, **options)
 
 
 # JSON deserialization
 def json_decode(data, content_encoding="utf-8", cls=None, **options):
+    """Décode une chaîne/des bytes JSON, avec des floats en Decimal par défaut.
+
+    content_encoding ne sert qu'aux bytes ; cls/options sont transmis à
+    json.loads. Les erreurs de décodage, JSON et types ne sont pas absorbées.
+    """
     if isinstance(data, bytes):
         data = data.decode(content_encoding)
     return json.loads(data, cls=cls or JsonDecoder, **options)
+
+
+# Administration SQL et introspection des modèles/permissions
+# ---------------------------------------------------------
 
 
 def abort_sql(name, kill=False, using=None, timeout=None, state="active"):
@@ -1563,7 +1871,12 @@ def abort_sql(name, kill=False, using=None, timeout=None, state="active"):
     :param using: Alias de la base de données sur laquelle réaliser l'action
     :param timeout: Temps d'exécution maximal (en secondes) à partir duquel il faut supprimer les requêtes
     :param state: Etat des connexion à interrompre ('active' ou 'idle')
-    :return: Vrai si toutes les requêtes ont été interrompues, faux sinon
+    Cette opération administrative affecte les sessions PostgreSQL correspondant
+    au nom d'application et demande les privilèges PostgreSQL appropriés.
+    Ne pas l'exposer à une entrée utilisateur sans autorisation dédiée.
+
+    :return: Nombre de lignes retournées par PostgreSQL, pas nombre de succès ;
+        objet AssertionError (non levé) si le moteur n'est pas PostgreSQL
     """
     from django.db import DEFAULT_DB_ALIAS, connections
 
@@ -1571,7 +1884,9 @@ def abort_sql(name, kill=False, using=None, timeout=None, state="active"):
 
     connection = connections[using or DEFAULT_DB_ALIAS]
     if not is_postgresql(connection):
-        return AssertionError(_("Cette fonction ne peut être utilisée que sur PostgreSQL."))
+        return AssertionError(
+            _("Cette fonction ne peut être utilisée que sur PostgreSQL.")
+        )
     with connection.cursor() as cursor:
         query = (
             "SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE application_name = %s"
@@ -1591,8 +1906,11 @@ def abort_sql(name, kill=False, using=None, timeout=None, state="active"):
 
 def get_current_user():
     """
-    Permet de rechercher dans la stack l'utilisateur actuellement connecté
-    :return: Utilisateur connecté
+    Recherche un HttpRequest nommé request dans les frames de la pile courante.
+
+    Renvoie son utilisateur s'il a une PK, sinon None. C'est un fallback
+    historique coûteux, non une propagation de contexte fiable pour Celery ou
+    asyncio ; passer explicitement _current_user aux sauvegardes est préférable.
     """
     for frameinfo in inspect.stack():
         frame = frameinfo.frame
@@ -1644,10 +1962,14 @@ def collect_deleted_data(object):
                 if to_field and field.related_model == to_field.related_model
             )
             for _instance in instances:
-                instance, value = getattr(_instance, from_field.name), getattr(_instance, to_field.name)
+                instance, value = getattr(_instance, from_field.name), getattr(
+                    _instance, to_field.name
+                )
                 if instance == object:
                     continue
-                changed.setdefault(from_model, {}).setdefault(instance, {}).setdefault(field, []).append(value)
+                changed.setdefault(from_model, {}).setdefault(instance, {}).setdefault(
+                    field, []
+                ).append(value)
         else:
             if model not in models:
                 continue
@@ -1664,7 +1986,9 @@ def collect_deleted_data(object):
             for instance in instances:
                 if instance in collector.data.get(model, ()):
                     continue
-                changed.setdefault(model, {}).setdefault(instance, {}).setdefault(from_field, value)
+                changed.setdefault(model, {}).setdefault(instance, {}).setdefault(
+                    from_field, value
+                )
     return deleted, changed
 
 
@@ -1746,6 +2070,8 @@ def merge_validation_errors(errors):
 def get_all_models(*args, **kwargs):
     """
     Récupère la liste de tous les modèles chargés par nom de table
+    Le résultat est mis en cache sans expiration ; appeler cache_clear() si le
+    registre d'applications change, notamment avec des modèles de test isolés.
     :return: Mapping des modèles par nom de table
     """
     from django.apps import apps
@@ -1763,13 +2089,21 @@ def get_all_permissions(model):
     from django.contrib.auth.models import Permission
     from django.contrib.contenttypes.models import ContentType
 
-    content_type = getattr(model, "_content_type", None) or ContentType.objects.get_for_model(model)
-    return {permission.codename: permission for permission in Permission.objects.filter(content_type=content_type)}
+    content_type = getattr(
+        model, "_content_type", None
+    ) or ContentType.objects.get_for_model(model)
+    return {
+        permission.codename: permission
+        for permission in Permission.objects.filter(content_type=content_type)
+    }
 
 
 def get_models_from_queryset(queryset):
     """
     Récupère tous les modèles utilisées par une requête
+    Compile le SQL sans exécuter la requête, puis inspecte les alias et certains
+    prefetchs. Dépend d'API internes Django et ne représente pas des permissions
+    par instance. Les erreurs de compilation, dont EmptyResultSet, peuvent remonter.
     :param queryset: Requête
     :return: Ensemble des modèles
     """
@@ -1798,6 +2132,9 @@ def get_models_from_queryset(queryset):
 def get_model_permissions(user, *models, prefix="view", bool_only=False):
     """
     Identifie les permissions de l'utilisateur sur un ou plusieurs modèles
+    Utilise user.has_perm sur les codes de modèle, sans objet cible. Un mapping
+    vide signifie qu'aucune permission n'a été évaluée ; bool_only le considère
+    comme vrai, il ne faut donc pas l'interpréter comme une autorisation par objet.
     :param user: Instance de l'utilisateur
     :param models: Modèles
     :param prefix: Préfixe de permission
@@ -1820,6 +2157,9 @@ def get_model_permissions(user, *models, prefix="view", bool_only=False):
         return all(permissions.values())
     return permissions
 
+
+# Réseau, identité HTTP et quotas de services
+# -----------------------------------------
 
 # Ordre des métadonnées de requêtes pour l'identification de l'adresse IP du client
 REQUEST_META_ORDER = (
@@ -1875,7 +2215,10 @@ NON_PUBLIC_IP_PREFIXES = PRIVATE_IP_PREFIXES + LOOPBACK_PREFIXES
 
 def is_valid_ipv4(ip_str):
     """
-    Vérifie qu'une adresse IPv4 est valide
+    Vérifie la syntaxe d'une chaîne IPv4 avec inet_pton, sinon inet_aton.
+
+    Le fallback exige quatre composantes pour éviter les formes IPv4 abrégées.
+    Ne vérifie ni le routage ni le caractère public de l'adresse.
     """
     try:
         socket.inet_pton(socket.AF_INET, ip_str)
@@ -1892,7 +2235,10 @@ def is_valid_ipv4(ip_str):
 
 def is_valid_ipv6(ip_str):
     """
-    Vérifie qu'une adresse IPv6 est valide
+    Vérifie la syntaxe d'une chaîne IPv6 avec inet_pton.
+
+    Renvoie False sur erreur socket ; une valeur qui n'est pas une chaîne peut
+    encore produire TypeError. Ne vérifie ni accessibilité ni portée réseau.
     """
     try:
         socket.inet_pton(socket.AF_INET6, ip_str)
@@ -1911,6 +2257,10 @@ def is_valid_ip(ip_str):
 def get_client_ip(request, real_ip_only=False, right_most_proxy=False):
     """
     Retourne l'adresse IP du client connecté autant que possible
+    Les en-têtes proxy sont prioritaires selon REQUEST_META_ORDER. Ils ne sont
+    fiables que si le proxy d'entrée les nettoie : ne pas utiliser seul pour une
+    décision de sécurité. La classification privé/public utilise des préfixes
+    historiques, pas un classement exhaustif de toutes les plages réservées.
     :param request: Requête HTTP Django
     :param real_ip_only: Exclure les adresses de type loopback
     :param right_most_proxy: Récupérer la dernière adresse IP parmi les adresses proxy traversées
@@ -1918,7 +2268,9 @@ def get_client_ip(request, real_ip_only=False, right_most_proxy=False):
     """
     best_matched_ip = None
     for key in REQUEST_META_ORDER:
-        value = request.META.get(key, request.META.get(key.replace("_", "-"), "")).strip()
+        value = request.META.get(
+            key, request.META.get(key.replace("_", "-"), "")
+        ).strip()
         if value is not None and value != "":
             ips = [ip.strip().lower() for ip in value.split(",")]
             if right_most_proxy and len(ips) > 1:
@@ -1931,34 +2283,134 @@ def get_client_ip(request, real_ip_only=False, right_most_proxy=False):
                         loopback = LOOPBACK_PREFIXES
                         if best_matched_ip is None:
                             best_matched_ip = ip_str
-                        elif best_matched_ip.startswith(loopback) and not ip_str.startswith(loopback):
+                        elif best_matched_ip.startswith(
+                            loopback
+                        ) and not ip_str.startswith(loopback):
                             best_matched_ip = ip_str
     return best_matched_ip
 
 
-def hash_file(path, func=hashlib.sha1, chunks=None):
+def reserve_service_usage(request):
     """
-    Récupère la somme de contrôle d'un fichier
-    :param path: Chemin vers le fichier
-    :param func: Fonction de hashage
-    :param chunks: Taille de bloc
-    :return: Somme de contrôle du fichier
+    Réserve une unité du quota de service avant l'exécution d'une vue.
+
+    Le service est identifié par ``resolver_match.view_name`` et l'utilisateur
+    doit déjà être authentifié. Sous une transaction avec verrou de ligne,
+    réinitialise le compteur expiré, vérifie la limite puis incrémente le
+    compteur et les statistiques. Les appels admis sont comptés même si la
+    vue échoue ensuite ; aucune réservation n'est remboursée automatiquement.
+
+    Ne fait rien si SERVICE_USAGE est désactivé, si l'utilisateur est anonyme,
+    si l'URL ne peut pas être résolue ou, avec SERVICE_USAGE_LIMIT_ONLY, si
+    aucune ligne ServiceUsage n'existe. Une limite None signifie illimitée,
+    une limite 0 interdit tout appel. Une même requête Django/DRF n'est comptée
+    qu'une fois par utilisateur, service et base de données.
+
+    Le middleware appelle cet utilitaire pour les vues Django ; les API DRF
+    passent par ServiceUsagePermission, après leur propre authentification.
+    Ce contrôle ne remplace pas les permissions d'accès à la ressource.
+
+    SELECT FOR UPDATE doit être pris en charge par la base pour garantir la
+    sérialisation des réservations concurrentes (pas de garantie sous SQLite).
+    Sans transaction englobante, le verrou est libéré avant la vue. Avec
+    ATOMIC_REQUESTS ou un atomic externe, verrou et compteur suivent la durée
+    et le commit/rollback de cette transaction.
+
+    :param request: Requête Django ou DRF, après authentification
+    :raises django.core.exceptions.PermissionDenied: Quota atteint, sans incrément
+    :return: None, que la réservation soit effectuée ou non nécessaire
     """
-    if not os.path.exists(path):
+    # Imports locaux : common.models et common.settings dépendent de ces utilitaires.
+    from django.core.exceptions import PermissionDenied
+    from django.db import router, transaction
+    from django.urls import Resolver404, resolve
+
+    from common.models import ServiceUsage
+    from common.settings import settings
+
+    if not settings.SERVICE_USAGE:
         return
-    digest = func()
-    with open(path, "rb") as file:
-        if chunks:
-            while chunk := file.read(chunks):
-                digest.update(chunk)
+    user = getattr(request, "user", None)
+    if not user or not user.is_authenticated:
+        return
+    raw_request = getattr(request, "_request", request)
+    match = getattr(raw_request, "resolver_match", None)
+    if match is None:
+        try:
+            match = resolve(raw_request.path_info)
+        except Resolver404:
+            return
+    name = match.view_name
+    using = router.db_for_write(ServiceUsage)
+    reservation = (using, user.pk, name)
+    reserved = getattr(raw_request, "_common_service_usage_reserved", set())
+    if reservation in reserved:
+        return
+
+    address = get_client_ip(raw_request) or ""
+    defaults = dict(
+        settings.SERVICE_USAGE_DATA.get(name) or settings.SERVICE_USAGE_DEFAULT or {}
+    )
+    defaults.setdefault("address", address)
+    with transaction.atomic(using=using):
+        usages = ServiceUsage.objects.using(using).select_for_update()
+        if settings.SERVICE_USAGE_LIMIT_ONLY:
+            usage = usages.filter(name=name, user=user).first()
+            if usage is None:
+                return
         else:
-            digest.update(file.read())
-    return digest.hexdigest()
+            usage, _created = usages.get_or_create(
+                name=name, user=user, defaults=defaults
+            )
+        date = now()
+        usage.reset_counter(date)
+        if usage.limit is not None and usage.count >= usage.limit:
+            if usage.reset_date:
+                message = _(
+                    "Le nombre maximal d'appels ({limit}) de ce service pour cet utilisateur "
+                    "({user}) a été atteint et sera réinitialisé le {date:%d/%m/%Y %H:%M:%S}."
+                ).format(limit=usage.limit, user=user, date=usage.reset_date)
+            else:
+                message = _(
+                    "Le nombre maximal d'appels ({limit}) de ce service pour cet utilisateur "
+                    "({user}) a été atteint et ne peut plus être utilisé."
+                ).format(limit=usage.limit, user=user)
+            raise PermissionDenied(message)
+        usage.count += 1
+        usage.address = address
+        extra = usage.extra or {}
+        addresses = extra.setdefault("addresses", {})
+        address_data = addresses.setdefault(address, {})
+        address_data.update(
+            date=date, method=request.method, count=address_data.get("count", 0) + 1
+        )
+        if settings.SERVICE_USAGE_LOG_DATA:
+            for method in ("GET", "POST"):
+                for key, value in getattr(raw_request, method, {}).items():
+                    if value:
+                        data = extra.setdefault("data", {}).setdefault(key, {})
+                        data.update(
+                            date=date, method=method, count=data.get("count", 0) + 1
+                        )
+            for key in match.kwargs:
+                params = extra.setdefault("params", {}).setdefault(key, {})
+                params.update(
+                    date=date, method=request.method, count=params.get("count", 0) + 1
+                )
+        usage.extra = extra
+        usage.save(using=using)
+
+    reserved.add(reservation)
+    raw_request._common_service_usage_reserved = reserved
 
 
 def web_to_raw_tsquery(text):
     """
-    Convert extended websearch tsquery to raw tsquery
+    Convertit la syntaxe websearch étendue en expression tsquery brute.
+
+    Réécrit AND/OR, les négations et les phrases citées, sans accéder à la base.
+    Le résultat est destiné à SearchQuery(..., search_type='raw'), jamais à une
+    concaténation SQL. PostgreSQL reste responsable de sa validation finale.
     :param text: Webseearch tsquery
     :return: Raw tsquery
     """

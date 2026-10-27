@@ -1,4 +1,10 @@
 # coding: utf-8
+"""Administration Common : modèles de base, historique et registres techniques.
+
+Les classes de base précèdent les administrations enregistrées et les fabriques
+dynamiques. Les déclarations @admin.register gardent leur ordre d'origine.
+"""
+
 from django import VERSION as DJANGO_VERSION
 from django.contrib import admin, messages
 from django.contrib.admin import options
@@ -32,7 +38,10 @@ from common.utils import _assert, get_pk_field
 
 def delete_selected_entity(modeladmin, request, queryset):
     """
-    Action de suppression dans l'administration
+    Prépare l'acteur et l'origine admin avant l'action Django delete_selected.
+
+    Conserve l'écran de confirmation Django et les contrôles de suppression,
+    tout en transmettant le contexte nécessaire à l'historisation des Entity.
     """
     queryset._from_admin = True
     queryset._current_user = request.user
@@ -43,12 +52,17 @@ delete_selected_entity.allowed_permissions = ("delete",)
 delete_selected_entity.short_description = delete_selected.short_description
 
 
+# Classes réutilisables et filtres de validité temporelle
+# -----------------------------------------------------
+
+
 class CommonAdmin(admin.ModelAdmin):
     """
     Configuraton de l'administration par défaut
     """
 
     def get_model_perms(self, request):
+        """Expose séparément les droits add/change/delete/view pour l'index admin."""
         return {
             "add": self.has_add_permission(request),
             "change": self.has_change_permission(request),
@@ -57,6 +71,7 @@ class CommonAdmin(admin.ModelAdmin):
         }
 
     def has_view_permission(self, request, obj=None):
+        """Utilise la permission view native ou son équivalent pour l'ancien Django."""
         if DJANGO_VERSION < (2, 1):
             opts = self.opts
             code = "{}.view_{}".format(opts.app_label, opts.model_name)
@@ -64,6 +79,11 @@ class CommonAdmin(admin.ModelAdmin):
         return super().has_view_permission(request, obj=obj)
 
     def has_change_permission(self, request, obj=None):
+        """Adapte l'accès en lecture seule aux anciennes versions sans permission view native.
+
+        Sur Django récent délègue au parent ; le chemin legacy peut désactiver
+        list_editable pour permettre une liste consultable sans droit de modification.
+        """
         if DJANGO_VERSION < (2, 1):
             change_perm = super().has_change_permission(request, obj=obj)
             if change_perm:
@@ -76,16 +96,20 @@ class CommonAdmin(admin.ModelAdmin):
         return super().has_change_permission(request, obj=obj)
 
     def metadata_url(self, obj):
+        """Affiche le nombre de métadonnées et un lien admin filtré vers leur liste."""
         count = obj.metadata.count()
         if count:
             type = ContentType.objects.get_for_model(obj)
-            url = reverse("admin:common_metadata_changelist") + "?object_id={}&content_type={}".format(obj.pk, type.pk)
+            url = reverse(
+                "admin:common_metadata_changelist"
+            ) + "?object_id={}&content_type={}".format(obj.pk, type.pk)
             return format_html('<a href="{url}">{label}</a>', url=url, label=count)
         return count
 
     metadata_url.short_description = _("méta")
 
     def get_list_display(self, request):
+        """Ajoute la PK réelle et, pour CommonModel, le lien vers les métadonnées."""
         pk_field = get_pk_field(self.model).name
         list_display = (pk_field,) + tuple(super().get_list_display(request))
         if not issubclass(self.model, CommonModel):
@@ -93,6 +117,7 @@ class CommonAdmin(admin.ModelAdmin):
         return list_display + ("metadata_url",)
 
     def get_queryset(self, request):
+        """Précharge les métadonnées des CommonModel pour limiter les lectures de liste."""
         if not issubclass(self.model, CommonModel):
             return super().get_queryset(request)
         return super().get_queryset(request).prefetch_related("metadata")
@@ -109,22 +134,28 @@ class EntityAdmin(CommonAdmin):
     date_hierarchy = "creation_date"
 
     def save_model(self, request, obj, form, change):
+        """Sauvegarde une Entity avec l'acteur admin et les flags d'historisation."""
         obj._from_admin = True
         obj._force_default = True
         obj.save(_current_user=request.user)
 
     def delete_model(self, request, obj):
+        """Supprime une Entity en attribuant l'historique à l'utilisateur admin."""
         obj._from_admin = True
         obj._force_default = True
         obj.delete(_current_user=request.user)
 
     def get_list_filter(self, request):
+        """Ajoute les filtres de création/modification sans dupliquer ceux configurés."""
         list_filter = list(super().get_list_filter(request))
         list_filter += ["creation_date"] if "creation_date" not in list_filter else []
-        list_filter += ["modification_date"] if "modification_date" not in list_filter else []
+        list_filter += (
+            ["modification_date"] if "modification_date" not in list_filter else []
+        )
         return tuple(list_filter)
 
     def get_actions(self, request):
+        """Retire la suppression Django brute, remplacée par l'action Entity contextualisée."""
         actions = super().get_actions(request)
         actions.pop("delete_selected", None)
         return actions
@@ -162,6 +193,7 @@ class PerishableEntityAdmin(EntityAdmin):
         super().save_model(request, obj, form, change)
 
     def get_list_display(self, request):
+        """Ajoute dates de validité et statut calculé aux colonnes de l'entité."""
         list_display = list(super().get_list_display(request))
         list_display += ["start_date"] if "start_date" not in list_display else []
         list_display += ["end_date"] if "end_date" not in list_display else []
@@ -169,6 +201,7 @@ class PerishableEntityAdmin(EntityAdmin):
         return tuple(list_display)
 
     def get_list_filter(self, request):
+        """Ajoute les filtres de dates et de validité aux filtres hérités."""
         list_filter = list(super().get_list_filter(request))
         list_filter += ["start_date"] if "start_date" not in list_filter else []
         list_filter += ["end_date"] if "end_date" not in list_filter else []
@@ -176,6 +209,11 @@ class PerishableEntityAdmin(EntityAdmin):
         return tuple(list_filter)
 
     def get_fieldsets(self, request, obj=None):
+        """Isole start_date/end_date dans une section dédiée du formulaire admin.
+
+        Retire ces champs des sections héritées avant de les ajouter ; les
+        structures de fieldsets fournies par le parent peuvent donc être modifiées.
+        """
         fieldsets = super().get_fieldsets(request, obj=obj)
         dates_fields = (
             "start_date",
@@ -200,6 +238,7 @@ class EntityAdminInlineMixin(object):
     formset = CommonInlineFormSet
 
     def get_formset(self, request, obj=None, **kwargs):
+        """Configure le formset inline avec l'acteur et les flags de l'administration."""
         formset = super().get_formset(request, obj, **kwargs)
         formset._current_user = request.user
         formset._from_admin = True
@@ -207,6 +246,7 @@ class EntityAdminInlineMixin(object):
         return formset
 
     def get_fieldsets(self, request, obj=None):
+        """Crée une section de dates pour les seuls inlines d'entités périssables."""
         fieldsets = super().get_fieldsets(request, obj=obj)
         if not issubclass(self.model, PerishableEntity):
             return fieldsets
@@ -239,6 +279,10 @@ class EntityStackedInline(EntityAdminInlineMixin, options.StackedInline):
     """
 
     pass
+
+
+# Administrations des registres, historiques et métadonnées
+# -------------------------------------------------------
 
 
 @admin.register(Global)
@@ -276,7 +320,9 @@ class GlobalAdmin(admin.ModelAdmin):
                     app_label=obj.content_type.app_label, model=obj.content_type.model
                 )
                 url = reverse(pattern, args=(obj.object_id,))
-                return format_html('<a href="{url}">{label}</a>', url=url, label=str(obj.entity))
+                return format_html(
+                    '<a href="{url}">{label}</a>', url=url, label=str(obj.entity)
+                )
             except NoReverseMatch:
                 return str(obj.entity)
         return None
@@ -334,7 +380,9 @@ class MetaDataAdmin(admin.ModelAdmin):
                     app_label=obj.content_type.app_label, model=obj.content_type.model
                 )
                 url = reverse(pattern, args=(obj.object_id,))
-                return format_html('<a href="{url}">{label}</a>', url=url, label=str(obj.entity))
+                return format_html(
+                    '<a href="{url}">{label}</a>', url=url, label=str(obj.entity)
+                )
             except NoReverseMatch:
                 return str(obj.entity)
         return None
@@ -359,7 +407,9 @@ def restore(modeladmin, request, queryset, all_fields=False):
     errors = []
     for history in queryset.order_by("-creation_date"):
         try:
-            result = history.restore(current_user=request.user, from_admin=True, all_fields=all_fields)
+            result = history.restore(
+                current_user=request.user, from_admin=True, all_fields=all_fields
+            )
             if result:
                 success += 1
             else:
@@ -367,13 +417,23 @@ def restore(modeladmin, request, queryset, all_fields=False):
         except Exception as error:
             errors.append((history.pk, error))
     if success > 0:
-        messages.success(request, _("{} élément(s) ont été restaurés avec succès !").format(success))
+        messages.success(
+            request, _("{} élément(s) ont été restaurés avec succès !").format(success)
+        )
     if fail > 0:
         messages.warning(
-            request, _("{} élément(s) n'ont pas pu être restaurés car leurs relations sont manquantes !").format(fail)
+            request,
+            _(
+                "{} élément(s) n'ont pas pu être restaurés car leurs relations sont manquantes !"
+            ).format(fail),
         )
     for id, error in errors:
-        messages.error(request, _("L'élément {} n'a pu être restauré pour la raison suivante : {}").format(id, error))
+        messages.error(
+            request,
+            _("L'élément {} n'a pu être restauré pour la raison suivante : {}").format(
+                id, error
+            ),
+        )
 
 
 restore.short_description = _("Annuler les modifications")
@@ -451,7 +511,9 @@ class HistoryAdmin(admin.ModelAdmin):
                     app_label=obj.content_type.app_label, model=obj.content_type.model
                 )
                 url = reverse(pattern, args=(obj.object_id,))
-                return format_html('<a href="{url}">{label}</a>', url=url, label=obj.object_str)
+                return format_html(
+                    '<a href="{url}">{label}</a>', url=url, label=obj.object_str
+                )
             except NoReverseMatch:
                 pass
         return format_html(obj.object_str)
@@ -463,10 +525,13 @@ class HistoryAdmin(admin.ModelAdmin):
         if obj.fields_count:
             try:
                 pattern = "admin:{app_label}_{model}_changelist".format(
-                    app_label=HistoryField._meta.app_label, model=HistoryField._meta.model_name
+                    app_label=HistoryField._meta.app_label,
+                    model=HistoryField._meta.model_name,
                 )
                 url = reverse(pattern) + "?history={}".format(obj.pk)
-                return format_html('<a href="{url}">{label}</a>', url=url, label=obj.fields_count)
+                return format_html(
+                    '<a href="{url}">{label}</a>', url=url, label=obj.fields_count
+                )
             except NoReverseMatch:
                 pass
         return obj.fields_count
@@ -482,7 +547,12 @@ class HistoryAdmin(admin.ModelAdmin):
     has_reason.short_description = _("Motif")
 
     def get_queryset(self, request):
-        return super().get_queryset(request).select_related("content_type", "user").prefetch_related("entity")
+        return (
+            super()
+            .get_queryset(request)
+            .select_related("content_type", "user")
+            .prefetch_related("entity")
+        )
 
 
 @admin.register(HistoryField)
@@ -538,8 +608,14 @@ class HistoryFieldAdmin(admin.ModelAdmin):
     actions = [restore]
 
     def field(self, obj):
-        label = getattr(obj.field, "verbose_name", "") or capfirst(camel_case_to_spaces(obj.field_name))
-        return format_html('<span title="{code}">{label}</span>', label=capfirst(label), code=obj.field_name)
+        label = getattr(obj.field, "verbose_name", "") or capfirst(
+            camel_case_to_spaces(obj.field_name)
+        )
+        return format_html(
+            '<span title="{code}">{label}</span>',
+            label=capfirst(label),
+            code=obj.field_name,
+        )
 
     field.short_description = _("Champ")
 
@@ -556,6 +632,11 @@ class HistoryFieldAdmin(admin.ModelAdmin):
     new_inner_value.short_description = _("Nouvelle valeur")
 
     def _get_inner_value(self, value):
+        """Présente une valeur historique ou ses objets liés avec des liens admin.
+
+        Une route manquante conserve le libellé texte ; les scalaires restent
+        inchangés. Cette représentation suppose des données historiques de confiance.
+        """
         if value is None:
             return None
         if hasattr(value, "pk"):
@@ -565,25 +646,39 @@ class HistoryFieldAdmin(admin.ModelAdmin):
             for item in value:
                 try:
                     app_label, model_name = item._meta.app_label, item._meta.model_name
-                    pattern = "admin:{app_label}_{model_name}_change".format(app_label=app_label, model_name=model_name)
+                    pattern = "admin:{app_label}_{model_name}_change".format(
+                        app_label=app_label, model_name=model_name
+                    )
                     url = reverse(pattern, args=(item.pk,))
-                    values.append('<a href="{url}">{label}</a>'.format(url=url, label=str(item)))
+                    values.append(
+                        '<a href="{url}">{label}</a>'.format(url=url, label=str(item))
+                    )
                 except NoReverseMatch:
                     values.append(str(item))
             return format_html("<br />".join(values))
         return value
 
     def history_url(self, obj):
+        """Construit le lien vers la liste d'historiques restreinte à l'en-tête du détail."""
         app_label, model_name = History._meta.app_label, History._meta.model_name
-        pattern = "admin:{app_label}_{model_name}_changelist".format(app_label=app_label, model_name=model_name)
+        pattern = "admin:{app_label}_{model_name}_changelist".format(
+            app_label=app_label, model_name=model_name
+        )
         url = reverse(pattern) + "?id={}".format(obj.history_id)
-        return format_html('<a href="{url}">{label}</a>', url=url, label=str(obj.history))
+        return format_html(
+            '<a href="{url}">{label}</a>', url=url, label=str(obj.history)
+        )
 
     history_url.admin_order_field = "history"
     history_url.short_description = _("Historique")
 
     def get_queryset(self, request):
-        return super().get_queryset(request).select_related("history__content_type").order_by("-creation_date")
+        return (
+            super()
+            .get_queryset(request)
+            .select_related("history__content_type")
+            .order_by("-creation_date")
+        )
 
 
 @admin.register(Webhook)
@@ -667,6 +762,7 @@ class WebhookAdmin(admin.ModelAdmin):
     autocomplete_fields = ("types",)
 
     def list_actions(self, obj):
+        """Liste les statuts d'événement activés sur le webhook, avec leurs libellés."""
         actions = []
         status = dict(History.LOG_STATUS)
         for status_code, attribute in Webhook.STATUS_FILTERS.items():
@@ -796,9 +892,15 @@ def create_admin(*args, baseclass=None, **kwargs):
             else EntityAdmin if issubclass(model, Entity) else CommonAdmin
         )
         fk_fields = tuple(
-            field for field in model._meta.get_fields() if isinstance(field, (models.ForeignKey, models.OneToOneField))
+            field
+            for field in model._meta.get_fields()
+            if isinstance(field, (models.ForeignKey, models.OneToOneField))
         )
-        m2m_fields = tuple(field for field in model._meta.get_fields() if isinstance(field, models.ManyToManyField))
+        m2m_fields = tuple(
+            field
+            for field in model._meta.get_fields()
+            if isinstance(field, models.ManyToManyField)
+        )
         properties = dict(
             list_display=tuple(
                 field.name
@@ -812,13 +914,20 @@ def create_admin(*args, baseclass=None, **kwargs):
                 for field in model._meta.get_fields()
                 if getattr(field, "choices", None)
                 or isinstance(
-                    field, (models.BooleanField, models.NullBooleanField, models.DateField, models.DateTimeField)
+                    field,
+                    (
+                        models.BooleanField,
+                        models.NullBooleanField,
+                        models.DateField,
+                        models.DateTimeField,
+                    ),
                 )
             ),
             search_fields=tuple(
                 field.name
                 for field in model._meta.get_fields()
-                if not getattr(field, "choices", None) and isinstance(field, (models.CharField, models.TextField))
+                if not getattr(field, "choices", None)
+                and isinstance(field, (models.CharField, models.TextField))
             ),
             filter_horizontal=tuple(m2m.name for m2m in m2m_fields),
             list_select_related=tuple(fk.name for fk in fk_fields),
@@ -827,7 +936,8 @@ def create_admin(*args, baseclass=None, **kwargs):
             fk_fields = tuple(field.name for field in fk_fields)
             m2m_fields = tuple(field.name for field in m2m_fields)
             properties.update(
-                autocomplete_lookup_fields=dict(fk=fk_fields, m2m=m2m_fields), raw_id_fields=(fk_fields + m2m_fields)
+                autocomplete_lookup_fields=dict(fk=fk_fields, m2m=m2m_fields),
+                raw_id_fields=(fk_fields + m2m_fields),
             )
         else:
             autocomplete_fields = []
@@ -842,7 +952,11 @@ def create_admin(*args, baseclass=None, **kwargs):
         properties.update(**kwargs)
         admins.append(
             admin.register(model)(
-                type("{}GenericAdmin".format(model._meta.object_name), (admin_superclass,), properties)
+                type(
+                    "{}GenericAdmin".format(model._meta.object_name),
+                    (admin_superclass,),
+                    properties,
+                )
             )
         )
     return next(iter(admins), None) if len(admins) < 2 else admins

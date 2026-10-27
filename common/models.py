@@ -1,7 +1,19 @@
 # coding: utf-8
+"""Modèles, métadonnées, snapshots d'historique et livraison des notifications.
+
+Les classes sont déclarées dans l'ordre de leurs dépendances ; les signaux et
+tâches restent dans ce module pour préserver leurs imports et noms Celery.
+L'historisation capture les données synchroniquement. Seule l'écriture des
+détails et la livraison des notifications peuvent être déportées après commit.
+"""
+
+from __future__ import annotations
 import logging
 import time
 import uuid
+from dataclasses import asdict, dataclass
+from functools import partial
+from typing import Any
 
 from django import VERSION as django_version
 from django.apps import apps
@@ -12,11 +24,17 @@ from django.contrib.contenttypes.models import ContentType
 from django.core import serializers
 from django.core.cache import cache
 from django.core.exceptions import FieldDoesNotExist, ValidationError
-from django.db import models
+from django.db import DEFAULT_DB_ALIAS, models, transaction
 from django.db.models import JSONField, Q, query
 from django.db.models.deletion import Collector
 from django.db.models.functions import Cast
-from django.db.models.signals import m2m_changed, post_init, post_save, pre_delete, pre_save
+from django.db.models.signals import (
+    m2m_changed,
+    post_init,
+    post_save,
+    pre_delete,
+    pre_save,
+)
 from django.dispatch import receiver
 from django.forms.models import model_to_dict as django_model_to_dict
 from django.utils.encoding import force_str
@@ -59,7 +77,13 @@ logger = logging.getLogger(__name__)
 app = get_current_app()
 
 # Vérifie si une valeur est considérée comme "vide" ou non
-is_empty = lambda value: value is None or value == "" or value == [] or value == {}  # noqa
+is_empty = (
+    lambda value: value is None or value == "" or value == [] or value == {}
+)  # noqa
+
+
+# Présentation, sérialisation et relations génériques
+# --------------------------------------------------
 
 
 def to_boolean(label_field, sort_order=None):
@@ -82,7 +106,11 @@ def to_boolean(label_field, sort_order=None):
 
 def get_content_type(model):
     """
-    Récupère le content type d'un modèle
+    Récupère le ContentType Django et l'affecte à l'attribut _content_type.
+
+    Accepte une classe ou instance de modèle. Utilise le manager ContentType
+    par défaut : les chemins multi-base de l'historisation passent, eux,
+    explicitement par db_manager(using) et ne doivent pas se reposer sur ce helper.
     :param model: Instance de modèle
     :return: Content type
     """
@@ -100,6 +128,12 @@ class Serialized(object):
     """
 
     def __init__(self, value, format="json"):
+        """Sérialise immédiatement une instance ou un QuerySet avec Django.
+
+        Un QuerySet est compté puis évalué pour la sérialisation ; query conserve
+        son SQL compilé à titre descriptif. Le format doit être enregistré dans
+        les serializers Django (JSON, XML, YAML avec sa dépendance, etc.).
+        """
         self.format = format
         if isinstance(value, query.QuerySet):
             self.meta = value.model._meta
@@ -117,6 +151,11 @@ class Serialized(object):
         self.data = serializers.serialize(format, value)
 
     def deserialize(self):
+        """Reconstruit des instances non sauvegardées automatiquement en base.
+
+        Une source unitaire donne une instance, une source QuerySet une liste.
+        Les erreurs de format ou de résolution de modèle sont propagées.
+        """
         data = serializers.deserialize(self.format, self.data)
         objects = [item.object for item in data]
         return next(iter(objects), None) if self.single else objects
@@ -136,6 +175,11 @@ class CustomGenericForeignKey(GenericForeignKey):
     """
 
     def __set__(self, instance, value):
+        """Affecte la cible sans effacer les identifiants lors d'une valeur None.
+
+        Conserve le ContentType et la PK existants pour représenter une cible
+        supprimée, tout en mettant à jour le cache du descripteur générique.
+        """
         if value is None:
             ct = getattr(instance, self.ct_field, None)
             fk = getattr(instance, self.fk_field, None)
@@ -156,6 +200,12 @@ class CustomGenericRelation(GenericRelation):
         return ()
 
     def get_extra_restriction(self, alias, remote_alias, *args):
+        """Ajoute la comparaison PK/object_id avec conversion de la PK en texte.
+
+        Adapte la signature interne de GenericRelation aux versions Django.
+        Le cast permet les jointures entre une PK numérique et l'identifiant
+        texte des relations génériques Common.
+        """
         if django_version >= (4,):
             node = super().get_extra_restriction(alias, remote_alias)
         elif args:
@@ -171,12 +221,18 @@ class CustomGenericRelation(GenericRelation):
         return node
 
 
+# Métadonnées génériques : recherche, validité et opérations par clé
+# ----------------------------------------------------------------
+
+
 class MetaDataQuerySet(models.QuerySet):
     """
     QuerySet des métadonnées
     """
 
-    def search(self, *, id=None, type=None, key=None, value=None, date=None, valid=True):
+    def search(
+        self, *, id=None, type=None, key=None, value=None, date=None, valid=True
+    ):
         """
         Effectue une recherche multi-critères dans les métadonnées
         :param id: instance de l'entité
@@ -214,7 +270,9 @@ class MetaDataQuerySet(models.QuerySet):
         if valid is None:
             return self
         function = self.filter if valid else self.exclude
-        return function(Q(deletion_date__isnull=True) | Q(deletion_date__gte=date or now()))
+        return function(
+            Q(deletion_date__isnull=True) | Q(deletion_date__gte=date or now())
+        )
 
     valid = property(select_valid)
 
@@ -225,16 +283,25 @@ class MetaData(models.Model):
     """
 
     content_type = models.ForeignKey(
-        ContentType, on_delete=models.CASCADE, related_name="+", verbose_name=_("type d'entité")
+        ContentType,
+        on_delete=models.CASCADE,
+        related_name="+",
+        verbose_name=_("type d'entité"),
     )
     object_id = models.TextField(verbose_name=_("identifiant"))
     entity = CustomGenericForeignKey()
 
     key = models.CharField(max_length=100, verbose_name=_("clé"))
     value = JsonField(blank=True, null=True, verbose_name=_("valeur"))
-    creation_date = models.DateTimeField(auto_now_add=True, verbose_name=_("date de création"))
-    modification_date = models.DateTimeField(auto_now=True, verbose_name=_("date de modification"))
-    deletion_date = models.DateTimeField(blank=True, null=True, verbose_name=_("date de suppression"))
+    creation_date = models.DateTimeField(
+        auto_now_add=True, verbose_name=_("date de création")
+    )
+    modification_date = models.DateTimeField(
+        auto_now=True, verbose_name=_("date de modification")
+    )
+    deletion_date = models.DateTimeField(
+        blank=True, null=True, verbose_name=_("date de suppression")
+    )
     objects = MetaDataQuerySet.as_manager()
 
     def __str__(self):  # pragma: no cover
@@ -258,11 +325,18 @@ class MetaData(models.Model):
         :param queryset: QuerySet de récupération des métadonnées
         :return: Valeur ou entité
         """
-        _assert(getattr(instance, "pk", None), _("Unable to get metadata from an unsaved model instance."))
+        _assert(
+            getattr(instance, "pk", None),
+            _("Unable to get metadata from an unsaved model instance."),
+        )
         content_type = get_content_type(instance.__class__)
-        queryset = queryset or MetaData.objects.filter(content_type=content_type, object_id=instance.pk)
+        queryset = queryset or MetaData.objects.filter(
+            content_type=content_type, object_id=instance.pk
+        )
         if valid:
-            queryset = queryset.filter(Q(deletion_date=None) | Q(deletion_date__gte=now()))
+            queryset = queryset.filter(
+                Q(deletion_date=None) | Q(deletion_date__gte=now())
+            )
         if key:
             only = ("key", "value", "deletion_date") if raw else ("value",)
             metadata = queryset.filter(key=key).only(*only).first()
@@ -281,17 +355,26 @@ class MetaData(models.Model):
         :param queryset: QuerySet de récupération des métadonnées
         :return: Vrai en cas de succès, faux sinon
         """
-        _assert(getattr(instance, "pk", None), _("Unable to set metadata for an unsaved model instance."))
+        _assert(
+            getattr(instance, "pk", None),
+            _("Unable to set metadata for an unsaved model instance."),
+        )
         content_type = get_content_type(instance.__class__)
         try:
-            queryset = queryset or MetaData.objects.filter(content_type=content_type, object_id=instance.pk)
+            queryset = queryset or MetaData.objects.filter(
+                content_type=content_type, object_id=instance.pk
+            )
             metadata = queryset.only("value", "deletion_date").get(key=key)
             metadata.deletion_date = date
             metadata.value = value
             metadata.save(update_fields=("value", "deletion_date"))
         except MetaData.DoesNotExist:
             metadata = MetaData(
-                content_type=content_type, object_id=instance.pk, key=key, value=value, deletion_date=date
+                content_type=content_type,
+                object_id=instance.pk,
+                key=key,
+                value=value,
+                deletion_date=date,
             )
             metadata.save()
         return metadata
@@ -307,7 +390,10 @@ class MetaData(models.Model):
         :param queryset: QuerySet de récupération des métadonnées
         :return: Métadonnée
         """
-        _assert(getattr(instance, "pk", None), _("Unable to set metadata for an unsaved model instance."))
+        _assert(
+            getattr(instance, "pk", None),
+            _("Unable to set metadata for an unsaved model instance."),
+        )
         metadata = MetaData.get(instance, key=key, queryset=queryset, raw=True)
         if metadata:
             if isinstance(value, dict) and isinstance(metadata.value, dict):
@@ -323,7 +409,9 @@ class MetaData(models.Model):
                 metadata.value += value
             metadata.save(update_fields=("value",))
             return metadata
-        value = value if isinstance(value, (list, tuple, set, frozenset, dict)) else [value]
+        value = (
+            value if isinstance(value, (list, tuple, set, frozenset, dict)) else [value]
+        )
         return MetaData.set(instance, key=key, value=value, queryset=queryset)
 
     @staticmethod
@@ -337,9 +425,14 @@ class MetaData(models.Model):
         :param queryset: QuerySet de récupération des métadonnées
         :return: Vrai en cas de succès, faux sinon
         """
-        _assert(getattr(instance, "pk", None), _("Unable to delete metadata from an unsaved model instance."))
+        _assert(
+            getattr(instance, "pk", None),
+            _("Unable to delete metadata from an unsaved model instance."),
+        )
         content_type = get_content_type(instance.__class__)
-        queryset = queryset or MetaData.objects.filter(content_type=content_type, object_id=instance.pk)
+        queryset = queryset or MetaData.objects.filter(
+            content_type=content_type, object_id=instance.pk
+        )
         if key:
             queryset = queryset.filter(key=key)
         if logic:
@@ -370,6 +463,10 @@ class MetaData(models.Model):
         )
 
 
+# Modèles communs, conversion en dictionnaire et suivi des différences
+# -------------------------------------------------------------------
+
+
 class CommonQuerySet(models.QuerySet):
     """
     QuerySet des modèles communs
@@ -388,14 +485,19 @@ class CommonQuerySet(models.QuerySet):
         Retourne l'ensemble des entités du QuerySet sous forme de dictionnaire
         :return: Liste de dictionnaires
         """
-        return [item.to_dict(*args, **kwargs) if isinstance(item, CommonModel) else item for item in self]
+        return [
+            item.to_dict(*args, **kwargs) if isinstance(item, CommonModel) else item
+            for item in self
+        ]
 
     def __json__(self):
         """
         Représentation de l'instance sous forme de dictionnaire pour sérialisation JSON
         :return: dict
         """
-        return [item.__json__() if isinstance(item, CommonModel) else item for item in self]
+        return [
+            item.__json__() if isinstance(item, CommonModel) else item for item in self
+        ]
 
 
 class CommonModel(models.Model):
@@ -403,7 +505,9 @@ class CommonModel(models.Model):
     Modèle commun
     """
 
-    metadata = CustomGenericRelation(MetaData, related_query_name="%(app_label)s_%(class)s")
+    metadata = CustomGenericRelation(
+        MetaData, related_query_name="%(app_label)s_%(class)s"
+    )
     objects = CommonQuerySet.as_manager()
 
     # Propriétés liées à l'historisation et au type de modèle
@@ -421,7 +525,9 @@ class CommonModel(models.Model):
         """
         model = type(self)
         for unique_together in model._meta.unique_together:
-            queryset = model.objects.exclude(pk=self.pk) if self.pk else model.objects.all()
+            queryset = (
+                model.objects.exclude(pk=self.pk) if self.pk else model.objects.all()
+            )
             fields = []
             has_null, has_unsaved_model = False, False
             for field_name in unique_together:
@@ -461,9 +567,16 @@ class CommonModel(models.Model):
                 unique_fields.add(field.name)
             else:
                 non_unique_fields.add(field.name)
-        _assert(unique_fields, _("Unable to update an instance which have no unique fields."))
-        queryset = model.objects.filter(**{field: getattr(self, field, None) for field in unique_fields})
-        count = queryset.update(**{field: getattr(self, field, None) for field in non_unique_fields})
+        _assert(
+            unique_fields,
+            _("Unable to update an instance which have no unique fields."),
+        )
+        queryset = model.objects.filter(
+            **{field: getattr(self, field, None) for field in unique_fields}
+        )
+        count = queryset.update(
+            **{field: getattr(self, field, None) for field in non_unique_fields}
+        )
         if count:
             self.pk = queryset.first().pk
             self.refresh_from_db()
@@ -471,14 +584,34 @@ class CommonModel(models.Model):
 
     def save(self, *args, force_insert=False, _full_update=False, **kwargs):
         """
-        Sauvegarde l'instance du modèle
+        Sauvegarde l'instance en limitant par défaut l'UPDATE aux champs modifiés.
+
+        Une instance existante utilise son snapshot pour update_fields et ajoute
+        les auto_now. _full_update, force_insert ou une PK modifiée rétablissent
+        le chemin Django complet. Ce mécanisme ne verrouille pas la ligne et
+        n'est pas une protection contre toutes les écritures concurrentes.
         """
         primary_key = get_pk_field(self)
-        pk_modified = self._meta.pk.name in self.modified or primary_key.name in self.modified
-        if not self._state.adding and not _full_update and not force_insert and not pk_modified:
-            kwargs["update_fields"] = update_fields = set(kwargs.pop("update_fields", self.modified.keys()))
+        pk_modified = (
+            self._meta.pk.name in self.modified or primary_key.name in self.modified
+        )
+        if (
+            not self._state.adding
+            and not _full_update
+            and not force_insert
+            and not pk_modified
+        ):
+            kwargs["update_fields"] = update_fields = set(
+                kwargs.pop("update_fields", self.modified.keys())
+            )
             # Les champs de date avec auto_now=True ne sont modifiés que pendant la sauvegarde
-            update_fields.update([field.name for field in self._meta.fields if getattr(field, "auto_now", None)])
+            update_fields.update(
+                [
+                    field.name
+                    for field in self._meta.fields
+                    if getattr(field, "auto_now", None)
+                ]
+            )
         return super().save(*args, force_insert=force_insert, **kwargs)
 
     def get_metadata(self, key=None, valid=True, raw=False):
@@ -499,7 +632,9 @@ class CommonModel(models.Model):
         :param date: Date de péremption de la métadonnée
         :return: Vrai en cas de succès, faux sinon
         """
-        return MetaData.set(self, key=key, value=value, date=date, queryset=self.metadata)
+        return MetaData.set(
+            self, key=key, value=value, date=date, queryset=self.metadata
+        )
 
     def add_metadata(self, key, value, allow_duplicate=True):
         """
@@ -509,7 +644,13 @@ class CommonModel(models.Model):
         :param allow_duplicate: Autorise l'ajout de doublons dans les listes de valeur (par défaut)
         :return: Métadonnée
         """
-        return MetaData.add(self, key=key, value=value, allow_duplicate=allow_duplicate, queryset=self.metadata)
+        return MetaData.add(
+            self,
+            key=key,
+            value=value,
+            allow_duplicate=allow_duplicate,
+            queryset=self.metadata,
+        )
 
     def del_metadata(self, key=None, logic=False, date=None):
         """
@@ -519,7 +660,9 @@ class CommonModel(models.Model):
         :param date: Date de péremption de la métadonnée
         :return: Vrai en cas de succès, faux sinon
         """
-        return MetaData.remove(self, key=key, logic=logic, date=date, queryset=self.metadata)
+        return MetaData.remove(
+            self, key=key, logic=logic, date=date, queryset=self.metadata
+        )
 
     def to_dict(
         self,
@@ -542,7 +685,7 @@ class CommonModel(models.Model):
         extra=None,
         raw=True,
         _depth=0,
-        **kwargs
+        **kwargs,
     ):
         """
         Retourne la représentation d'une entité sous forme de dictionnaire
@@ -587,12 +730,16 @@ class CommonModel(models.Model):
             m2m_depth=m2m_depth,
             no_ids=no_ids,
             no_empty=no_empty,
-            **kwargs
+            **kwargs,
         )
         if isinstance(includes, dict):
-            includes = set(includes.get("__all__") or []) | set(includes.get(meta.model) or [])
+            includes = set(includes.get("__all__") or []) | set(
+                includes.get(meta.model) or []
+            )
         if isinstance(excludes, dict):
-            excludes = set(excludes.get("__all__") or []) | set(excludes.get(meta.model) or [])
+            excludes = set(excludes.get("__all__") or []) | set(
+                excludes.get(meta.model) or []
+            )
         # Données textuelles de l'entité (nom, modèle, représentation, etc...)
         if names:
             data.update(
@@ -602,7 +749,11 @@ class CommonModel(models.Model):
                     model_name=meta.model_name,
                     app_label=meta.app_label,
                     verbose_name=str(meta.verbose_name) if meta.verbose_name else None,
-                    verbose_name_plural=str(meta.verbose_name_plural) if meta.verbose_name_plural else None,
+                    verbose_name_plural=(
+                        str(meta.verbose_name_plural)
+                        if meta.verbose_name_plural
+                        else None
+                    ),
                 ),
             )
         # Type de l'entité
@@ -619,12 +770,20 @@ class CommonModel(models.Model):
             if not editables and not getattr(field, "editable", editables):
                 continue
             # Champs inclus
-            if includes and not any(name in includes for name in (field.name, field.attname)):
+            if includes and not any(
+                name in includes for name in (field.name, field.attname)
+            ):
                 continue
             # Champs exclus
-            if excludes and any(name in excludes for name in (field.name, field.attname)):
+            if excludes and any(
+                name in excludes for name in (field.name, field.attname)
+            ):
                 continue
-            field_name = str(field.verbose_name or camel_case_to_spaces(field.name)) if labels else field.name
+            field_name = (
+                str(field.verbose_name or camel_case_to_spaces(field.name))
+                if labels
+                else field.name
+            )
             # Relations de type many-to-many
             if isinstance(field, models.ManyToManyField):
                 if not m2m:
@@ -638,10 +797,14 @@ class CommonModel(models.Model):
                     if not no_ids:
                         result = [v.pk for v in value]
                         if result or not no_empty:
-                            data[field_name + str(_(" (IDs)") if labels else "_ids")] = result
+                            data[
+                                field_name + str(_(" (IDs)") if labels else "_ids")
+                            ] = result
                     # Données
                     if fks:
-                        result = [to_dict(v, **keywords, _depth=_depth + 1) for v in value]
+                        result = [
+                            to_dict(v, **keywords, _depth=_depth + 1) for v in value
+                        ]
                         if result or not no_empty:
                             data[field_name] = result
                             for item in result:
@@ -650,7 +813,9 @@ class CommonModel(models.Model):
                     if uids and issubclass(related, Entity):
                         result = [v.uuid for v in value]
                         if result or not no_empty:
-                            data[field_name + str(_(" (UIDs)") if labels else "_uids")] = result
+                            data[
+                                field_name + str(_(" (UIDs)") if labels else "_uids")
+                            ] = result
             # Autres champs
             else:
                 # Valeur du champ
@@ -663,16 +828,22 @@ class CommonModel(models.Model):
                         continue
                     # Identifiant
                     if not no_ids:
-                        data[(field_name + str(_(" (ID)"))) if labels else field.attname] = value
+                        data[
+                            (field_name + str(_(" (ID)"))) if labels else field.attname
+                        ] = value
                     if fks or uids:
                         fk = getattr(self, field.name, None)
                         # Données
                         if fks and fk and fks_depth > _depth:
-                            data[field_name] = to_dict(fk, **keywords, _depth=_depth + 1)
+                            data[field_name] = to_dict(
+                                fk, **keywords, _depth=_depth + 1
+                            )
                             data[field_name].pop("_state", None)  # Non serialisable
                         # GUID (uniquement entité)
                         if uids and isinstance(fk, Entity):
-                            data[field_name + str(_(" (UID)") if labels else "_uid")] = fk.uuid
+                            data[
+                                field_name + str(_(" (UID)") if labels else "_uid")
+                            ] = fk.uuid
                 # Gestion des valeurs nulles (hors clés étrangères)
                 elif value is None and not no_empty:
                     data[field_name] = None
@@ -702,7 +873,11 @@ class CommonModel(models.Model):
                         data[field_name] = result
                 # Cas spécifique pour les ensembles
                 elif isinstance(value, (set, frozenset)):
-                    result = value if raw else "|".join(str(val) for val in sorted(list(value)))
+                    result = (
+                        value
+                        if raw
+                        else "|".join(str(val) for val in sorted(list(value)))
+                    )
                     if result or not no_empty:
                         data[field_name] = result
                 elif hasattr(self, "get_{}_json".format(field.name)):
@@ -714,7 +889,9 @@ class CommonModel(models.Model):
                 if display and hasattr(self, "get_{}_display".format(field.name)):
                     result = getattr(self, "get_{}_display".format(field.name))()
                     if result or not no_empty:
-                        data[field_name + str(_(" (libellé)") if labels else "_display")] = result
+                        data[
+                            field_name + str(_(" (libellé)") if labels else "_display")
+                        ] = result
         # Gestion des métadonnées
         if metadata:
             current_metadata = self.get_metadata()
@@ -741,7 +918,9 @@ class CommonModel(models.Model):
                 item = getattr(self, field, None)
                 # Liste d'entités
                 if isinstance(item, list) and item and isinstance(item[0], CommonModel):
-                    data[field] = [i.to_dict(**keywords, _depth=_depth + 1) for i in item]
+                    data[field] = [
+                        i.to_dict(**keywords, _depth=_depth + 1) for i in item
+                    ]
                 # QuerySet d'entités
                 elif isinstance(item, (CommonModel, CommonQuerySet)):
                     data[field] = item.to_dict(**keywords, _depth=_depth + 1)
@@ -779,10 +958,14 @@ class CommonModel(models.Model):
                     values = [to_dict(value, **kwargs) for value in values]
                 data[field.name] = values
             else:
-                data[field.name] = list(getattr(self, field.name).values_list("pk", flat=True))
+                data[field.name] = list(
+                    getattr(self, field.name).values_list("pk", flat=True)
+                )
         return data
 
-    def related_to_dict(self, includes=None, excludes=None, valid=True, date=None, **kwargs):
+    def related_to_dict(
+        self, includes=None, excludes=None, valid=True, date=None, **kwargs
+    ):
         """
         Retourne toutes les relations de type related set classées par attribut
         :param includes: Relations à inclure
@@ -832,7 +1015,11 @@ class CommonModel(models.Model):
             old_data = type(self)(**self._copy).to_dict(**options)
         new_data = self.to_dict(**options)
         keys = set(old_data.keys()) | set(new_data.keys())
-        return {k: (old_data.get(k), new_data.get(k)) for k in keys if old_data.get(k) != new_data.get(k)}
+        return {
+            k: (old_data.get(k), new_data.get(k))
+            for k in keys
+            if old_data.get(k) != new_data.get(k)
+        }
 
     @property
     def modified(self):
@@ -845,10 +1032,16 @@ class CommonModel(models.Model):
     def m2m_modified(self):
         """
         Retourne les identifiants modifiés sur les relations de type many-to-many de l'entité
+        Nécessite un snapshot _copy_m2m déjà capturé ; les valeurs sont les
+        anciennes/nouvelles listes de PK, pas des instances liées sérialisées.
         """
         old_data, new_data = self._copy_m2m, self.m2m_to_dict()
         keys = set(old_data.keys()) | set(new_data.keys())
-        return {k: (old_data.get(k), new_data.get(k)) for k in keys if old_data.get(k) != new_data.get(k)}
+        return {
+            k: (old_data.get(k), new_data.get(k))
+            for k in keys
+            if old_data.get(k) != new_data.get(k)
+        }
 
     @staticmethod
     def _model_type(obj):
@@ -864,6 +1057,11 @@ class CommonModel(models.Model):
         return cls._model_type(cls)
 
     def _get_FIELD_display(self, field):
+        """Résout un libellé de choix avec un cache par classe et attribut de champ.
+
+        Renvoie la valeur brute si le choix est inconnu. Des choix modifiés à
+        chaud nécessitent de vider _choices_cache pour être pris en compte.
+        """
         choices_dict = self.__class__._choices_cache.get(field.attname)
         if not choices_dict:
             choices_dict = dict(make_hashable(field.flatchoices))
@@ -877,13 +1075,17 @@ class CommonModel(models.Model):
         :param status: (Facultatif) Statut
         :return: Vrai ou faux
         """
-        key = "WEBHOOK_{}_{}_{}".format(self._meta.app_label, self._meta.object_name, status or "@")
+        using = self._state.db or DEFAULT_DB_ALIAS
+        key = "WEBHOOK_{}_{}_{}_{}".format(
+            using, self._meta.app_label, self._meta.object_name, status or "@"
+        )
         result = cache.get(key)
         if not result:
-            filters = dict(types__in=[self.model_type])
+            content_type = ContentType.objects.db_manager(using).get_for_model(self)
+            filters = dict(types__in=[content_type.pk])
             if status:
                 filters.update({Webhook.STATUS_FILTERS.get(status): True})
-            result = Webhook.objects.filter(**filters).exists()
+            result = Webhook.objects.using(using).filter(**filters).exists()
             cache.set(key, result, timeout=3600)
         return result
 
@@ -901,18 +1103,28 @@ class CommonModel(models.Model):
         abstract = True
 
 
+# Historisation et restauration des instances/champs
+# -------------------------------------------------
+
+
 class HistoryCommon(CommonModel):
     """
     Abstraction commune aux historiques et champs modifiés
     """
 
-    creation_date = models.DateTimeField(auto_now_add=True, editable=False, db_index=True, verbose_name=_("date"))
+    creation_date = models.DateTimeField(
+        auto_now_add=True, editable=False, db_index=True, verbose_name=_("date")
+    )
     restoration_date = models.DateTimeField(
         blank=True, null=True, editable=False, verbose_name=_("dernière restauration")
     )
-    restored = models.BooleanField(null=True, editable=False, verbose_name=_("restauré"))
+    restored = models.BooleanField(
+        null=True, editable=False, verbose_name=_("restauré")
+    )
     data = JsonField(blank=True, null=True, editable=False, verbose_name=_("données"))
-    data_size = models.PositiveIntegerField(editable=False, verbose_name=_("taille données"))
+    data_size = models.PositiveIntegerField(
+        editable=False, verbose_name=_("taille données")
+    )
 
     class Meta:
         abstract = True
@@ -945,7 +1157,9 @@ class History(HistoryCommon):
         related_name="histories",
         verbose_name=_("utilisateur"),
     )
-    status = models.CharField(max_length=1, choices=LOG_STATUS, editable=False, verbose_name=_("statut"))
+    status = models.CharField(
+        max_length=1, choices=LOG_STATUS, editable=False, verbose_name=_("statut")
+    )
     content_type = models.ForeignKey(
         ContentType,
         blank=True,
@@ -958,13 +1172,19 @@ class History(HistoryCommon):
     object_id = models.TextField(editable=False, verbose_name=_("identifiant"))
     object_uid = models.UUIDField(editable=False, verbose_name=_("UUID"))
     object_str = models.TextField(editable=False, verbose_name=_("entité"))
-    reason = models.TextField(blank=True, null=True, editable=False, verbose_name=_("motif"))
+    reason = models.TextField(
+        blank=True, null=True, editable=False, verbose_name=_("motif")
+    )
     admin = models.BooleanField(default=False, editable=False, verbose_name=_("admin"))
     fields_count = models.PositiveSmallIntegerField(
         blank=True, null=True, editable=False, verbose_name=_("modifications")
     )
-    collector_update = JsonField(blank=True, null=True, editable=False, verbose_name=_("mises à jour"))
-    collector_delete = JsonField(blank=True, null=True, editable=False, verbose_name=_("suppressions"))
+    collector_update = JsonField(
+        blank=True, null=True, editable=False, verbose_name=_("mises à jour")
+    )
+    collector_delete = JsonField(
+        blank=True, null=True, editable=False, verbose_name=_("suppressions")
+    )
     entity = CustomGenericForeignKey()
 
     _model = None
@@ -978,7 +1198,9 @@ class History(HistoryCommon):
 
     def __str__(self):  # pragma: no cover
         return _("[{status}] {content_type} #{object_id}").format(
-            status=self.get_status_display(), content_type=self.content_type, object_id=self.object_id
+            status=self.get_status_display(),
+            content_type=self.content_type,
+            object_id=self.object_id,
         )
 
     def restore(
@@ -990,7 +1212,7 @@ class History(HistoryCommon):
         force_default=False,
         from_admin=None,
         all_fields=False,
-        override=None
+        override=None,
     ):
         """
         Permet de restaurer complètement une entité
@@ -1031,7 +1253,9 @@ class History(HistoryCommon):
             if entity.pk:
                 for field in entity._meta.many_to_many:
                     try:
-                        value = data.get(field.name, []) or data.get(field.name + "_ids", [])
+                        value = data.get(field.name, []) or data.get(
+                            field.name + "_ids", []
+                        )
                         if not value:
                             continue
                         getattr(entity, field.name).set(value)
@@ -1045,7 +1269,9 @@ class History(HistoryCommon):
                             filters = Q(**{field_name + "__isnull": True})
                             if all(isinstance(v, str) for v in values):
                                 filters |= Q(**{field_name: ""})
-                            model.objects.filter(filters, pk__in=values).update(**{field_name: entity.pk})
+                            model.objects.filter(filters, pk__in=values).update(
+                                **{field_name: entity.pk}
+                            )
                     except Exception as error:
                         logger.warning(error, exc_info=True)
                         continue
@@ -1053,7 +1279,10 @@ class History(HistoryCommon):
                     try:
                         model = apps.get_model(model_label)
                         for data in datas:
-                            data = {key if key.endswith("_id") else key + "_id": value for key, value in data.items()}
+                            data = {
+                                key if key.endswith("_id") else key + "_id": value
+                                for key, value in data.items()
+                            }
                             model.objects.get_or_create(**data)
                     except Exception as error:
                         logger.warning(error, exc_info=True)
@@ -1094,22 +1323,41 @@ class HistoryField(HistoryCommon):
     )
 
     history = models.ForeignKey(
-        "History", editable=False, on_delete=models.CASCADE, related_name="fields", verbose_name=_("historique")
+        "History",
+        editable=False,
+        on_delete=models.CASCADE,
+        related_name="fields",
+        verbose_name=_("historique"),
     )
-    field_name = models.CharField(max_length=100, editable=False, verbose_name=_("nom du champ"))
-    old_value = models.TextField(blank=True, null=True, editable=False, verbose_name=_("ancienne valeur"))
-    new_value = models.TextField(blank=True, null=True, editable=False, verbose_name=_("nouvelle valeur"))
+    field_name = models.CharField(
+        max_length=100, editable=False, verbose_name=_("nom du champ")
+    )
+    old_value = models.TextField(
+        blank=True, null=True, editable=False, verbose_name=_("ancienne valeur")
+    )
+    new_value = models.TextField(
+        blank=True, null=True, editable=False, verbose_name=_("nouvelle valeur")
+    )
     status_m2m = models.CharField(
-        max_length=1, blank=True, null=True, editable=False, choices=LOG_STATUS_M2M, verbose_name=_("statut M2M")
+        max_length=1,
+        blank=True,
+        null=True,
+        editable=False,
+        choices=LOG_STATUS_M2M,
+        verbose_name=_("statut M2M"),
     )
-    editable = models.BooleanField(default=True, editable=False, verbose_name=_("éditable"))
+    editable = models.BooleanField(
+        default=True, editable=False, verbose_name=_("éditable")
+    )
 
     _field = None
 
     @property
     def field(self):
         if self.history.model:
-            self._field = self._field or self.history.model._meta.get_field(self.field_name)
+            self._field = self._field or self.history.model._meta.get_field(
+                self.field_name
+            )
             return self._field
         return None
 
@@ -1122,18 +1370,29 @@ class HistoryField(HistoryCommon):
         return self._get_inner_value(self.new_value)
 
     def _get_inner_value(self, value):
+        """Convertit l'ancienne/nouvelle valeur texte vers une valeur métier lisible.
+
+        Résout les PK de relations, les listes M2M et les libellés de choix.
+        Une cible disparue ou une conversion impossible conserve la valeur
+        historique ; les erreurs de conversion sont journalisées.
+        """
         if value is None:
             return None
         try:
             if self.field.many_to_many:
                 model = self.field.related_model
-                return [(self.get_instance(model, val) or val) for val in value.split(" | ")]
+                return [
+                    (self.get_instance(model, val) or val) for val in value.split(" | ")
+                ]
             value = self.field.to_python(value)
             if isinstance(value, str) and not value:
                 return None
             if self.field.choices:
                 instance = self.history.model(**{self.field_name: value})
-                return getattr(instance, "get_{}_display".format(self.field_name))() or value
+                return (
+                    getattr(instance, "get_{}_display".format(self.field_name))()
+                    or value
+                )
             elif self.field.related_model:
                 instance = self.get_instance(self.field.related_model, value)
                 return instance or value
@@ -1148,7 +1407,10 @@ class HistoryField(HistoryCommon):
 
     def __str__(self):  # pragma: no cover
         return _("[{entity}] ({field}) {old} ~ {new}").format(
-            entity=self.history.content_type, field=self.field_name, old=self.old_value, new=self.new_value
+            entity=self.history.content_type,
+            field=self.field_name,
+            old=self.old_value,
+            new=self.new_value,
         )
 
     def restore(
@@ -1160,7 +1422,7 @@ class HistoryField(HistoryCommon):
         force_default=False,
         from_admin=None,
         override=None,
-        **kwargs
+        **kwargs,
     ):
         """
         Permet de restaurer un champ d'une entité
@@ -1210,6 +1472,10 @@ class HistoryField(HistoryCommon):
         verbose_name_plural = _("historiques de champs modifiés")
 
 
+# Référentiel global, entités historisées et versions temporelles
+# -------------------------------------------------------------
+
+
 class GlobalQuerySet(CommonQuerySet):
     """
     Manager global
@@ -1231,7 +1497,11 @@ class Global(CommonModel):
     """
 
     content_type = models.ForeignKey(
-        ContentType, editable=False, on_delete=models.CASCADE, related_name="+", verbose_name=_("type d'entité")
+        ContentType,
+        editable=False,
+        on_delete=models.CASCADE,
+        related_name="+",
+        verbose_name=_("type d'entité"),
     )
     object_id = models.TextField(editable=False, verbose_name=_("identifiant"))
     object_uid = models.UUIDField(unique=True, editable=False, verbose_name=_("UUID"))
@@ -1240,7 +1510,9 @@ class Global(CommonModel):
 
     def __str__(self):
         return _("({object_uid}) {content_type} #{object_id}").format(
-            object_uid=self.object_uid, content_type=self.content_type, object_id=self.object_id
+            object_uid=self.object_uid,
+            content_type=self.content_type,
+            object_id=self.object_id,
         )
 
     class Meta:
@@ -1263,7 +1535,12 @@ class EntityQuerySet(CommonQuerySet):
     _force_default = False
 
     def delete(
-        self, _ignore_log=None, _ignore_log_no_user=None, _current_user=None, _reason=None, _force_default=False
+        self,
+        _ignore_log=None,
+        _ignore_log_no_user=None,
+        _current_user=None,
+        _reason=None,
+        _force_default=False,
     ):
         """
         Surcharge de la suppression des entités du QuerySet
@@ -1276,15 +1553,21 @@ class EntityQuerySet(CommonQuerySet):
         if _force_default or self._force_default:
             return super().delete()
 
-        _assert(self.query.can_filter(), _("Cannot use 'limit' or 'offset' with delete."))
+        _assert(
+            self.query.can_filter(), _("Cannot use 'limit' or 'offset' with delete.")
+        )
         if self._fields is not None:
             raise TypeError(_("Cannot call delete() after .values() or .values_list()"))
 
         del_query = self._clone()
         for element in del_query:
             element._ignore_log = get_first(_ignore_log, self._ignore_log)
-            element._ignore_log_no_user = get_first(_ignore_log_no_user, self._ignore_log_no_user)
-            element._current_user = _current_user or self._current_user or get_current_user()
+            element._ignore_log_no_user = get_first(
+                _ignore_log_no_user, self._ignore_log_no_user
+            )
+            element._current_user = (
+                _current_user or self._current_user or get_current_user()
+            )
             element._reason = _reason or self._reason
             element._from_admin = self._from_admin
 
@@ -1302,8 +1585,12 @@ class EntityQuerySet(CommonQuerySet):
             del_query.query.clear_ordering(force=True)
             self._collector_update = {}
             for (field, value), querysets in collector.field_updates.items():
-                ids = self._collector_update.setdefault(field.model._meta.label, {}).setdefault(field.name, set())
-                ids.update(*(queryset.values_list("pk", flat=True) for queryset in querysets))
+                ids = self._collector_update.setdefault(
+                    field.model._meta.label, {}
+                ).setdefault(field.name, set())
+                ids.update(
+                    *(queryset.values_list("pk", flat=True) for queryset in querysets)
+                )
             self._collector_delete = {
                 model._meta.label: [to_dict(instance) for instance in instances]
                 for model, instances in collector.data.items()
@@ -1312,7 +1599,8 @@ class EntityQuerySet(CommonQuerySet):
         else:
             self._collector_update = {
                 model._meta.label: {
-                    field.name: [instance.pk for instance in instances] for (field, value), instances in data.items()
+                    field.name: [instance.pk for instance in instances]
+                    for (field, value), instances in data.items()
                 }
                 for model, data in collector.field_updates.items()
             }
@@ -1333,7 +1621,7 @@ class EntityQuerySet(CommonQuerySet):
         _current_user=None,
         _reason=None,
         _force_default=False,
-        **kwargs
+        **kwargs,
     ):
         """
         Surcharge de la création d'entités
@@ -1371,11 +1659,17 @@ class EntityQuerySet(CommonQuerySet):
 
         from django.db.models import Max, Q
 
-        groups = self.values(*fields).annotate(max_modification_date=Max("modification_date"))
+        groups = self.values(*fields).annotate(
+            max_modification_date=Max("modification_date")
+        )
         filters = Q()
         for item in groups:
-            field_filter = {field: item[field] for field in fields if field != "modification_date"}
-            filters |= Q(modification_date=item["max_modification_date"], **field_filter)
+            field_filter = {
+                field: item[field] for field in fields if field != "modification_date"
+            }
+            filters |= Q(
+                modification_date=item["max_modification_date"], **field_filter
+            )
         return self.filter(filters)
 
     def get_by_natural_key(self, *args, **kwargs):
@@ -1392,9 +1686,15 @@ class Entity(CommonModel):
     Entité de base
     """
 
-    uuid = models.UUIDField(default=uuid.uuid4, editable=False, unique=True, verbose_name=_("UUID"))
-    creation_date = models.DateTimeField(auto_now_add=True, verbose_name=_("date de création"))
-    modification_date = models.DateTimeField(auto_now=True, verbose_name=_("date de modification"))
+    uuid = models.UUIDField(
+        default=uuid.uuid4, editable=False, unique=True, verbose_name=_("UUID")
+    )
+    creation_date = models.DateTimeField(
+        auto_now_add=True, verbose_name=_("date de création")
+    )
+    modification_date = models.DateTimeField(
+        auto_now=True, verbose_name=_("date de modification")
+    )
     current_user = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         blank=True,
@@ -1404,8 +1704,12 @@ class Entity(CommonModel):
         related_name="+",
         verbose_name=_("dernier utilisateur"),
     )
-    histories = CustomGenericRelation(History, related_query_name="%(app_label)s_%(class)s")
-    globals = CustomGenericRelation(Global, related_query_name="%(app_label)s_%(class)s")
+    histories = CustomGenericRelation(
+        History, related_query_name="%(app_label)s_%(class)s"
+    )
+    globals = CustomGenericRelation(
+        Global, related_query_name="%(app_label)s_%(class)s"
+    )
     objects = EntityQuerySet.as_manager()
 
     # Propriétés liées à l'historisation
@@ -1431,7 +1735,7 @@ class Entity(CommonModel):
         _reason=None,
         _force_default=False,
         force_insert=False,
-        **kwargs
+        **kwargs,
     ):
         """
         Surcharge de la sauvegarde de l'entité
@@ -1443,11 +1747,15 @@ class Entity(CommonModel):
         :param force_insert: Force l'insertion même en cas de présence d'une PK ?
         """
         self.uuid = self.uuid or uuid.uuid4()
-        self._current_user = self.current_user = _current_user or self._current_user or get_current_user()
+        self._current_user = self.current_user = (
+            _current_user or self._current_user or get_current_user()
+        )
         if _force_default or self._force_default:
             return super().save(force_insert=force_insert, *args, **kwargs)
         self._ignore_log = get_first(_ignore_log, self._ignore_log)
-        self._ignore_log_no_user = get_first(_ignore_log_no_user, self._ignore_log_no_user)
+        self._ignore_log_no_user = get_first(
+            _ignore_log_no_user, self._ignore_log_no_user
+        )
         self._reason = _reason or self._reason
         self._force_default = _force_default or self._force_default
         if force_insert:
@@ -1466,7 +1774,7 @@ class Entity(CommonModel):
         _reason=None,
         _force_default=False,
         keep_parents=False,
-        **kwargs
+        **kwargs,
     ):
         """
         Surcharge de la suppression de l'entité
@@ -1481,24 +1789,36 @@ class Entity(CommonModel):
             return super().delete(*args, **kwargs)
         _assert(
             self.pk is not None,
-            _("{} can't be deleted because it doesn't exists in database.").format(self._meta.object_name),
+            _("{} can't be deleted because it doesn't exists in database.").format(
+                self._meta.object_name
+            ),
         )
         self._ignore_log = get_first(_ignore_log, self._ignore_log)
-        self._ignore_log_no_user = get_first(_ignore_log_no_user, self._ignore_log_no_user)
-        self._current_user = self.current_user = _current_user or self._current_user or get_current_user()
+        self._ignore_log_no_user = get_first(
+            _ignore_log_no_user, self._ignore_log_no_user
+        )
+        self._current_user = self.current_user = (
+            _current_user or self._current_user or get_current_user()
+        )
         self._reason = _reason or self._reason
         self._force_default = _force_default or self._force_default
 
         from django.db import router
 
-        using = kwargs.get("using", False) or router.db_for_write(self.__class__, instance=self)
+        using = kwargs.get("using", False) or router.db_for_write(
+            self.__class__, instance=self
+        )
         collector = Collector(using=using)
         collector.collect([self], keep_parents=keep_parents)
         if django_version >= (4, 2):
             self._collector_update = {}
             for (field, value), querysets in collector.field_updates.items():
-                ids = self._collector_update.setdefault(field.model._meta.label, {}).setdefault(field.name, set())
-                ids.update(*(queryset.values_list("pk", flat=True) for queryset in querysets))
+                ids = self._collector_update.setdefault(
+                    field.model._meta.label, {}
+                ).setdefault(field.name, set())
+                ids.update(
+                    *(queryset.values_list("pk", flat=True) for queryset in querysets)
+                )
             self._collector_delete = {
                 model._meta.label: [to_dict(instance) for instance in instances]
                 for model, instances in collector.data.items()
@@ -1507,7 +1827,8 @@ class Entity(CommonModel):
         else:
             self._collector_update = {
                 model._meta.label: {
-                    field.name: [instance.pk for instance in instances] for (field, value), instances in data.items()
+                    field.name: [instance.pk for instance in instances]
+                    for (field, value), instances in data.items()
                 }
                 for model, data in collector.field_updates.items()
             }
@@ -1532,12 +1853,22 @@ class Entity(CommonModel):
                     continue
                 if isinstance(field, models.ForeignKey):
                     suffix = "_uid"
-                    fget = lambda self, field_name=field.name: self._get_uid(field_name)  # noqa
-                    fset = lambda self, value, field_name=field.name: self._set_uid(field_name, value)  # noqa
+                    fget = (
+                        lambda self, field_name=field.name: self._get_uid(  # noqa: E731
+                            field_name
+                        )
+                    )
+                    fset = lambda self, value, field_name=field.name: self._set_uid(  # noqa: E731
+                        field_name, value
+                    )
                 elif isinstance(field, models.ManyToManyField):
                     suffix = "_uids"
-                    fget = lambda self, field_name=field.name: self._get_uids(field_name)  # noqa
-                    fset = lambda self, values, field_name=field.name: self._set_uids(field_name, values)  # noqa
+                    fget = lambda self, field_name=field.name: self._get_uids(  # noqa: E731
+                        field_name
+                    )
+                    fset = lambda self, values, field_name=field.name: self._set_uids(  # noqa: E731
+                        field_name, values
+                    )
                 else:
                     continue
                 setattr(self.__class__, field.name + suffix, property(fget, fset))
@@ -1548,6 +1879,11 @@ class Entity(CommonModel):
         return getattr(self, fk_field).uuid
 
     def _set_uid(self, fk_field, value):
+        """Affecte une FK depuis un UUID du référentiel Global.
+
+        Vérifie le type du modèle ciblé avant d'affecter sa PK. UUID absent ou
+        modèle incompatible produit une erreur ; aucune cible n'est créée.
+        """
         field = self._meta.get_field(fk_field)
         unique = Global.objects.select_related().get(object_uid=value)
         model_from = unique.content_type.model_class()
@@ -1564,6 +1900,12 @@ class Entity(CommonModel):
         return getattr(self, m2m_field).values_list("uuid", flat=True)
 
     def _set_uids(self, m2m_field, values):
+        """Remplace une relation M2M à partir d'UUID du même type de modèle.
+
+        Une collection vide efface la relation. La résolution utilise Global ;
+        les UUID absents ne sont pas créés et les incohérences de type sont
+        refusées. L'instance doit être sauvegardée avant l'affectation M2M.
+        """
         if not values:
             getattr(self, m2m_field).clear()
             return
@@ -1585,10 +1927,18 @@ class Entity(CommonModel):
         getattr(self, m2m_field).set(ids)
 
     def must_log(self):
+        """Décide si l'entité doit être historisée selon ses flags et les settings.
+
+        Résout _current_user par fallback de pile si nécessaire. IGNORE_LOG
+        désactive tout ; IGNORE_LOG_NO_USER désactive seulement sans acteur.
+        Cette décision ne sauvegarde rien et n'applique pas de permission.
+        """
         if settings.IGNORE_LOG is True or self._ignore_log is True:
             return False
         self._current_user = self._current_user or get_current_user()
-        if (settings.IGNORE_LOG_NO_USER is True or self._ignore_log_no_user is True) and not self._current_user:
+        if (
+            settings.IGNORE_LOG_NO_USER is True or self._ignore_log_no_user is True
+        ) and not self._current_user:
             return False
         return True
 
@@ -1653,11 +2003,22 @@ class PerishableEntity(Entity):
     Entité périssable
     """
 
-    start_date = models.DateTimeField(blank=True, null=True, verbose_name=_("date d'effet"))
-    end_date = models.DateTimeField(blank=True, null=True, verbose_name=_("date de fin"))
+    start_date = models.DateTimeField(
+        blank=True, null=True, verbose_name=_("date d'effet")
+    )
+    end_date = models.DateTimeField(
+        blank=True, null=True, verbose_name=_("date de fin")
+    )
     objects = PerishableEntityQuerySet.as_manager()
 
-    def save(self, *args, _force_default=False, force_insert=False, force_update=False, **kwargs):
+    def save(
+        self,
+        *args,
+        _force_default=False,
+        force_insert=False,
+        force_update=False,
+        **kwargs,
+    ):
         """
         Surcharge de la sauvegarde de l'entité périssable
         :param _force_default: Force le comportement par défaut ?
@@ -1667,7 +2028,11 @@ class PerishableEntity(Entity):
         current_date = now()
         self.start_date = self.start_date or current_date
         if _force_default or self._force_default:
-            kwargs.update(_force_default=True, force_insert=force_insert, force_update=force_update)
+            kwargs.update(
+                _force_default=True,
+                force_insert=force_insert,
+                force_update=force_update,
+            )
             return super().save(*args, **kwargs)
         if not force_update:
             previous = None
@@ -1687,7 +2052,9 @@ class PerishableEntity(Entity):
                     metadata.entity = self
                     metadata.save(force_insert=True)
             return result
-        return super().save(force_insert=force_insert, force_update=force_update, *args, **kwargs)
+        return super().save(
+            force_insert=force_insert, force_update=force_update, *args, **kwargs
+        )
 
     def delete(self, *args, _force_default=False, **kwargs):
         """
@@ -1703,11 +2070,16 @@ class PerishableEntity(Entity):
 
     def clean(self):
         if self.start_date and self.end_date and self.end_date < self.start_date:
-            raise ValidationError(_("La date de fin doit être ultérieure à la date d'effet."), code="incorrect_dates")
+            raise ValidationError(
+                _("La date de fin doit être ultérieure à la date d'effet."),
+                code="incorrect_dates",
+            )
 
     @to_boolean(_("Valide"))
     def valid(self):
-        return self.start_date <= now() and (self.end_date is None or self.end_date >= now())
+        return self.start_date <= now() and (
+            self.end_date is None or self.end_date >= now()
+        )
 
     class Meta:
         abstract = True
@@ -1717,6 +2089,10 @@ class PerishableEntity(Entity):
                 name="%(app_label)s_%(class)s_perishable_idx",
             ),
         )
+
+
+# Configuration et transport des notifications externes
+# ----------------------------------------------------
 
 
 class BaseWebhook(CommonModel):
@@ -1775,17 +2151,31 @@ class BaseWebhook(CommonModel):
         History.M2M: "is_m2m",
     }
 
-    name = models.CharField(max_length=100, blank=True, null=True, verbose_name=_("nom"))
+    name = models.CharField(
+        max_length=100, blank=True, null=True, verbose_name=_("nom")
+    )
     url = models.URLField(verbose_name=_("url"))
-    method = models.CharField(max_length=5, default=METHOD_POST, choices=METHODS, verbose_name=_("method"))
-    format = models.CharField(max_length=4, default=FORMAT_JSON, choices=FORMATS, verbose_name=_("format"))
+    method = models.CharField(
+        max_length=5, default=METHOD_POST, choices=METHODS, verbose_name=_("method")
+    )
+    format = models.CharField(
+        max_length=4, default=FORMAT_JSON, choices=FORMATS, verbose_name=_("format")
+    )
     authorization = models.CharField(
-        max_length=6, blank=True, null=True, choices=AUTHORIZATIONS, verbose_name=_("authentification")
+        max_length=6,
+        blank=True,
+        null=True,
+        choices=AUTHORIZATIONS,
+        verbose_name=_("authentification"),
     )
     token = models.TextField(blank=True, null=True, verbose_name=_("token"))
-    timeout = models.PositiveSmallIntegerField(default=30, verbose_name=_("délai d'attente"))
+    timeout = models.PositiveSmallIntegerField(
+        default=30, verbose_name=_("délai d'attente")
+    )
     retries = models.PositiveSmallIntegerField(default=0, verbose_name=_("tentatives"))
-    delay = models.PositiveSmallIntegerField(default=0, verbose_name=_("délai entre tentatives"))
+    delay = models.PositiveSmallIntegerField(
+        default=0, verbose_name=_("délai entre tentatives")
+    )
 
     def serialize_data(self, data):
         """
@@ -1829,18 +2219,36 @@ class BaseWebhook(CommonModel):
         # Fabrication de l'entête de la requête HTTP
         headers = {}
         if self.authorization and self.token:
-            headers["Authorization"] = "{type} {token}".format(type=self.authorization, token=self.token)
-        headers["Content-Type"] = self.CONTENT_TYPES.get(self.format, "application/x-www-form-urlencoded")
+            headers["Authorization"] = "{type} {token}".format(
+                type=self.authorization, token=self.token
+            )
+        headers["Content-Type"] = self.CONTENT_TYPES.get(
+            self.format, "application/x-www-form-urlencoded"
+        )
 
         # Envoi de la requête (en plusieurs tentatives si configuré)
         for retries in range(self.retries + 1):
             try:
                 serialized_data = self.serialize_data(data)
-                request(self.method, self.url, data=serialized_data, headers=headers, timeout=self.timeout)
+                response = request(
+                    self.method,
+                    self.url,
+                    data=serialized_data,
+                    headers=headers,
+                    timeout=self.timeout,
+                )
+                response.raise_for_status()
+                if not 200 <= response.status_code < 300:
+                    raise RequestException(
+                        "Unexpected webhook HTTP status: {}".format(
+                            response.status_code
+                        )
+                    )
                 break
             except RequestException as error:
                 logger.warning(error)
-                time.sleep(self.delay)
+                if retries < self.retries:
+                    time.sleep(self.delay)
                 continue
             except Exception as error:
                 logger.error(error, exc_info=True)
@@ -1900,7 +2308,9 @@ def pre_save_receiver(sender, instance, raw, *args, **kwargs):
 
 
 @receiver(post_save)
-def post_save_receiver(sender, instance, created, raw, *args, **kwargs):
+def post_save_receiver(
+    sender, instance, created, raw, *args, using=None, update_fields=None, **kwargs
+):
     """
     Exécuté après chaque sauvegarde d'entité
     :param sender: Type d'entité
@@ -1911,101 +2321,240 @@ def post_save_receiver(sender, instance, created, raw, *args, **kwargs):
     """
     if isinstance(instance, Entity):
         # Ajoute le point d'entrée global de l'entité
-        ignore_global = settings.IGNORE_GLOBAL is True or instance._ignore_global is True
+        ignore_global = (
+            settings.IGNORE_GLOBAL is True or instance._ignore_global is True
+        )
         if not ignore_global and created and instance.pk and instance.uuid:
-            Global.objects.create(content_type=instance.model_type, object_id=instance.pk, object_uid=instance.uuid)
+            database = using or instance._state.db or DEFAULT_DB_ALIAS
+            content_type = ContentType.objects.db_manager(database).get_for_model(
+                instance
+            )
+            Global.objects.using(database).create(
+                content_type=content_type,
+                object_id=instance.pk,
+                object_uid=instance.uuid,
+            )
         # Sauvegarde l'historique de modification
         if raw:
             instance._ignore_log = True
             instance._force_default = True
             return
         if instance.must_log():
-            log_save.apply_async(
-                args=(instance, created, kwargs),
-                retry=False,
+            # Prepare synchronously: never serialize Django's signal or defer reading _copy.
+            log_save(
+                instance,
+                created=created,
+                save_kwargs={"update_fields": update_fields},
+                using=using,
             )
     if isinstance(instance, CommonModel):
         # Alerte des changements potentiels
         status = History.CREATE if created else History.UPDATE
-        run_notify_changes(instance, status)
+        run_notify_changes(instance, status, using=using)
         # Copie des données de l'entité
         instance._copy = instance.to_dict(editables=True)
 
 
-@app.task(ignore_result=True, name="common.log_save")
-def log_save(instance, created, save_kwargs=None):
+def _run_history_task(task, using, **kwargs):
+    """Livre un payload détaché via Celery après commit, ou l'exécute immédiatement.
+
+    Ajoute l'alias using aux kwargs. Le chemin Celery renvoie None et n'active
+    pas les retries de publication ; le chemin synchrone renvoie le résultat.
+    Un rollback empêche la publication, mais une panne après commit n'est pas
+    compensée par une outbox. Les erreurs de publication restent visibles.
     """
-    Enregistre un historique de création/modification de l'entité
+    kwargs["using"] = using
+    if hasattr(app, "send_task"):
+        transaction.on_commit(
+            partial(task.apply_async, kwargs=kwargs, retry=False), using=using
+        )
+        return None
+    return task(**kwargs)
+
+
+def _history_header(instance, status, data, using, reuse=True):
+    """Crée/réutilise l'en-tête synchrone d'une entité dans la base using.
+
+    Un historique déjà porté par l'instance est revérifié sous verrou, car un
+    rollback peut avoir annulé sa ligne sans vider l'attribut Python. Les M2M
+    complètent son snapshot ; reuse=False crée un événement distinct, notamment
+    pour la suppression. Met à jour instance._history et renvoie l'en-tête.
+    """
+    history = instance._history if reuse else None
+    if history is not None and history._state.db == using:
+        # A previous transaction may have rolled back while leaving the Python pointer intact.
+        history = (
+            History.objects.using(using)
+            .select_for_update()
+            .filter(pk=history.pk, object_uid=instance.uuid)
+            .first()
+        )
+    else:
+        history = None
+    encoded = json_encode(data)
+    if history is None:
+        user = instance._current_user or get_current_user()
+        content_type = ContentType.objects.db_manager(using).get_for_model(instance)
+        history = History.objects.using(using).create(
+            user_id=user.pk if user and user.pk else None,
+            status=status,
+            content_type=content_type,
+            object_id=instance.pk,
+            object_uid=instance.uuid,
+            object_str=str(instance),
+            reason=instance._reason,
+            data=json_decode(encoded),
+            data_size=len(encoded),
+            admin=instance._from_admin,
+            collector_update=instance._collector_update,
+            collector_delete=instance._collector_delete,
+        )
+    elif status == History.M2M:
+        history.data.update(json_decode(encoded))
+        history.data_size = len(json_encode(history.data))
+        history.save(using=using, update_fields=("data", "data_size"))
+    instance._history = history
+    return history
+
+
+def _write_history_fields(history, changes, using):
+    """Fige les snapshots en JSON et déclenche leur écriture dans la base source.
+
+    L'encodage détache immédiatement les valeurs mutables et les types spéciaux.
+    En synchrone, actualise fields_count en mémoire ; en asynchrone, le worker
+    l'actualisera en base. Un nouvel appel représente un nouveau lot non dédupliqué.
+    """
+    if changes:
+        # JSON normalizes files/dates/etc. now and detaches all values from the source instance.
+        payload = json_encode([asdict(change) for change in changes])
+        count = _run_history_task(
+            log_history_fields, using=using, history_id=history.pk, fields_json=payload
+        )
+        if count is not None:
+            history.fields_count = count
+
+
+@dataclass(frozen=True)
+class HistoryFieldSnapshot:
+    """Valeurs préparées au signal, sans relation ORM ni instance métier à transporter."""
+
+    field_name: str
+    old_value: str | None
+    new_value: str | None
+    data: Any
+    data_size: int
+    editable: bool
+    status_m2m: str | None = None
+
+
+@app.task(ignore_result=True, name="common.log_history_fields")
+def log_history_fields(history_id, fields_json, using=DEFAULT_DB_ALIAS):
+    """Écrit les détails préparés et leur compteur dans une même transaction.
+
+    fields_json contient une liste d'objets HistoryFieldSnapshot sérialisés.
+    Ne relit jamais l'entité source ; si l'en-tête a disparu, journalise puis
+    renvoie None. Sinon renvoie le compteur après insertion sous verrou.
+    Le verrou évite les incréments perdus, pas les doublons d'une redélivrance :
+    cette tâche n'est pas idempotente (limite volontairement documentée).
+    """
+    values = json_decode(fields_json)
+    with transaction.atomic(using=using):
+        history = (
+            History.objects.using(using)
+            .select_for_update()
+            .filter(pk=history_id)
+            .first()
+        )
+        if history is None:
+            logger.debug(
+                "History fields skipped for missing history %s (database %s, %s fields)",
+                history_id,
+                using,
+                len(values),
+            )
+            return None
+        fields = [HistoryField(history_id=history_id, **value) for value in values]
+        HistoryField.objects.using(using).bulk_create(fields)
+        history.fields_count = (history.fields_count or 0) + len(fields)
+        history.save(using=using, update_fields=("fields_count",))
+    logger.debug(
+        "History fields saved for history %s (%s fields)", history_id, len(fields)
+    )
+    return history.fields_count
+
+
+@app.task(ignore_result=True, name="common.log_save")
+def log_save(instance, created, save_kwargs=None, using=None):
+    """
+    Prépare synchroniquement un historique et diffère uniquement ses champs si Celery est actif.
     :param instance: Instance de l'entité
     :param created: Entité nouvellement créée ?
     :param save_kwargs: Paramètres supplémentaires fournis au moment de la sauvegarde
     :return: Rien
     """
     # Sauvegarde la création/modification de l'entité
-    user = instance._current_user or get_current_user()
-    user = user if user and user.pk else None
+    using = using or instance._state.db or DEFAULT_DB_ALIAS
     # Vérification des changements entre les anciennes et nouvelles données
-    exclude_fields = set(instance._ignore_log) if isinstance(instance._ignore_log, (list, set, tuple)) else set()
+    exclude_fields = (
+        set(instance._ignore_log)
+        if isinstance(instance._ignore_log, (list, set, tuple))
+        else set()
+    )
     if settings.IGNORE_LOG_ENTITY_FIELDS:
         exclude_fields.update(("modification_date", "current_user"))
     old_data = instance._copy.copy()
     update_fields = (save_kwargs or {}).get("update_fields", [])
     if update_fields:
-        old_data = {key: value for key, value in old_data.items() if key in update_fields and key not in exclude_fields}
-        new_data = instance.to_dict(editables=True, includes=update_fields, excludes=exclude_fields)
+        old_data = {
+            key: value
+            for key, value in old_data.items()
+            if key in update_fields and key not in exclude_fields
+        }
+        new_data = instance.to_dict(
+            editables=True, includes=update_fields, excludes=exclude_fields
+        )
     else:
-        old_data = {key: value for key, value in old_data.items() if key not in exclude_fields}
+        old_data = {
+            key: value for key, value in old_data.items() if key not in exclude_fields
+        }
         new_data = instance.to_dict(editables=True, excludes=exclude_fields)
     diff = set(to_tuple(new_data)) ^ set(to_tuple(old_data))
     if not diff:
         return
     # Sauvegarde l'historique de création ou de modification
-    history = instance._history
-    if not history:
-        history = History.objects.create(
-            user=user,
-            status=History.RESTORE if instance._restore else [History.UPDATE, History.CREATE][created],
-            content_type=instance.model_type,
-            object_id=instance.pk,
-            object_uid=instance.uuid,
-            object_str=str(instance),
-            reason=instance._reason,
-            data=old_data,
-            data_size=len(json_encode(old_data)),
-            admin=instance._from_admin,
-            collector_update=instance._collector_update,
-            collector_delete=instance._collector_delete,
+    with transaction.atomic(using=using):
+        status = (
+            History.RESTORE
+            if instance._restore
+            else [History.UPDATE, History.CREATE][created]
         )
-        instance._history = history
-    # Sauvegarde les champs modifiés
-    if history.status in (History.UPDATE, History.RESTORE):
-        fields = []
-        for key in new_data:
-            old_value = old_data.get(key, None)
-            new_value = new_data.get(key, None)
-            if old_value == new_value:
-                continue
-            try:
-                editable = instance._meta.get_field(key).editable
-            except Exception as error:
-                logger.warning(error, exc_info=True)
-                editable = True
-            fields.append(
-                HistoryField(
-                    history=history,
-                    field_name=key,
-                    old_value=None if old_value is None else str(old_value),
-                    new_value=None if new_value is None else str(new_value),
-                    data=old_value,
-                    data_size=len(json_encode(old_value)),
-                    editable=editable,
+        history = _history_header(instance, status=status, data=old_data, using=using)
+        if history.status in (History.UPDATE, History.RESTORE):
+            fields = []
+            for key, new_value in new_data.items():
+                old_value = old_data.get(key)
+                if old_value == new_value:
+                    continue
+                try:
+                    editable = instance._meta.get_field(key).editable
+                except FieldDoesNotExist:
+                    editable = True
+                encoded = json_encode(old_value)
+                fields.append(
+                    HistoryFieldSnapshot(
+                        field_name=key,
+                        old_value=None if old_value is None else str(old_value),
+                        new_value=None if new_value is None else str(new_value),
+                        data=json_decode(encoded),
+                        data_size=len(encoded),
+                        editable=editable,
+                    )
                 )
-            )
-        HistoryField.objects.bulk_create(fields)
-        history.fields_count = (history.fields_count or 0) + len(fields)
-        history.save(update_fields=("fields_count",))
+            _write_history_fields(history, changes=fields, using=using)
     logger.debug(
-        "Create/update log saved for entity {} #{} ({})".format(instance._meta.object_name, instance.pk, instance.uuid)
+        "Create/update log prepared for entity {} #{} ({})".format(
+            instance._meta.object_name, instance.pk, instance.uuid
+        )
     )
 
 
@@ -2018,7 +2567,7 @@ LOG_M2M_ACTIONS = {
 
 
 @receiver(m2m_changed)
-def m2m_changed_receiver(sender, instance, model, action, *args, **kwargs):
+def m2m_changed_receiver(sender, instance, model, action, *args, using=None, **kwargs):
     """
     Exécuté après chaque sauvegarde d'entité contenant des champs many-to-many
     :param sender: Type de l'entité de liaison
@@ -2031,25 +2580,18 @@ def m2m_changed_receiver(sender, instance, model, action, *args, **kwargs):
     if isinstance(instance, Entity):
         if status_m2m and instance.must_log():
             # Sauvegarde l'historique des changements de champs many-to-many
-            log_m2m.apply_async(
-                args=(
-                    instance,
-                    model,
-                    status_m2m,
-                ),
-                retry=False,
-            )
+            log_m2m(instance, model=model, status_m2m=status_m2m, using=using)
     if isinstance(instance, CommonModel):
         if action in COPY_M2M_ACTIONS:
             # Copie les anciennes données des champs many-to-many
             instance._copy_m2m = instance.m2m_to_dict()
         if status_m2m:
             # Alerte d'un changement dans les many-to-many
-            run_notify_changes(instance, History.M2M, status_m2m)
+            run_notify_changes(instance, History.M2M, status_m2m, using=using)
 
 
 @app.task(ignore_result=True, name="common.log_m2m")
-def log_m2m(instance, model, status_m2m):
+def log_m2m(instance, model, status_m2m, using=None):
     """
     Enregistre un historique de modification des relations de type ManyToMany de l'entité
     :param instance: Instance de l'entité
@@ -2058,12 +2600,15 @@ def log_m2m(instance, model, status_m2m):
     :return: Rien
     """
     # Sauvegarde la mise à jour de relations M2M de l'entité
-    user = instance._current_user or get_current_user()
-    user = user if user and user.pk else None
-    exclude_fields = set(instance._ignore_log) if isinstance(instance._ignore_log, (list, set, tuple)) else set()
-    old_m2m = instance._copy_m2m
+    using = using or instance._state.db or DEFAULT_DB_ALIAS
+    exclude_fields = (
+        set(instance._ignore_log)
+        if isinstance(instance._ignore_log, (list, set, tuple))
+        else set()
+    )
+    old_m2m = instance._copy_m2m or {}
     new_m2m = instance.m2m_to_dict()
-    history, fields_count = None, 0
+    fields = []
     for field in set(old_m2m) | set(new_m2m):
         if field in exclude_fields:
             continue
@@ -2073,57 +2618,42 @@ def log_m2m(instance, model, status_m2m):
         diff = set(old_value) ^ set(new_value)
         if not diff:
             continue
-        # Sauvegarde de l'historique si ce n'est pas déjà fait
-        history = instance._history
-        if not history:
-            history = History.objects.create(
-                user=user,
-                status=History.M2M,
-                content_type=instance.model_type,
-                object_id=instance.pk,
-                object_uid=instance.uuid,
-                object_str=str(instance),
-                reason=instance._reason,
-                data=old_m2m,
-                data_size=len(json_encode(old_m2m)),
-                admin=instance._from_admin,
-                collector_update=instance._collector_update,
-                collector_delete=instance._collector_delete,
-            )
-            instance._history = history
-        else:
-            history.data.update(old_m2m)
-            history.data_size = len(json_encode(history.data))
-            history.save(update_fields=("data", "data_size"))
         # Sauvegarde la relation modifiée
         try:
             editable = instance._meta.get_field(field).editable
-        except Exception as error:
-            logger.warning(error, exc_info=True)
+        except FieldDoesNotExist:
             editable = True
-        field = HistoryField.objects.create(
-            history=history,
-            field_name=field,
-            old_value=" | ".join(str(value) for value in old_value) if old_value else None,
-            new_value=" | ".join(str(value) for value in new_value) if new_value else None,
-            data=old_value,
-            data_size=len(json_encode(old_value)),
-            status_m2m=status_m2m,
-            editable=editable,
+        encoded = json_encode(old_value)
+        fields.append(
+            HistoryFieldSnapshot(
+                field_name=field,
+                old_value=(
+                    " | ".join(str(value) for value in old_value) if old_value else None
+                ),
+                new_value=(
+                    " | ".join(str(value) for value in new_value) if new_value else None
+                ),
+                data=json_decode(encoded),
+                data_size=len(encoded),
+                status_m2m=status_m2m,
+                editable=editable,
+            )
         )
-        fields_count += 1
         logger.debug(
-            "Many-to-many log saved for field '{}' in entity {} #{} ({})".format(
+            "Many-to-many log prepared for field '{}' in entity {} #{} ({})".format(
                 field, instance._meta.object_name, instance.pk, instance.uuid
             )
         )
-    if history and fields_count:
-        history.fields_count = (history.fields_count or 0) + fields_count
-        history.save(update_fields=("fields_count",))
+    if fields:
+        with transaction.atomic(using=using):
+            history = _history_header(
+                instance, status=History.M2M, data=old_m2m, using=using
+            )
+            _write_history_fields(history, changes=fields, using=using)
 
 
 @receiver(pre_delete)
-def pre_delete_receiver(sender, instance, *args, **kwargs):
+def pre_delete_receiver(sender, instance, *args, using=None, **kwargs):
     """
     Exécuté avant chaque suppression d'entité
     :param sender: Type de l'entité
@@ -2133,45 +2663,35 @@ def pre_delete_receiver(sender, instance, *args, **kwargs):
     if isinstance(instance, Entity):
         # Sauvegarde l'historique de suppression
         if instance.must_log():
-            log_delete.apply_async(args=(instance,), retry=False)
+            log_delete(instance, using=using)
     if isinstance(instance, CommonModel):
         # Alerte de la suppression
-        run_notify_changes(instance, History.DELETE)
+        run_notify_changes(instance, History.DELETE, using=using)
 
 
 @app.task(ignore_result=True, name="common.log_delete")
-def log_delete(instance):
+def log_delete(instance, using=None):
     """
     Enregistre un historique de suppression de l'entité
     :param instance: Instance de l'entité
     :return: Rien
     """
     # Sauvegarde la suppression de l'entité
-    user = instance._current_user or get_current_user()
-    user = user if user and user.pk else None
+    using = using or instance._state.db or DEFAULT_DB_ALIAS
     data = instance.to_dict(m2m=True, editables=True)
     # Sauvegarde de l'historique de suppression
-    history = History.objects.create(
-        user=user,
-        status=History.DELETE,
-        content_type=instance.model_type,
-        object_id=instance.pk,
-        object_uid=instance.uuid,
-        object_str=str(instance),
-        reason=instance._reason,
-        data=data,
-        data_size=len(json_encode(data)),
-        admin=instance._from_admin,
-        collector_update=instance._collector_update,
-        collector_delete=instance._collector_delete,
-    )
-    instance._history = history
+    with transaction.atomic(using=using):
+        _history_header(
+            instance, status=History.DELETE, data=data, using=using, reuse=False
+        )
     logger.debug(
-        "Delete log saved for entity {} #{} ({})".format(instance._meta.object_name, instance.pk, instance.uuid)
+        "Delete log saved for entity {} #{} ({})".format(
+            instance._meta.object_name, instance.pk, instance.uuid
+        )
     )
 
 
-def run_notify_changes(instance, status, status_m2m=None):
+def run_notify_changes(instance, status, status_m2m=None, using=None):
     """
     Notification des changements sur une entité (par broadcast websocket et/ou API callback)
     :param instance: Instance de l'entité
@@ -2179,28 +2699,23 @@ def run_notify_changes(instance, status, status_m2m=None):
     :param status_m2m: Sous-statut concernant un changement sur les champs many-to-many
     :return: Rien
     """
-    filters = {Webhook.STATUS_FILTERS.get(status): True}
-    filters.update(dict(types__in=[instance.model_type]))
-    if settings.NOTIFY_CHANGES and (settings.WEBSOCKET_ENABLED or instance.has_webhook(status)):
-        return notify_changes.apply_async(
-            args=(
-                instance,
-                status,
-                status_m2m,
-            ),
-            retry=False,
-        )
+    if settings.NOTIFY_CHANGES and (
+        settings.WEBSOCKET_ENABLED or instance.has_webhook(status)
+    ):
+        return notify_changes(instance, status, status_m2m, using=using)
 
 
 @app.task(ignore_result=True, name="common.notify_changes")
-def notify_changes(instance, status, status_m2m=None):
+def notify_changes(instance, status, status_m2m=None, using=None):
     """
-    Notification des changements sur une entité (par broadcast websocket et/ou API callback)
+    Prépare la notification immédiatement ; seule sa livraison peut être asynchrone.
     :param instance: Instance de l'entité
     :param status: Statut général du changement
     :param status_m2m: Sous-statut concernant un changement sur les champs many-to-many
     :return: Rien
     """
+    using = using or instance._state.db or DEFAULT_DB_ALIAS
+    content_type = ContentType.objects.db_manager(using).get_for_model(instance)
     # Différences de données entre la version précédente et la version actuelle
     diff_data_prev, diff_data_next = None, None
     if status in [History.UPDATE, History.RESTORE]:
@@ -2224,18 +2739,25 @@ def notify_changes(instance, status, status_m2m=None):
     has_diff_m2m = diff_m2m_prev and diff_m2m_next
 
     # Création du message à transmettre
-    get_data = getattr(instance, "get_webhook_data", lambda *a, **k: instance.to_dict(**settings.NOTIFY_OPTIONS))
+    get_data = getattr(
+        instance,
+        "get_webhook_data",
+        lambda *a, **k: instance.to_dict(**settings.NOTIFY_OPTIONS),
+    )
     data = {
         "id": str(uuid.uuid4()),
         "date": now(),
         "meta": {
             "id": instance.pk,
             "uuid": getattr(instance, "uuid", None),
-            "type": to_dict(get_content_type(instance)),
+            "type": to_dict(content_type),
             "status": status,
             "status_display": str(dict(History.LOG_STATUS).get(status, "")) or None,
             "status_m2m": status_m2m,
-            "status_m2m_display": str(dict(HistoryField.LOG_STATUS_M2M).get(status_m2m, "")) or None,
+            "status_m2m_display": str(
+                dict(HistoryField.LOG_STATUS_M2M).get(status_m2m, "")
+            )
+            or None,
         },
         "changes": (
             {
@@ -2262,14 +2784,34 @@ def notify_changes(instance, status, status_m2m=None):
         "data": get_data(status=status, status_m2m=status_m2m),
     }
 
-    # Envoi des données par websocket si sctivé
+    _run_history_task(
+        send_notify_changes,
+        using=using,
+        data_json=json_encode(data),
+        content_type_id=content_type.pk,
+        status=status,
+    )
+    return data
+
+
+@app.task(ignore_result=True, name="common.send_notify_changes")
+def send_notify_changes(data_json, content_type_id, status, using=DEFAULT_DB_ALIAS):
+    """Livre un snapshot JSON sans relire l'entité ni ses relations.
+
+    Le payload est figé par le producteur, mais la sélection des webhooks et
+    leur configuration sont lues au moment de la livraison dans using. Diffuse
+    aussi sur websocket si activé et renvoie le payload décodé. Aucun exactly-once
+    n'est garanti pour les effets réseau.
+    """
+    data = json_decode(data_json)
+    # Envoi des données par websocket si activé
     if settings.WEBSOCKET_ENABLED:
         Webhook.send_websocket(data)
 
     # Envoi des données par requête HTTP
     filters = {Webhook.STATUS_FILTERS.get(status): True}
-    filters.update(dict(types__in=[instance.model_type]))
-    for webhook in Webhook.objects.filter(**filters):
+    filters.update(dict(types__in=[content_type_id]))
+    for webhook in Webhook.objects.using(using).filter(**filters):
         webhook.send_http(data)
     return data
 
@@ -2286,10 +2828,16 @@ def create_token_and_metadata(sender, instance=None, created=False, **kwargs):
 
                 Token.objects.create(user=instance)
             except (AttributeError, ImportError):
-                logger.warning("Unable to create API Token, are django-rest-framework with authtoken installed?")
+                logger.warning(
+                    "Unable to create API Token, are django-rest-framework with authtoken installed?"
+                )
             UserMetaData.objects.create(user=instance, data={})
         elif issubclass(sender, Group):
             GroupMetaData.objects.create(group=instance, data={})
+
+
+# Métadonnées de comptes et groupes
+# --------------------------------
 
 
 class UserMetaData(CommonModel):
@@ -2298,12 +2846,20 @@ class UserMetaData(CommonModel):
     """
 
     user = models.OneToOneField(
-        settings.AUTH_USER_MODEL, on_delete=models.CASCADE, verbose_name=_("utilisateur"), related_name="metadata"
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        verbose_name=_("utilisateur"),
+        related_name="metadata",
     )
     data = JsonField(blank=True, null=True, verbose_name=_("données"))
 
     @staticmethod
     def set(user, **data):
+        """Met à jour les clés de premier niveau des métadonnées du compte et sauvegarde.
+
+        Suppose la relation one-to-one créée par le signal de création du compte.
+        Renvoie le dictionnaire mis à jour, sans fusionner récursivement les clés.
+        """
         meta = user.metadata
         meta.data.update(**data)
         meta.save()
@@ -2311,6 +2867,12 @@ class UserMetaData(CommonModel):
 
     @staticmethod
     def get(user, key=None, groups=True):
+        """Fusionne les métadonnées des groupes, puis celles du compte prioritaires.
+
+        groups=False ignore les groupes. Les relations manquantes sont tolérées.
+        Sans clé renvoie le dictionnaire complet ; avec clé renvoie sa valeur ou
+        None. L'ordre entre plusieurs groupes reste celui de leur QuerySet.
+        """
         data = {}
         if groups:
             for group in user.groups.select_related("metadata").all():
@@ -2326,6 +2888,7 @@ class UserMetaData(CommonModel):
 
     @staticmethod
     def remove(user, key):
+        """Retire une clé si présente, sauvegarde et renvoie les données du compte."""
         meta = user.metadata
         meta.data.pop(key, None)
         meta.save()
@@ -2333,6 +2896,7 @@ class UserMetaData(CommonModel):
 
     @staticmethod
     def merge(user, *idict, **data):
+        """Fusionne récursivement les dictionnaires dans les données propres au compte."""
         meta = user.metadata
         merge_dict(meta.data, *idict, **data)
         meta.save()
@@ -2352,12 +2916,16 @@ class GroupMetaData(CommonModel):
     """
 
     group = models.OneToOneField(
-        "auth.Group", on_delete=models.CASCADE, verbose_name=_("groupe"), related_name="metadata"
+        "auth.Group",
+        on_delete=models.CASCADE,
+        verbose_name=_("groupe"),
+        related_name="metadata",
     )
     data = JsonField(blank=True, null=True, verbose_name=_("données"))
 
     @staticmethod
     def set(group, **data):
+        """Affecte les clés de premier niveau du groupe et sauvegarde sa relation metadata."""
         meta = group.metadata
         meta.data.update(**data)
         meta.save()
@@ -2365,11 +2933,13 @@ class GroupMetaData(CommonModel):
 
     @staticmethod
     def get(group, key=None):
+        """Renvoie les données du groupe ou une clé ; la relation metadata doit exister."""
         meta = group.metadata
         return meta.data.get(key) if key else meta.data
 
     @staticmethod
     def remove(group, key):
+        """Retire une clé si présente et renvoie les métadonnées du groupe sauvegardées."""
         meta = group.metadata
         meta.data.pop(key, None)
         meta.save()
@@ -2377,6 +2947,7 @@ class GroupMetaData(CommonModel):
 
     @staticmethod
     def merge(group, *idict, **data):
+        """Fusionne récursivement les données dans celles du groupe puis sauvegarde."""
         meta = group.metadata
         merge_dict(meta.data, *idict, **data)
         meta.save()
@@ -2388,6 +2959,10 @@ class GroupMetaData(CommonModel):
     class Meta:
         verbose_name = _("métadonnées de groupe")
         verbose_name_plural = _("métadonnées de groupes")
+
+
+# Comptage des services et réinitialisation des quotas
+# --------------------------------------------------
 
 
 class ServiceUsage(CommonModel):
@@ -2417,25 +2992,41 @@ class ServiceUsage(CommonModel):
 
     name = models.CharField(max_length=200, verbose_name=_("nom"))
     user = models.ForeignKey(
-        settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="usages", verbose_name=_("utilisateur")
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="usages",
+        verbose_name=_("utilisateur"),
     )
     count = models.PositiveIntegerField(default=0, verbose_name=_("nombre"))
     limit = models.PositiveIntegerField(blank=True, null=True, verbose_name=_("limite"))
-    reset = models.CharField(max_length=1, blank=True, choices=RESETS, verbose_name=_("réinitialisation"))
-    reset_date = models.DateTimeField(blank=True, null=True, verbose_name=_("date réinitialisation"))
+    reset = models.CharField(
+        max_length=1, blank=True, choices=RESETS, verbose_name=_("réinitialisation")
+    )
+    reset_date = models.DateTimeField(
+        blank=True, null=True, verbose_name=_("date réinitialisation")
+    )
     address = models.CharField(max_length=40, verbose_name=_("adresse"))
     date = models.DateTimeField(auto_now=True, verbose_name=_("date"))
     extra = JsonField(blank=True, null=True, verbose_name=_("extra"))
 
-    def save(self, *args, **kwargs):
+    def reset_counter(self, date=None):
+        """Réinitialise en mémoire un quota périodique expiré, sans sauvegarde.
+
+        Une période absente est initialisée à date (ou now) plus son delta.
+        Le contrôle du quota et le verrou de ligne appartiennent à
+        common.utils.reserve_service_usage ; ce helper seul ne sérialise rien.
+        """
+        date = date or now()
         if self.limit is not None and self.reset:
-            self.reset_date = self.reset_date or now()
-            if now() >= self.reset_date:
+            if self.reset_date is None or date >= self.reset_date:
                 from dateutil.relativedelta import relativedelta
 
                 delta = self.RESET_DELTA.get(self.reset)
-                self.reset_date = now() + relativedelta(**delta)
+                self.reset_date = date + relativedelta(**delta)
                 self.count = 0
+
+    def save(self, *args, **kwargs):
+        self.reset_counter()
         return super().save(*args, **kwargs)
 
     def __str__(self):
@@ -2445,6 +3036,10 @@ class ServiceUsage(CommonModel):
         verbose_name = _("utilisation de service")
         verbose_name_plural = _("utilisation des services")
         unique_together = ("name", "user")
+
+
+# Reconstruction et représentation générique des modèles
+# -----------------------------------------------------
 
 
 def from_dict(data, model=None, content_type=None, from_db=False, _depth=0):
@@ -2526,7 +3121,10 @@ def model_to_dict(instance, fields=None, exclude=None, **kwargs):
     :return: Dictionnaire
     """
     model = instance._meta.model
-    includes, excludes = (fields or kwargs.pop("includes", {}) or {}, exclude or kwargs.pop("excludes", {}) or {})
+    includes, excludes = (
+        fields or kwargs.pop("includes", {}) or {},
+        exclude or kwargs.pop("excludes", {}) or {},
+    )
     if isinstance(instance, CommonModel):
         data = instance.to_dict(includes=includes, excludes=excludes, **kwargs)
     else:
@@ -2536,22 +3134,43 @@ def model_to_dict(instance, fields=None, exclude=None, **kwargs):
         for key, value in data.items():
             if isinstance(value, models.Model):
                 data[key] = model_to_dict(value, fields=fields, exclude=exclude)
-            elif isinstance(value, list) and value and isinstance(value[0], models.Model):
-                data[key] = [model_to_dict(item, fields=fields, exclude=exclude) for item in value]
+            elif (
+                isinstance(value, list) and value and isinstance(value[0], models.Model)
+            ):
+                data[key] = [
+                    model_to_dict(item, fields=fields, exclude=exclude)
+                    for item in value
+                ]
     return data
 
 
 # Monkey-patch des utilisateurs et groupes pour ajouter les fonctions utilitaires de gestion des métadonnées
-setattr(AbstractBaseUser, "set_metadata", lambda self, **metas: UserMetaData.set(self, **metas))
 setattr(
-    AbstractBaseUser, "get_metadata", lambda self, key=None, groups=True: UserMetaData.get(self, key=key, groups=groups)
+    AbstractBaseUser,
+    "set_metadata",
+    lambda self, **metas: UserMetaData.set(self, **metas),
 )
-setattr(AbstractBaseUser, "del_metadata", lambda self, key: UserMetaData.remove(self, key))
-setattr(AbstractBaseUser, "merge_metadata", lambda self, *idict, **metas: UserMetaData.merge(self, *idict, **metas))
+setattr(
+    AbstractBaseUser,
+    "get_metadata",
+    lambda self, key=None, groups=True: UserMetaData.get(self, key=key, groups=groups),
+)
+setattr(
+    AbstractBaseUser, "del_metadata", lambda self, key: UserMetaData.remove(self, key)
+)
+setattr(
+    AbstractBaseUser,
+    "merge_metadata",
+    lambda self, *idict, **metas: UserMetaData.merge(self, *idict, **metas),
+)
 setattr(Group, "set_metadata", lambda self, **metas: GroupMetaData.set(self, **metas))
 setattr(Group, "get_metadata", lambda self, key=None: GroupMetaData.get(self, key=key))
 setattr(Group, "del_metadata", lambda self, key: GroupMetaData.remove(self, key))
-setattr(Group, "merge_metadata", lambda self, *idict, **metas: GroupMetaData.merge(self, *idict, **metas))
+setattr(
+    Group,
+    "merge_metadata",
+    lambda self, *idict, **metas: GroupMetaData.merge(self, *idict, **metas),
+)
 
 # Common models
 MODELS = [

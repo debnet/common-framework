@@ -1,419 +1,243 @@
 # Framework commun
 
-Boîte à outils commune pour des développements autour de Django (https://www.djangoproject.com/) et 
-Django REST Framework (http://www.django-rest-framework.org/).
+Boîte à outils pour **Django et Django REST Framework** : modèles historisés,
+métadonnées, API CRUD dynamiques, formulaires, administration et utilitaires.
 
-## Django
+La version courante cible **Python 3.13+ et Django 6.0+**, avec une version de DRF
+compatible. La suite a été vérifiée sur Python 3.13 avec Django 6.0.9 et 6.1.2 ;
+les branches legacy conservées ne constituent pas une promesse de support des anciennes versions.
 
-### Entités
+## Installation et démarrage
 
-Une entité est un super-modèle Django offrant un nombre important de nouvelles fonctionnalités tels que l'historisation
-des données, la réversion, les métadonnées, la sérialisation et la représentation des données sous forme de
-dictionnaire.
+```bash
+python -m pip install common-framework
+```
 
-Pour utiliser ces fonctionnalités, il est nécessaire de faire hériter chaque modèle de ``common.models.Entity`` qui
-hérite lui-même de ``django.db.models.Model``.
+Conserver les applications Django standard du projet généré (notamment
+`django.contrib.admin`, requis par les API communes), ajouter `"rest_framework"`
+et `"common"` à `INSTALLED_APPS`, puis appliquer les migrations avec
+`python manage.py migrate`. Définir aussi `REST_FRAMEWORK = {}` dans les settings
+si aucune configuration DRF n'existe encore.
 
 ```python
+from django.db import models
 from common.models import Entity
 
+
 class Personne(Entity):
-    pass
+    nom = models.CharField(max_length=100)
 ```
 
-Les modèles entités possèdent par défaut les champs suivants :
-* ``creation_date`` : date de création de l'entité
-* ``modification_date`` : date de dernière modification de l'entité
-* ``current_user`` : dernier utilisateur à l'origine de la création/modification
-* ``uuid`` : identifiant unique de l'entité
-
-L'identifiant unique permet de retrouver n'importe quelle entité depuis la base de données car chacune est
-enregistrée dans un référentiel global conjointement à son type. Il est donc possible de récupérer une entité ainsi :
-
-```python
-from common.models import Global
-
-entity = Global.objects.from_uuid('4b9abebd-8157-4e49-bcae-1a7e063a9f86')
-```
-
-> Attention ! Les entités surchargent les méthodes de persistance par défaut de Django 
-(``save()``, ``create()``, ``delete()``).
-``update()`` garde cependant son comportement par défaut car il exécute directement la mise à jour en base de 
-données, il sera donc impossible de détecter les changements si elle est utilisée.
-
-Une version allégée d'entité est à disposition sans l'historisation ni le référentiel global, il suffit alors
-d'hériter les modèles de ``common.models.CommonModel`` à la place de ``common.models.Entity``.
-
-### Entités périssables
-
-Une entité périssable possède une durée de validité dans le temps, elle possède les mêmes fonctionnalités que l'entité
-mais possède en prime une date de début (``start_date``) et une date de fin potentielle (``end_date``).
-
-Pour définir une entité périssable, il suffit de faire hériter le modèle de ``common.models.PerishableEntity`` au lieu
-de ``common.models.Entity``. Il n'existe pas d'alternative simplifiée hors historisation des entités périssables.
-
-Lorsqu'une entité périssable existante en base de données est sauvegardée, le mécanisme suivant s'exécute :
-* si une date de fin est fournie, l'entité courante est modifiée et clôturée à cette date
-* sans date de fin fournie, l'entité courante est clôturée à cette date et une autre entité avec les modifications est 
-créée avec une date de début actualisée et sans date de fin programmée
-
-Les entités périssables implémentent une fonction de récupération des données par rapport à une date donnée, si la date
-n'est pas fournie la requête récupérera toutes les entités qui sont valides par rapport à la date et heure courante.
-
-```python
-adresses = Adresse.objects.filter(personne_id=1).select_valid(date='2016-08-01T00:00:00')
-```
-
-### Administration
-
-Afin de garantir les fonctionnalités de l'historisation dans l'interface  d'administration, il est nécessaire de faire
-hériter les classes d'administration de ``common.admin.EntityAdmin`` qui permet les fonctionnalités suivantes :
-
-* Gère automatiquement l'utilisateur connecté pour les modifications
-* Affiche automatiquement la date de création et de modification et fournit les filtres de recherche
-* Gère les permissions d'affichage
-* Affiche les métadonnées de l'entité
-
-Pour les entités périssables, il convient d'utiliser ``common.admin.PerishableEntityAdmin`` à la place de
-``common.admin.EntityAdmin``.
-
-Pour les inlines, des équivalents pour les entités sont également à disposition : 
-``common.admin.EntityTabularInline`` et ``common.admin.EntityStackedInline``.
-
-Une version allégée existe pour ``common.models.CommonModel`` qui est ``common.admin.CommonAdmin`` qui implémente
-l'ensemble des fonctionnalités en dehors de l'historisation.
-
-### Historisation
-
-Toute altération au niveau des données d'un modèle entité est détectée et enregistrée dans un historique,
-cela permet un suivi des modifications par utilisation ainsi que la possibilité de revenir à un état antérieur pour
-l'entité ou un champ spécifique de l'entité.
-
-A chaque modification, un historique d'entité (``common.models.History``) est sauvegardé pour l'entité et un élément 
-par champ modifié dans l'historique (``common.models.HistoryField``) uniquement s'il s'agit d'une modification.
-
-* Les relations de type many-to-many sont traités séparément à l'historisation.
-* Si Celery est installé (http://www.celeryproject.org/), l'historisation est exécutée de manière asynchrone.
-* L'utilisateur à l'origine de la modification est conservé dans l'historique.
-* Il est possible d'ajouter un message et/ou modifier l'utilisateur à l'historique via le code.
-
-```python
-personne = Personne(nom='Marc', age=30)
-personne.save(_current_user=utilisateur, _reason="Message d'information")
-```
-
-Il est possible sur un historique d'entité ou un historique de champ de demander une restauration des données de
-l'historique ciblé sur l'entité concernée grâce à la méthode ```restore()```, il est possible de lui passer
-également un utilisateur et un message d'information.
-
-La restauration provoque elle-même un historique spécifique qui permet de revenir en arrière si nécessaire.
-
-```python
-history.restore(current_user=utilisateur, reason="Message d'information", rollback=False)
-# rollback permet de regénérer complètement l'entité si elle a été supprimée
-```
-
-### Métadonnées
-
-Les métadonnées permettent d'ajouter des données tierces sur une entité, ces données peuvent être structurées comme
-l'utilisateur le souhaitera et seront stockées sous forme de JSON dans la base de données. Chaque entité possède des
-méthodes permettant d'accéder aux métadonnées de l'entité.
-
-Les données stockées dans les métadonnées peuvent être de n'importe quel type Python à condition que ce dernier ainsi
-que les données qu'il contient éventuellement soient sérialisables (list, dict, int, float, etc...).
-
-```python
-personne.set_metadata('cle', 'valeur')
-personne.get_metadata('cle')
->>> 'valeur'
-personne.del_metadata('cle')
-personne.get_metadata('cle')
->>> None
-```
-
-Les métadonnées d'une entité peuvent être directement utilisées dans des requêtes même si ce n'est pas recommandé pour
-des raisons de performances (en fonction du volume de données).
-Elles sont représentées sous forme d'un modèle Django ``common.models.MetaData``.
-
-```python
-Personne.objects.filter(metadata__key='cle', metadata__value='valeur').first()
-MetaData.objects.search(key='cle', value='valeur', type=Personne)
-```
-
-### Sérialisation
-
-Chaque entité ou requête concernant une entité peut être sérialisée en utilisant la méthode 
-``serialize(format='json')`` dans l'un des formats suivants:
-* JSON
-* XML
-* YAML
-
-```python
-personne = Personne.objects.first()
-resultat = personne.serialize()
-resultat
->>> [json] Personne (1)
-resultat.data
->>> '[{"nom": "Marc", "age": 30}]'
-personne = resultat.deserialize()
-personne
->>> Personne: Marc (30 ans)
-```
-
-```python
-personnes = Personne.objects.all()
-resultat = personnes.serialize()
-resultat
->>> [json] Personne (2)
-resultat.data
->>> '[{"nom": "Marc", "age": 30}, {"nom": "Eric", "age": 40}]'
-personnes = resultat.deserialize()
-personnes
->>> [Personne: Marc (30 ans), Personne: Eric (40 ans)]
-```
-
-### Représentation en dictionnaire
-
-Une requête ou une entité peut être représentée par un dictionnaire Python avec la méthode ``to_dict()``.
-
-```python
-personne.to_dict()
->>> {"nom": "Marc", "age": 30}
-Personne.objects.all().to_dict()
->>> [{"nom": "Marc", "age": 30}, {"nom": "Eric", "age": 40}]
-```
-
-``to_dict()`` prend plusieurs arguments optionnels en paramètres, la méthode est documentée dans le code.
-
-### Type d'entité
-
-Django conserve systématiquement le type des différents modèles en base de données, les entités possèdent un moyen
-simple pour récupérer ce type sur chaque entité de manière performante et unique.
-
-```python
-Personne.get_model_type()
->>> <ContentType: Personne>
-personne.model_type
->>> <ContentType: Personne>
-```
-
-### WebHooks
-
-Un webhook est un callback HTTP qui transmet des données à un serveur externe en fonction d'une action 
-réalisée sur l'application. Le récepteur doit être en mesure de comprendre le message qui est transmis.
-Il est possible de configurer un webhook qui réagit à un ou plusieurs actions sur une ou plusieurs entités.
-
-Les actions couvertes sont les suivantes :
-* Création
-* Modification
-* Suppression
-* Relations de type many-to-many
-
-Un webhook peut être configuré pour utiliser une authentification sur le serveur externe si nécessaire.
-
-Par défaut, le webhook exécute la méthode ``to_dict()`` sur l'instance concerné avec les paramètres définis dans
-``NOTIFY_OPTIONS``, mais il est possible de changer ce comportement en définissant une méthode ``get_webhook_data`` au
-niveau du modèle.
-
-Les notifications des changements par webhook est désactivée par défaut et peut être activé via ``NOTIFY_CHANGES``.
-
-### Usage de service
-
-L'usage des services permet de compter le nombre de fois où une URL est appelée dans l'application par un même
-utilisateur et même de limiter le nombre d'usages.
-
-La fonctionnalité est désactivée par défaut et peut être activée via ``SERVICE_USAGE``. 
-Il est également nécessaire d'ajouter ``'common.middleware.ServiceUsageMiddleware'`` dans ``MIDDLEWARE_CLASSES``.
-
-Configuration :
-
-* ``SERVICE_USAGE`` (``False`` par défaut) : active ou non la surveillance
-* ``SERVICE_USAGE_LOG_DATA`` (``False`` par défaut) : suit également les données transmisses par les services
-* ``SERVICE_USAGE_LIMIT_ONLY`` (``False`` par défaut) : utilise uniquement le système de restriction des services
-
-### Métadonnées utilisateurs & groupes
-
-De la même manière que sur les entités, les utilisateurs et les groupes ont la possibilité de conserver de 
-l'information contextuelle sous forme de métadonnée, cependant le fonctionnement diffère car ces modèles peuvent être
-substitués dans le développement.
-
-Il s'agit alors d'une relation de type one-to-one systématiquement présent à la création d'un nouvel utilisateur ou
-d'un nouveau groupe et possédant un champ de type JSON pour contenir ces données.
-
-## Utilitaires
-
-Un grand nombre de fonctions, décorateurs et classes utilitaires sont à disposition des développeurs pour accélérer la
-production de nouvelles fonctionnalités. Ces utilitaires sont regroupés dans ``common.utils`` pour tout ce qui est
-relatif à Django et dans ``common.api.utils`` pour tout ce qui est relatif à Django REST Framework.
-
-* ``singleton`` : décorateur permettant de transformer une classe en singleton
-* ``get_current_app`` : permet de récupérer l'application Celery actuelle ou un mock si Celery n'est pas installé
-* ``parsedate`` : permet d'évaluer une date dans n'importe quel format
-* ``timeit`` : décorateur permettant de calculer le temps d'exécution d'une fonction
-* ``synchronized`` : décorateur permettant de rendre thread-safe l'exécution d'une fonction
-* ``temporary_upload`` : décorateur permettant à une vue de supporter l'import d'un fichier de manière temporaire
-* ``download_file`` : décorateur permettant à une vue de supporter le téléchargement d'un fichier
-* ``render_to`` : décorateur permettant de simplifier l'écriture d'une vue avec template
-* ``ajax_request`` : décorateur permettant à une vue de se comporter comme une api_view
-* ``evaluate`` : permet d'évaluer une expression Python de manière plus sûre
-* ``execute`` : permet d'exécuter du code Python de manière plus sûre
-* ``patch_settings`` : context manager permettant d'altérer la configuration le temps de l'exécution
-* ``recursive_dict_product`` : permet de faire un produit cartésien des données d'un dictionnaire
-* ``get_choices_fields`` : permet de récupérer les choix des modèles d'une ou plusieurs applications
-* ``get_prefetchs`` : permet de récupérer toutes les relations inversées d'un modèle
-* ``get_related`` : permet de récupérer toutes les relations ascendantes d'un modèle
-* ``prefetch_generics`` : permet de récupérer les relations génériques d'un modèle
-* ``str_to_bool`` : permet de convertir une chaîne de caractères quelconque en booléen
-* ``decimal`` : permet de convertir un élément quelconque en nombre décimal
-* ``decimal_to_str`` : permet de convertir un nombre décimal en chaîne de caractères
-* ``recursive_get_urls`` : permet de récupérer toutes les URLs d'un module
-* ``idict`` : dictionnaire donc les clés sont toujours converties dans un format uniforme
-* ``sort_dict`` : permet de trier un dictionnaire par ses clés
-* ``merge_dict`` : permet de fusionner un ou plusieurs dictionnaires imbriqués sur un autre
-* ``null`` : objet nul absolu retournant toujours une valeur nulle sans erreur
-* ``to_tuple`` : permet de convertir un dictionnaire en un tuple
-* ``to_object`` : permet de convertir un dictionnaire en un objet Python
-* ``get_size`` : permet de récupérer la taille en mémoire d'un objet Python quelconque
-* ``file_is_text`` : permet de vérifier qu'un fichier est au format texte
-* ``process_file`` : permet de s'assurer qu'un fichier est bien complet et décompresse les éventuelles archives
-* ``base64_encode`` : permet d'encoder une chaîne de caractères en base 64
-* ``base64_decode`` : permet de décoder une chaîne de caractères en base 64
-* ``short_identifier`` : permet de générer un identifiant "unique" court
-* ``json_encode`` : permet de sérialiser un objet Python en JSON
-* ``json_decode`` : permet de désérialiser une chaîne de caractères JSON en objet Python
-* ``get_current_user`` : permet de récupérer l'utilisateur actuellement connecté dans la pile d'exécution
-* ``get_pk_field`` : permet de récupérer le champ de clé primaire d'un modèle en héritage concret
-* ``collect_deleted_data`` : permet de récupérer les impacts potentiels d'une suppression d'entité
-* ``send_mail`` : permet d'envoyer un email
-* ``merge_validation_errors`` : permet de fusionner plusieurs exceptions de validation en une seule
-* ``get_all_models`` : récupère tous les modèles enregistrés dans les applications
-* ``get_all_permissions`` : récupère toutes les permissions existantes dans les applications
-* ``get_models_from_queryset`` : recupère tous les modèles qui ont été traversés par une requête
-* ``get_model_permissions`` : récupère toutes les permissions liées à un modèle et à un utilisateur
-* ``get_client_ip`` : récupère l'adresse IP du client depuis une requête Django
-* ``hash_file`` : calcule la somme de contrôle d'un fichier
-
-##### Autres (``common.admin``)
-
-* ``create_admin`` : permet de créer automatiquement les classes d'administration d'un modèle
-
-### Modèles
-
-Les differents utilitaires de modèles sont définis dans ``common.models``.
-
-* ``CustomGenericForeignKey`` : champ générique qui ne vide pas les propriétés de la clé si l'instance n'existe pas
-* ``CustomGenericRelation`` : relation d'une clé étrangère générique qui force la conversion de l'identifiant en texte
-* ``MetaData`` : modèle des métadonnées associées aux entités
-* ``CommonModel`` : modèle abstrait commun permettant d'accéder aux multiples utilitaires décrits précédemment
-* ``Entity`` : modèle commun avec historisation des modifications
-* ``PerishableEntity`` : même chose qu'``Entity`` mais se duplicant en cas de modification
-* ``History`` : modèle d'historique d'une entité
-* ``HistoryField`` : modèle d'historique d'un champ d'une entité
-* ``Global`` : modèle point d'entrée global des entités
-* ``Webhook`` : modèle de configuration d'un webhook
-* ``ServiceUsage`` : modèle d'un historique d'accès à une ressource du site (avec ou sans limitation)
-* ``from_dict`` : construit une instance d'un modèle à partir d'un dictionnaire
-* ``to_dict`` : appel générique transformant une instance de modèle en dictionnaire
-* ``model_to_dict`` : transforme récursivement une instance de modèle en dictionnaire
-
-### Champs de modèles
-
-Les champs de modèle sont définis dans ``common.fields``.
-
-* ``CustomDecimalField`` : champ décimal pour éviter la représentation scientifique des nombres
-* ``PickleField`` : champ binaire pour contenir de la donnée Python brute
-* ``JsonField`` : champ pour représenter des données JSON (compatible avec les autres SGBD)
-
-### Formulaires
-
-Les utilitaires autour des formulaires sont définis dans ``common.forms``. Chaque classe utilitaire pour les
-formulaires possède une interface de base, préfixée généralement ``Base`` pour d'autres implémentations.
-
-* ``CommonForm`` : classe de base pour les formulaires avec gestion des historiques
-* ``CommonFormSet`` : classe de base pour les ensembles de formulaires avec gestion des historiques
-* ``CommonModelForm`` : classe de base pour représenter les formulaires issus d'entités
-* ``CommonModelFormSet`` : classe de base pour représenter les ensembles de formulaires issus d'entités
-* ``JsonField`` : champ de formulaire pour représenter les données JSON
-* ``BaseFilterForm`` : classe de base pour faciliter la création de formulaires de recherche
-* ``get_model_form`` : fonction permettant de créer un formulaire d'entité avec des imbrications
-
-# Django REST Framework
-
-## Usage
-
-La boîte à outils vous permet de générer rapidement des APIs RESTful pour vos modèles de base de données en leur
-fournissant au passage le moyen de faire des requêtes plus évoluées via l'URL. Cette génération s'adresse
-principalement aux développeurs qui ont besoin d'accéder à toute la richesse de leurs modèles et de l'ORM Django
-via les APIs le plus rapidement possible sans avoir à configurer finement chaque ressource.
-
-### Configuration rapide
-
-Dans votre application Django, créez un nouveau module et ajoutez ces quelques lignes :
+Pour générer une API, dans le module d'URLs de l'application :
 
 ```python
 from common.api.utils import create_api
-from myapp.models import ModelA, ModelB
+from monapp.models import Personne
 
-namespace = "myapp-api"
-app_name = "myapp-api"
-router, all_serializers, all_viewsets = create_api(ModelA, ModelB)
-urlpatterns = [
-    # Vos URLs d'API personnalisées    
-] + router.urls
-urls = (urlpatterns, namespace, app_name)
+app_name = "monapp-api"
+router, serializers, viewsets = create_api(Personne)
+urlpatterns = router.urls
 ```
 
-Cela a pour conséquence de créer automatiquement les APIs pour les modèles que vous souhaitez ainsi que la table de
-routage nécessaire pour accéder à ces ressources.
+Inclure ensuite ce module dans les URLs du projet. Les routes utilitaires sont
+disponibles séparément via `common.urls` et `common.api.urls`.
+Les signatures, options avancées et points d'extension sont documentés dans les docstrings.
 
-De nombreuses options de configuration existent pour vos APIs, vous pouvez par exemple définir précisément le
-serialiseur pour chaque modèle, configurer la récupération automatique des entités liées par clé étrangère (related) ou
-des relations de type plusieurs-à-plusieurs (prefetch) ou personnaliser les requêtes.
+## Modèles et données
 
-Pour configurer globalement et de manière homogène vos modèles, modifiez les paramètres dans ``common.api.base``.
+Dans `common.models` :
 
-### Guide d'utilisation rapide
+| Composant | Fonctionnalités |
+|---|---|
+| `CommonModel`, `CommonQuerySet` | Métadonnées, suivi des différences, conversion en dictionnaire et sérialisation. |
+| `Entity`, `EntityQuerySet` | Historisation des créations, modifications, suppressions et relations M2M ; acteur, motif et restauration. |
+| `PerishableEntity`, `PerishableEntityQuerySet` | Versions successives d'une entité et périodes de validité. |
+| `History`, `HistoryField` | Consultation des événements et des anciennes/nouvelles valeurs. |
+| `Global` | Référentiel d'entités par UUID, indépendamment du modèle. |
+| `MetaData` | Métadonnées par clé, avec validité et expiration. |
+| `UserMetaData`, `GroupMetaData` | Données JSON associées aux comptes et groupes ; fusion des données de groupe et de compte. |
+| `Webhook`, `BaseWebhook` | Notifications HTTP des événements, filtres de modèles/actions et authentification distante. |
+| `ServiceUsage` | Compteurs d'accès, limites et périodes de remise à zéro. |
+| `CustomGenericForeignKey`, `CustomGenericRelation` | Relations génériques adaptées aux identifiants Common. |
+| `Serialized`, `from_dict`, `to_dict`, `model_to_dict` | Sérialisation Django et conversion/reconstruction de modèles. |
+
+L'historisation et les notifications peuvent utiliser Celery, ou s'exécuter
+synchroniquement sans broker. Le projet hôte configure l'application, le broker
+et les workers ; les tâches sont exposées dans `common.tasks`.
+
+### Champs, formulaires et administration
+
+- **`common.fields`** : `CustomDecimalField`, `PickleField`, `JsonField` et lookups JSON complémentaires.
+- **`common.forms`** : `CommonForm`, `CommonFormSet`, `CommonModelForm`,
+  `CommonModelFormSet`, `CommonInlineFormSet` et leurs bases ; contexte et acteur
+  transmis aux formulaires imbriqués.
+- **Fabriques de formulaires** : `get_formset`, `get_model_formset`, `get_model_form`.
+- **Recherche et JSON** : `BaseFilterForm` pour traduire des critères en filtres ORM ;
+  `common.forms.JsonField` avec les codecs JSON Common par défaut.
+- **`common.admin`** : administrations et inlines pour les modèles Common,
+  consultation des métadonnées/historiques, restauration et génération avec `create_admin`.
+
+## API REST
+
+Les API générées donnent accès au CRUD et à un langage de requête avancé :
+filtres et relations, combinaisons logiques, tris, projections de champs,
+annotations, agrégations, regroupements, pagination et mémorisation des paramètres de recherche.
+Elles sont destinées aux usages nécessitant un accès riche à l'ORM.
+
+| Module | Composants utilisables |
+|---|---|
+| `common.api.utils` | `create_api`, `create_model_serializer_and_viewset`, `create_model_serializer`, `to_model_serializer`, `to_model_viewset`. |
+| `common.api.utils` | Vues avec `api_view_with_serializer`, `auto_view`, `perishable_view` ; pagination avec `api_paginate` ; `disable_relation_fields` pour l'interface DRF. |
+| `common.api.decorators` | `atomic` : transaction des vues synchrones, rollback sur exception ou réponse HTTP d'erreur, contrôle du rendu avant commit. |
+| `common.api.viewsets` | `CommonModelViewSet` et gestion des comptes avec `UserViewSet`. |
+| `common.api.serializers` | `CommonModelSerializer`, `GenericFormSerializer`, serializers de comptes et métadonnées. |
+| `common.api.fields` | `JsonField`, `QuerySetChoiceField`, `ChoiceDisplayField`, `ReadOnlyObjectField`, champs `CustomHyperlinked*`, `AsymetricRelatedField` (objet en lecture, identifiant en écriture). |
+| `common.api.permissions` | Permissions de modèles, lecture de ses propres données et `ServiceUsagePermission`. |
+| `common.api.pagination` | `CustomPageNumberPagination` : navigation enrichie et taille plafonnée. |
+| `common.api.renderers` | `CustomCSVRenderer`, si la dépendance CSV optionnelle est installée. |
+| `common.api.base` | Routeur et registres partagés de configuration des API. |
+
+`common.api.urls` expose aussi la résolution/liste des routes, le profil du
+compte connecté et les métadonnées d'une entité par UUID. La consultation d'un
+autre compte est réservée au staff/superuser ; les métadonnées exigent les
+permissions correspondant aux opérations demandées.
+
+**Permissions :** les contrôles portent sur les modèles, y compris les modèles
+traversés par les agrégations. Ce n'est pas une politique d'accès par ligne ou
+par champ ; prévoir des vues/serializers dédiés pour les ressources restreintes.
+
+### Vues transactionnelles
+
+```python
+from common.api.utils import api_view_with_serializer
 
 
+@api_view_with_serializer(["POST"], atomic=True)
+def modifier(request):
+    # Écritures et sérialisation dans la même transaction.
+    return {"ok": True}
+```
 
-## Utilitaires
+L'option est désactivée par défaut ; `using="alias"` choisit la base.
+Le décorateur `common.api.decorators.atomic` s'utilise aussi seul, sous `@api_view`.
+Les exceptions et réponses HTTP >= 400 annulent les écritures. Avant finalisation
+DRF, le contrôle du rendu porte sur JSON uniquement ; ni streaming ni effets
+externes ne sont transactionnels. Aucun mode simulation implicite n'est ajouté.
 
-* ``to_model_serializer`` : décorateur permettant de convertir un sérialiseur classique en sérialiseur de modèle
-* ``to_model_viewset`` : décorateur permettant d'associer un modèle et à un sérialiseur à une vue
-* ``create_model_serializer_and_viewset`` : permet de créer en une fois le sérialiseur et la vue pour un modèle
-* ``perishable_view`` : permet de gérer les données périssables d'une vue à travers l'URL
-* ``api_view_with_serializer`` : décorateur permettant de créer une vue assujettie à un sérialiseur
-* ``create_model_serializer`` : permet de créer un sérialiseur de modèle
-* ``auto_view`` : décorateur permettant de créer une vue à partir d'un QuerySet
-* ``api_paginate`` : permet d'ajouter une pagination sur le résultat d'une requête pour une vue
-* ``create_api`` : permet de créer les APIs standards (RESTful) pour un ou plusieurs modèles
-* ``disable_relation_fields`` : permet de désactiver les listes déroulantes pour les relations des APIs
+## Utilitaires Python et Django
 
-##### Sérialiseurs (``common.api.serializers``)
+Les fonctions ci-dessous sont disponibles dans **`common.utils`**.
 
-* ``CommonModelSerializer`` : sérialiseur commun pour représenter les entités
-* ``GenericFormSerializer`` : sérialiseur permettant l'imbrication d'entités pour les formulaires
+| Domaine | Utilitaires |
+|---|---|
+| Décorateurs et tâches | `singleton`, `timed_cache`, `timeit`, `synchronized`, `get_current_app`, `CeleryFake`. |
+| Dates et nombres | `parsedate`, `str_to_bool`, `str_to_num`, `decimal`, `decimal_to_str`. |
+| Collections | `recursive_dict_product`, `sort_dict`, `merge_dict`, `CustomDict`, `idict`, `null`. |
+| Conversion d'objets | `to_tuple`, `to_namedtuple`, `to_object`, `to_dict` et leurs alias historiques ; `get_size`. |
+| JSON et encodages | `JsonEncoder`, `JsonDecoder`, `json_encode`, `json_decode`, `base64_encode`, `base64_decode`, `short_identifier`. |
+| Vues et fichiers | `render_to`, `ajax_request`, `temporary_upload`, `TemporaryFile`, `TemporaryFileHandler`, `DownloadFile`, `download_file`. |
+| Inspection et archives | `file_is_text`, `seek_end`, `hash_file`, `process_file` (attente de stabilisation et extraction ZIP/TAR). |
+| Introspection ORM | `get_choices_fields`, `get_prefetchs`, `get_related`, `get_field_by_path`, `prefetch_generics`, `prefetch_metadata`, `get_pk_field`, `get_all_models`, `get_models_from_queryset`. |
+| Permissions et suppression | `get_all_permissions`, `get_model_permissions`, `collect_deleted_data`. |
+| HTTP et identité | `recursive_get_urls`, `get_current_user`, `get_client_ip`, `is_valid_ipv4`, `is_valid_ipv6`, `is_valid_ip`. |
+| Services | `reserve_service_usage`, `send_mail`, `merge_validation_errors`, `web_to_raw_tsquery`, `abort_sql`. |
+| Configuration et code de confiance | `patch_settings`, `evaluate`, `execute`. |
 
-##### Champs (``common.api.fields``)
+### Autres modules
 
-* ``JsonField`` : champ permettant la gestion des données JSON
-* ``AsymetricRelatedField`` : champ permettant l'affichage de l'ensemble des données des entités de clés étrangères
-mais accepte néanmoins un simple identifiant à la création/modification
-* ``CustomHyperlinkedField`` : champ permettant de gérer les liens vers d'autres APIs en permettant de croiser
-les différents namespaces (utilisé par défaut par les utilitaires)
+- **`common.excel.ImportExport`** : import/export Excel de modèles, références,
+  listes de validation et métadonnées.
+- **`common.commands.ImportExcelCommand`** : base de commande pour les imports Excel.
+- **`common.logger.Logger`, `InternalError`** : journalisation, collecte de messages et erreurs applicatives.
+- **`common.router`** : `DatabaseOverrideRouter` et `database_override` pour le routage temporaire des lectures/écritures.
+- **`common.auth.LdapBackend`** : authentification LDAP et synchronisation des comptes/groupes.
+- **`common.operations`** : opérations de migration `CreateFunctionUnaccent` et `CreateIndexUnaccent` pour PostgreSQL.
+- **`common.websocket`** : diffusion de notifications websocket optionnelle.
+- **`common.views`** : inspection du cache réservée au superuser et génération de `scripts.js`.
+- **Commandes Django** : `abort_sql` pour interrompre des sessions PostgreSQL ;
+  `clear` pour supprimer les données d'une application (**destructif**).
 
-##### Pagination (``common.api.pagination``)
+## Template tags
 
-* ``CustomPageNumberPagination`` : pagination améliorée pour les APIs 
-(doit être défini dans ``DEFAULT_PAGINATION_CLASS`` de ``REST_FRAMEWORK``)
+Charger la bibliothèque avec `{% load tools %}`.
 
-##### Rendu (``common.api.renderers``)
+| Usage | Tags et filtres |
+|---|---|
+| Accès et conversion | `meta`, `get`, `parsedate`, `localize`, `json` / `encode`, `decode`. |
+| Collections | `gather`, `split`, `sorted`, `reversed`, `drop`. |
+| ORM et permissions | `query`, blocs `perm` et `anyperm`. |
+| Rendu | `render` / `eval`, bloc `markdown`, bloc `obfuscate`. |
+| Configuration serveur | `conf`, à réserver aux templates de confiance. |
 
-* ``CustomCSVRenderer`` : rendu CSV amélioré avec téléchargement (uniquement si django-rest-framework-csv est installé,
-doit être défini dans ``DEFAULT_RENDERER_CLASSES`` de ``REST_FRAMEWORK``)
+## Configuration essentielle
 
-##### Tests (``common.tests``)
+Les options se définissent dans les settings Django ; leurs valeurs par défaut
+sont réunies dans `common/settings.py`.
 
-* ``BaseApiTestCase`` : classe de base pour les tests unitaires des APIs
-* ``AuthenticatedBaseApiTestCase`` : classe de base pour les tests unitaires des APIs avec authentification
-* ``create_api_test_class`` : fonction pour générer tous les tests d'une API standard (RESTful)
+| Option | Usage / défaut |
+|---|---|
+| `ENABLE_API_PERMISSIONS` | Contrôles de permissions des modèles traversés ; `True`. |
+| `API_MAX_PAGE_SIZE` | Plafond des pages hors administration ; `1000`. `all=true` est réservé aux administrateurs authentifiés. |
+| `API_CACHE_PREFIX`, `API_CACHE_TIMEOUT` | Mémorisation des paramètres de recherche API. |
+| `IGNORE_LOG`, `IGNORE_LOG_NO_USER`, `IGNORE_LOG_ENTITY_FIELDS` | Contrôle de l'historisation et de ses détails. |
+| `IGNORE_GLOBAL` | Désactivation du référentiel global. |
+| `CELERY_ENABLE` | Activation de Celery ; configurer avant le chargement des modèles. |
+| `NOTIFY_CHANGES`, `NOTIFY_OPTIONS` | Activation et contenu des notifications ; désactivées par défaut. |
+| `WEBSOCKET_ENABLED`, `WEBSOCKET_URL` | Transport websocket optionnel. |
+| `SERVICE_USAGE` | Activation des compteurs/quotas ; `False`. |
+| `SERVICE_USAGE_DEFAULT`, `SERVICE_USAGE_DATA` | Paramètres de quota par défaut et par nom de vue. |
+| `SERVICE_USAGE_LIMIT_ONLY`, `SERVICE_USAGE_LOG_DATA` | Limitation aux quotas existants et journalisation des données d'appel. |
+| `LDAP_ENABLE`, `LDAP_*` | Connexion, recherche et règles de synchronisation LDAP. |
+| `PUBLIC_SETTINGS` | Liste explicite des settings publiés dans `scripts.js` ; ne jamais y placer de secret. |
+
+Pour les quotas des vues Django, ajouter `common.middleware.ServiceUsageMiddleware`
+après le middleware d'authentification. Pour les vues DRF hors Common, ajouter
+`ServiceUsagePermission` **après les permissions d'accès**. Un appel admis consomme
+son quota avant la vue ; une limite `0` interdit l'accès, `None` signifie illimité.
+
+Les dépendances de base sont Django, DRF, python-dateutil et pytz.
+Les intégrations disposent d'extras : `celery`, `excel`, `ldap`, `webhooks`,
+`websocket`, `markdown`, `csv` et `postgresql`. Par exemple :
+
+```bash
+python -m pip install 'common-framework[excel,ldap,webhooks]'
+```
+
+`requirements.txt` décrit l'environnement de développement.
+
+### Limites à connaître
+
+- L'historisation Celery n'est **pas idempotente**, sans outbox ni garantie exactly-once.
+  Les détails peuvent arriver après l'en-tête ; les opérations bulk/SQL ne déclenchent pas les signaux Django.
+  Lors d'une mise à niveau, coordonner producteurs/workers et traiter les anciennes tâches en attente.
+- Les garanties de concurrence des quotas nécessitent des verrous de lignes
+  (pas SQLite) ; une transaction englobante telle qu'`ATOMIC_REQUESTS` peut aussi annuler leur comptage.
+- `evaluate` et `execute` ne sont **pas une sandbox** ; `PickleField` et les templates dynamiques exigent des données/code de confiance.
+- `process_file` ne prouve pas la fin d'un transfert et ne borne pas le volume décompressé ;
+  `short_identifier` ne garantit pas l'unicité ; l'obfuscation n'est pas du chiffrement.
+
+## Tests et développement
+
+Les helpers publics de `common.tests` comprennent `BaseApiTestCase`,
+`AuthenticatedBaseApiTestCase`, `create_api_test_class` et `create_auto_test_class`.
+La suite technique est répartie par domaine dans `common/tests/`.
+
+```bash
+python -m pip install -r requirements.txt
+python -m common.runtests
+python -m common.runtests common.tests.api
+python manage.py compilemessages
+python -m coverage run -m common.runtests
+python -m coverage html
+python -m black --check common project manage.py setup.py
+python -m flake8 common project manage.py setup.py --ignore=E501,W503,E203
+python -m pip wheel --no-deps . --wheel-dir dist
+```
+
+Le lanceur utilise une base SQLite de test jetable. Les tests nécessitant
+PostgreSQL, une seconde base ou Celery peuvent être ignorés selon l'environnement ;
+l'échec attendu sur l'idempotence décrit un défaut reporté, pas un succès.
+
+## Licence
+
+MIT — voir [LICENSE.txt](LICENSE.txt).

@@ -1,13 +1,12 @@
 # coding: utf-8
-import re
+"""Vues HTML/JavaScript : inspection du cache et configuration publique explicite."""
 
-from django.conf import settings
 from django.contrib.auth.decorators import login_required
 from django.core.cache import cache
-from django.views.debug import CallableSettingWrapper
 from django.views.decorators.cache import never_cache
 
 from common.api.api_views import get_urls, user_infos
+from common.settings import settings
 from common.utils import json_encode, render_to
 
 
@@ -16,12 +15,20 @@ from common.utils import json_encode, render_to
 @login_required
 def view_cache(request):
     """
-    Cache
+    Inspecte le cache et permet sa purge aux seuls superusers connectés.
+
+    GET sélectionne une clé ; POST supprime les clés/motifs soumis. Les autres
+    utilisateurs connectés obtiennent un contexte vide. Certaines branches
+    utilisent des API privées du cache local ou les extensions django-redis.
     """
     if not request.user.is_superuser:
         return {}
 
-    key, value, excludes = request.GET.get("key", None), None, request.GET.getlist("exclude")
+    key, value, excludes = (
+        request.GET.get("key", None),
+        None,
+        request.GET.getlist("exclude"),
+    )
 
     if key:
         if not hasattr(cache, "keys"):
@@ -45,7 +52,9 @@ def view_cache(request):
         keys = cache._cache.keys()
 
     return {
-        "keys": sorted(key for key in keys if not any(exclude in key for exclude in excludes)),
+        "keys": sorted(
+            key for key in keys if not any(exclude in key for exclude in excludes)
+        ),
         "value": value,
     }
 
@@ -54,7 +63,12 @@ def view_cache(request):
 @render_to("common/scripts.js", content_type="text/javascript")
 def scripts(request):
     """
-    Scripts communs:
+    Rend le helper JavaScript avec routes, profil courant et settings autorisés.
+
+    Les settings sont exclusivement ceux de PUBLIC_SETTINGS ; toute valeur
+    ajoutée à cette liste devient publique. Les valeurs non sérialisables sont
+    omises. Le profil est obtenu via user_infos et la réponse ne doit pas être
+    mise en cache, car son contenu peut dépendre de l'utilisateur connecté.
     """
     context = {}
     for key, value in get_safe_settings().items():
@@ -71,38 +85,9 @@ def scripts(request):
     }
 
 
-HIDDEN_SETTINGS = re.compile("API|TOKEN|KEY|SECRET|PASS|SIGNATURE", flags=re.IGNORECASE)
-CLEANSED_SUBSTITUTE = "**********"
-
-
-def cleanse_setting(key, value):
-    """
-    Cleanse an individual setting key/value of sensitive content. If the value
-    is a dictionary, recursively cleanse the keys in that dictionary.
-    """
-    try:
-        if HIDDEN_SETTINGS.search(key):
-            cleansed = CLEANSED_SUBSTITUTE
-        else:
-            if isinstance(value, dict):
-                cleansed = {k: cleanse_setting(k, v) for k, v in value.items()}
-            else:
-                cleansed = value
-    except TypeError:
-        cleansed = value
-
-    if callable(cleansed):
-        cleansed = CallableSettingWrapper(cleansed)
-    return cleansed
-
-
 def get_safe_settings():
     """
-    Return a dictionary of the settings module with values of sensitive
-    settings replaced with stars (*********).
+    Retourne uniquement les settings explicitement autorisés pour le navigateur.
+    Toute valeur ajoutée à PUBLIC_SETTINGS doit être considérée comme publique.
     """
-    settings_dict = {}
-    for k in dir(settings):
-        if k.isupper():
-            settings_dict[k] = cleanse_setting(k, getattr(settings, k))
-    return settings_dict
+    return {key: getattr(settings, key) for key in settings.PUBLIC_SETTINGS}

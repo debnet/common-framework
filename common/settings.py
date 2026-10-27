@@ -1,4 +1,6 @@
 # coding: utf-8
+"""Proxy de settings Django avec valeurs par défaut pour les options Common."""
+
 from django.conf import settings as user_settings
 
 from common.utils import singleton
@@ -28,7 +30,16 @@ class Settings:
         NOTIFY_OPTIONS={},
         WEBSOCKET_ENABLED=False,
         WEBSOCKET_URL="",
-        FRONTEND_SECRET_KEY="",
+        # Seules ces valeurs sont publiées dans scripts.js (liste explicite).
+        PUBLIC_SETTINGS=(
+            "STATIC_URL",
+            "MEDIA_URL",
+            "LANGUAGE_CODE",
+            "TIME_ZONE",
+            "USE_I18N",
+            "USE_TZ",
+        ),
+        API_MAX_PAGE_SIZE=1000,
         # LDAP
         LDAP_ENABLE=False,
         LDAP_LOGIN="",
@@ -47,6 +58,11 @@ class Settings:
     )
 
     def __getattr__(self, item):
+        """Lit le setting Django, sinon le défaut Common, sinon None.
+
+        Les défauts mutables sont partagés, pas copiés : ne pas modifier en
+        place une liste/dict obtenu ici pour configurer une requête particulière.
+        """
         return getattr(user_settings, item, self.default.get(item, None))
 
 

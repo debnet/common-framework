@@ -1,4 +1,10 @@
 # coding: utf-8
+"""Surcharge du routage de base par thread, en contexte ou en décorateur.
+
+Le stockage thread-local est historique : il ne sépare pas les tâches asyncio
+partageant un même thread. Les blocs doivent être quittés pour restaurer l'état.
+"""
+
 # https://github.com/ambitioninc/django-dynamic-db-router
 import sys
 import threading
@@ -20,12 +26,14 @@ class DatabaseOverrideRouter(object):
     """
 
     def db_for_read(self, model, **hints):
+        """Renvoie l'alias de lecture au sommet de la pile du thread courant."""
         # Disabled during tests
         if sys.argv[1:2] == ["test"]:
             return DEFAULT_DB_ALIAS
         return getattr(local_thread, "db_read_override", [DEFAULT_DB_ALIAS])[-1]
 
     def db_for_write(self, model, **hints):
+        """Renvoie l'alias d'écriture ; manage.py test force l'alias default."""
         # Disabled during tests
         if sys.argv[1:2] == ["test"]:
             return DEFAULT_DB_ALIAS
@@ -88,9 +96,16 @@ class database_override:
     """
 
     def __init__(self, using=None, read=True, write=False, **options):
+        """Prépare l'alias permanent ou une connexion temporaire configurée par dict.
+
+        Sans using, utilise default ; des options sans using créent une copie
+        de sa configuration. Un dict using peut être modifié par l'ajout
+        d'OPTIONS. La connexion temporaire est supprimée en sortie du contexte.
+        """
         self.read = read
         self.write = write
         self.database_alias = None
+        self.using = DEFAULT_DB_ALIAS
 
         if not using and options:
             using = deepcopy(connections.databases.get(DEFAULT_DB_ALIAS))
@@ -105,6 +120,7 @@ class database_override:
             self.using = self.database_alias
 
     def __enter__(self):
+        """Empile les alias choisis et conserve les axes read/write non remplacés."""
         if not hasattr(local_thread, "db_read_override"):
             local_thread.db_read_override = [DEFAULT_DB_ALIAS]
         if not hasattr(local_thread, "db_write_override"):
@@ -116,6 +132,11 @@ class database_override:
         return self
 
     def __exit__(self, exc_type, exc_value, traceback):
+        """Restaure les piles et ferme l'alias temporaire, même après exception.
+
+        Les exceptions du bloc ne sont pas supprimées. Il ne s'agit pas d'une
+        transaction : le routage seul ne garantit aucun rollback des requêtes.
+        """
         local_thread.db_read_override.pop()
         local_thread.db_write_override.pop()
         if self.database_alias:

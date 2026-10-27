@@ -1,4 +1,10 @@
 # coding: utf-8
+"""Tags et filtres Django pour données, requêtes ORM, permissions et rendu.
+
+Les templates exécutés doivent être de confiance : query peut explorer l'ORM,
+conf lit les settings du serveur et render interprète du code de template.
+"""
+
 import ast
 import base64
 import uuid
@@ -17,6 +23,10 @@ from django.utils.translation import gettext as _
 from common.utils import json_decode, json_encode
 
 register = Library()
+
+
+# Accès aux données et conversions de présentation
+# -----------------------------------------------
 
 
 @register.filter(name="meta")
@@ -63,7 +73,7 @@ def filter_get(value, key):
             return itemgetter(key)(value)
         else:
             return attrgetter(key)(value)
-    except (AttributeError, KeyError, TypeError, ValueError):
+    except (AttributeError, IndexError, KeyError, TypeError, ValueError):
         return None
 
 
@@ -78,6 +88,10 @@ def filter_localize(value, use_l10n=None):
     return localize(value, use_l10n=use_l10n) or value
 
 
+# Requêtes ORM et conditions de permission dans les templates de confiance
+# -----------------------------------------------------------------------
+
+
 @register.simple_tag(name="query", takes_context=True)
 def tag_query(context, queryset, save="", **kwargs):
     """
@@ -86,7 +100,8 @@ def tag_query(context, queryset, save="", **kwargs):
     :param queryset: QuerySet
     :param save: Nom du contexte qui contiendra le nouveau QuerySet
     :param kwargs: Options de filtre/tri/etc...
-    :return: Rien
+    :return: '' après affectation dans le contexte ; un dict pour un agrégat
+        global, ou l'entrée inchangée si ce n'est pas un QuerySet
     """
     from django.db.models import F, QuerySet
 
@@ -165,8 +180,14 @@ def tag_query(context, queryset, save="", **kwargs):
             if any(field_name.endswith(":{}".format(cast)) for cast in CASTS):
                 field_name, *_, cast = field_name.split(":")
                 output_field = CASTS.get(cast.lower())
-                field = functions.Cast(field_name, output_field=output_field) if output_field else field_name
-            field_rename = field_rename or ((annotation + "__" + field_name) if field_name else annotation)
+                field = (
+                    functions.Cast(field_name, output_field=output_field)
+                    if output_field
+                    else field_name
+                )
+            field_rename = field_rename or (
+                (annotation + "__" + field_name) if field_name else annotation
+            )
             if field:
                 function_args.insert(0, field)
             annotations[field_rename] = function(*function_args, **function_kwargs)
@@ -198,11 +219,17 @@ def tag_query(context, queryset, save="", **kwargs):
             if any(field_name.endswith(":{}".format(cast)) for cast in CASTS):
                 field_name, *_, cast = field_name.split(":")
                 output_field = CASTS.get(cast.lower())
-                field = functions.Cast(field_name, output_field=output_field) if cast else field
+                field = (
+                    functions.Cast(field_name, output_field=output_field)
+                    if cast
+                    else field
+                )
             field_rename = field_rename or (aggregate + "__" + field_name)
             if distinct:
                 function_kwargs.update(distinct=distinct)
-            aggregations[field_rename] = function(field, *function_args, **function_kwargs)
+            aggregations[field_rename] = function(
+                field, *function_args, **function_kwargs
+            )
 
     group_by = get("group_by")
     if group_by:
@@ -254,7 +281,9 @@ def tag_query(context, queryset, save="", **kwargs):
                 order_by_kwargs.update(nulls_last=True)
             order = order.removesuffix("<").removesuffix(">")
             if order.startswith("-"):
-                orders.append(F(order.strip().removeprefix("-")).desc(**order_by_kwargs))
+                orders.append(
+                    F(order.strip().removeprefix("-")).desc(**order_by_kwargs)
+                )
             else:
                 orders.append(F(order.strip().removeprefix("+")).asc(**order_by_kwargs))
         temp_queryset = queryset.order_by(*orders)
@@ -287,6 +316,11 @@ class PermNode(Node):
     """
 
     def __init__(self, nodelist, elselist=None, *perms, obj=None, any=False):
+        """Conserve les deux branches et les codes de permission d'un tag compilé.
+
+        any choisit un OU entre has_perm, sinon utilise has_perms. obj est une
+        cible optionnelle transmise au backend de permissions, sans résolution ici.
+        """
         self.nodelist = nodelist
         self.elselist = elselist
         self.perms = perms
@@ -294,6 +328,11 @@ class PermNode(Node):
         self.any = any
 
     def render(self, context):
+        """Rend la branche autorisée selon context.request.user, sinon la branche else.
+
+        Sans RequestContext ne produit rien. Ce tag contrôle l'affichage, pas
+        l'accès serveur à une vue ou aux données déjà placées dans le contexte.
+        """
         if not hasattr(context, "request"):
             return ""
         user = context.request.user
@@ -335,10 +374,16 @@ def tag_anyperm(parser, token):
     return PermNode(nodelist, elselist, *args, any=True)
 
 
+# Formatage de collections, configuration et rendu/obfuscation
+# ----------------------------------------------------------
+
+
 @register.filter(name="conf")
 def filter_conf(value):
     """
     Retourne la valeur d'un paramètre de configuration
+    Lit les settings serveur sans liste blanche ; réserver ce filtre aux
+    templates de confiance. Ce n'est pas l'API publique contrôlée de scripts.js.
     """
     return getattr(settings, value, None)
 
@@ -351,7 +396,9 @@ def filter_gather(value, key="", sep=None):
     sep = sep or _(", ")
     if not key:
         return sep.join(value)
-    return sep.join((v.get(key) if isinstance(v, dict) else getattr(v, key) for v in value))
+    return sep.join(
+        (v.get(key) if isinstance(v, dict) else getattr(v, key) for v in value)
+    )
 
 
 @register.filter(name="split")
@@ -493,6 +540,8 @@ class ObfuscatorNode(Node):
 def tag_obfuscate(parser, token):
     """
     Permet d'obfusquer des données
+    L'encodage XOR/Base64 n'est pas du chiffrement : la clé peut être placée
+    dans le HTML et le contenu reste récupérable par le navigateur.
     """
     nodelist = parser.parse(("endobfuscate",))
     parser.delete_first_token()
