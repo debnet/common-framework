@@ -52,6 +52,9 @@ Homepage = "https://github.com/debnet/common-framework"
 [tool.hatch.version]
 path = "common/__init__.py"
 
+[tool.hatch.build]
+artifacts = ["common/locale/*/LC_MESSAGES/*.mo"]
+
 [tool.hatch.build.targets.sdist]
 include = [
     "/common",
