@@ -47,9 +47,7 @@ class BasicFieldTests(SimpleTestCase):
                 Output({"value": value}, context={"request": request}).data["value"],
                 "http://testserver/file.txt",
             )
-        self.assertEqual(
-            Output({"value": {"url": "/file.txt"}}).data["value"], "/file.txt"
-        )
+        self.assertEqual(Output({"value": {"url": "/file.txt"}}).data["value"], "/file.txt")
 
     def test_model_without_to_dict_is_represented_by_primary_key(self):
         self.assertEqual(ReadOnlyObjectField().to_representation(Group(pk=42)), 42)
@@ -66,17 +64,13 @@ class RelatedFieldTests(TestCase):
             list(field.choices.items()),
             [(self.second.pk, "Beta"), (self.first.pk, "Alpha")],
         )
-        filtered = QuerySetChoiceField(
-            Group, value="pk", label="name", filters={"name": "Alpha"}
-        )
+        filtered = QuerySetChoiceField(Group, value="pk", label="name", filters={"name": "Alpha"})
         self.assertEqual(list(filtered.choices.items()), [(self.first.pk, "Alpha")])
 
     def test_queryset_choices_remain_available_after_initialization(self):
         """Régression AUDIT-07 : la colonne de libellé est distincte du label DRF."""
         field = QuerySetChoiceField(Group, value="pk", label="name")
-        self.assertEqual(
-            field.values, [(self.first.pk, "Alpha"), (self.second.pk, "Beta")]
-        )
+        self.assertEqual(field.values, [(self.first.pk, "Alpha"), (self.second.pk, "Beta")])
 
     def test_serializer_label_does_not_change_choice_column(self):
         class Input(serializers.Serializer):
@@ -86,9 +80,7 @@ class RelatedFieldTests(TestCase):
         self.assertEqual(field.label, "Group")
         self.assertEqual(field.label_field, "name")
         field.label = "Translated group label"
-        self.assertEqual(
-            field.values, [(self.first.pk, "Alpha"), (self.second.pk, "Beta")]
-        )
+        self.assertEqual(field.values, [(self.first.pk, "Alpha"), (self.second.pk, "Beta")])
         self.assertEqual(field.run_validation(self.first.pk), self.first.pk)
 
     def test_values_can_be_recalculated_with_filters_and_order(self):
@@ -100,9 +92,7 @@ class RelatedFieldTests(TestCase):
             order_by="-name",
         )
         third = Group.objects.create(name="Another")
-        self.assertEqual(
-            field.values, [(third.pk, "Another"), (self.first.pk, "Alpha")]
-        )
+        self.assertEqual(field.values, [(third.pk, "Another"), (self.first.pk, "Alpha")])
 
     def test_unavailable_choice_source_is_empty(self):
         self.assertEqual(QuerySetChoiceField(None, value="pk", label="name").values, [])
@@ -115,21 +105,13 @@ class RelatedFieldTests(TestCase):
 
         Field = AsymetricRelatedField.from_serializer(Output)
         field = Field()
-        self.assertEqual(
-            field.to_representation(self.first), {"id": self.first.pk, "name": "Alpha"}
-        )
+        self.assertEqual(field.to_representation(self.first), {"id": self.first.pk, "name": "Alpha"})
         self.assertEqual(field.run_validation(self.second.pk), self.second)
         self.assertEqual(field.get_choices(cutoff=1), {self.first.pk: "Alpha"})
 
     def test_hyperlinked_field_accepts_primary_key(self):
-        field = CustomHyperlinkedRelatedField(
-            view_name="group-detail", queryset=Group.objects.all()
-        )
+        field = CustomHyperlinkedRelatedField(view_name="group-detail", queryset=Group.objects.all())
         self.assertEqual(field.to_internal_value(self.first.pk), self.first)
         self.assertEqual(field.get_name(self.first), str(self.first.pk))
         self.assertIsNone(field.get_url(Group(), "group-detail", None, None))
-        self.assertIsNone(
-            field.get_url(
-                self.first, "unknown-detail", APIRequestFactory().get("/"), None
-            )
-        )
+        self.assertIsNone(field.get_url(self.first, "unknown-detail", APIRequestFactory().get("/"), None))

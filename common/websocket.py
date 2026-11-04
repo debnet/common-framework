@@ -80,15 +80,11 @@ if websocket:
         """
         import asyncio
 
-        factory = BroadcastServerFactory(
-            settings.WEBSOCKET_URL, debug=settings.WEBSOCKET_DEBUG
-        )
+        factory = BroadcastServerFactory(settings.WEBSOCKET_URL, debug=settings.WEBSOCKET_DEBUG)
         factory.protocol = BroadcastServerProtocol
         factory.setProtocolOptions()
         loop = asyncio.get_event_loop()
-        server = loop.create_server(
-            factory, settings.WEBSOCKET_HOST, settings.WEBSOCKET_PORT
-        )
+        server = loop.create_server(factory, settings.WEBSOCKET_HOST, settings.WEBSOCKET_PORT)
         server = loop.run_until_complete(server)
         try:
             loop.run_forever()

@@ -31,13 +31,7 @@ from common.api.utils import (
 )
 from common.models import Entity, MetaData
 from common.settings import settings
-from common.utils import (
-    get_field_by_path,
-    get_model_permissions,
-    get_models_from_queryset,
-    get_pk_field,
-    str_to_bool,
-)
+from common.utils import get_field_by_path, get_model_permissions, get_models_from_queryset, get_pk_field, str_to_bool
 
 
 class CommonModelViewSet(viewsets.ModelViewSet):
@@ -88,13 +82,9 @@ class CommonModelViewSet(viewsets.ModelViewSet):
                     None,
                 )
                 if choices and str_to_bool(url_params.get("display")):
-                    fields[field_name + "_display"] = ChoiceDisplayField(
-                        choices=choices, source=source
-                    )
+                    fields[field_name + "_display"] = ChoiceDisplayField(choices=choices, source=source)
                 # Champ spécifique pour l'affichage de la valeur
-                fields[field_name] = ReadOnlyObjectField(
-                    source=source if "." in field_name else None
-                )
+                fields[field_name] = ReadOnlyObjectField(source=source if "." in field_name else None)
 
             # Ajoute les champs d'annotation au serializer
             annotations = {}
@@ -105,15 +95,9 @@ class CommonModelViewSet(viewsets.ModelViewSet):
                     field_name, field_rename = (field.split("|") + [""])[:2]
                     source = None
                     if not field_rename:
-                        field_name = (
-                            (annotation + "__" + field_name)
-                            if field_name
-                            else annotation
-                        )
+                        field_name = (annotation + "__" + field_name) if field_name else annotation
                         field_name, *args = field_name.split(";")
-                        if any(
-                            field_name.endswith(":{}".format(cast)) for cast in CASTS
-                        ):
+                        if any(field_name.endswith(":{}".format(cast)) for cast in CASTS):
                             field_name, *casts = field_name.split(":")
                         source = field_name.replace(".", "__") if "." in field else None
                     field_rename = field_rename or field_name
@@ -128,19 +112,13 @@ class CommonModelViewSet(viewsets.ModelViewSet):
                     field_name, field_rename = (field.strip().split("|") + [""])[:2]
                     source = None
                     if not field_rename:
-                        field_name = (
-                            (aggregate + "__" + field_name) if field_name else aggregate
-                        )
+                        field_name = (aggregate + "__" + field_name) if field_name else aggregate
                         field_name, *args = field_name.split(";")
-                        if any(
-                            field_name.endswith(":{}".format(cast)) for cast in CASTS
-                        ):
+                        if any(field_name.endswith(":{}".format(cast)) for cast in CASTS):
                             field_name, *casts = field_name.split(":")
                         source = field_name.replace(".", "__") if "." in field else None
                     field_rename = field_rename or field_name
-                    aggregations[field_rename] = serializers.ReadOnlyField(
-                        source=source
-                    )
+                    aggregations[field_rename] = serializers.ReadOnlyField(source=source)
 
             # Ajoute les regroupements au serializer
             if "group_by" in url_params or aggregations:
@@ -149,9 +127,7 @@ class CommonModelViewSet(viewsets.ModelViewSet):
                     add_field_to_serializer(fields, field)
                 fields.update(aggregations)
                 # Un serializer avec les données regroupées est créé à la volée
-                return type(
-                    default_serializer.__name__, (serializers.Serializer,), fields
-                )
+                return type(default_serializer.__name__, (serializers.Serializer,), fields)
 
             # Ajoute la restriction des champs au serializer
             elif "fields" in url_params:
@@ -159,18 +135,12 @@ class CommonModelViewSet(viewsets.ModelViewSet):
                 for field in url_params.get("fields").split(","):
                     add_field_to_serializer(fields, field)
                 # Un serializer avec restriction des champs est créé à la volée
-                return type(
-                    default_serializer.__name__, (serializers.Serializer,), fields
-                )
+                return type(default_serializer.__name__, (serializers.Serializer,), fields)
 
             # Utilisation du serializer simplifié
             elif str_to_bool(url_params.get("simple")):
                 serializer = getattr(self, "simple_serializer", default_serializer)
-                return (
-                    type(serializer.__name__, (serializer,), dict(annotations))
-                    if annotations
-                    else serializer
-                )
+                return type(serializer.__name__, (serializer,), dict(annotations)) if annotations else serializer
 
             # Utilisation du serializer par défaut en cas de mise à jour sans altération des données
             elif self.action in ("update", "partial_update"):
@@ -268,13 +238,9 @@ class CommonModelViewSet(viewsets.ModelViewSet):
 
             # Mots-clés réservés dans les URLs
             default_reserved_query_params = ["format"] + (
-                [self.paginator.page_query_param, self.paginator.page_size_query_param]
-                if self.paginator
-                else []
+                [self.paginator.page_query_param, self.paginator.page_size_query_param] if self.paginator else []
             )
-            reserved_query_params = (
-                default_reserved_query_params + RESERVED_QUERY_PARAMS
-            )
+            reserved_query_params = default_reserved_query_params + RESERVED_QUERY_PARAMS
 
             # Copie des modèles d'origine de la requête pour vérification des permissions
             if settings.ENABLE_API_PERMISSIONS:
@@ -283,9 +249,7 @@ class CommonModelViewSet(viewsets.ModelViewSet):
             base_url = self.request.build_absolute_uri(self.request.path)
 
             # Critères de recherche dans le cache
-            cache_key, save_as = url_params.pop("cache", None), url_params.pop(
-                "save_as", None
-            )
+            cache_key, save_as = url_params.pop("cache", None), url_params.pop("save_as", None)
             if cache_key:
                 from django.core.cache import cache
 
@@ -295,9 +259,7 @@ class CommonModelViewSet(viewsets.ModelViewSet):
                     new_url_params.update(**cache_params)
                     new_url_params.update(**url_params)
                     self.url_params = url_params = new_url_params
-                    raw_url, cache_url = "{}?".format(base_url), "{}?cache={}".format(
-                        base_url, cache_key
-                    )
+                    raw_url, cache_url = "{}?".format(base_url), "{}?cache={}".format(base_url, cache_key)
                     for key, value in url_params.items():
                         raw_url += "&{}={}".format(key, value)
                     options["raw_url"] = raw_url
@@ -311,24 +273,15 @@ class CommonModelViewSet(viewsets.ModelViewSet):
                 cache_key = save_as or cache_key
                 cache_params = url_params if save_as else options.get("cache_data")
                 if cache_params:
-                    cache_timeout = (
-                        int(url_params.pop("timeout", settings.API_CACHE_TIMEOUT))
-                        or None
-                    )
-                    cache_expires = (
-                        now() + timedelta(seconds=cache_timeout)
-                        if cache_timeout
-                        else "never"
-                    )
+                    cache_timeout = int(url_params.pop("timeout", settings.API_CACHE_TIMEOUT)) or None
+                    cache_expires = now() + timedelta(seconds=cache_timeout) if cache_timeout else "never"
                     cache.set(
                         settings.API_CACHE_PREFIX + cache_key,
                         cache_params,
                         timeout=cache_timeout,
                     )
                     if not options.get("cache_data"):
-                        raw_url, cache_url = "{}?".format(
-                            base_url
-                        ), "{}?cache={}".format(base_url, cache_key)
+                        raw_url, cache_url = "{}?".format(base_url), "{}?cache={}".format(base_url, cache_key)
                         for key, value in url_params.items():
                             raw_url += "&{}={}".format(key, value)
                         options["raw_url"] = raw_url
@@ -347,17 +300,9 @@ class CommonModelViewSet(viewsets.ModelViewSet):
                         if key in reserved_query_params:
                             continue
                         is_exclude = key.startswith("-")
-                        key = (
-                            key.strip()
-                            .strip("-")
-                            .strip("+")
-                            .strip("@")
-                            .replace(".", "__")
-                        )
+                        key = key.strip().strip("-").strip("+").strip("@").replace(".", "__")
                         value = url_value(key, parse_arg_value(value, key=key) or value)
-                        filters.append(
-                            ~Q(**{key: value}) if is_exclude else Q(**{key: value})
-                        )
+                        filters.append(~Q(**{key: value}) if is_exclude else Q(**{key: value}))
                     for filter in filters:
                         queryset = queryset.filter(filter)
                     # Filtres génériques
@@ -393,26 +338,16 @@ class CommonModelViewSet(viewsets.ModelViewSet):
                                 function_args.append(value)
                         field_name = field_name.replace(".", "__")
                         field = field_name
-                        if any(
-                            field_name.endswith(":{}".format(cast)) for cast in CASTS
-                        ):
+                        if any(field_name.endswith(":{}".format(cast)) for cast in CASTS):
                             field_name, *_, cast = field_name.split(":")
                             output_field = CASTS.get(cast.lower())
                             field = (
-                                functions.Cast(field_name, output_field=output_field)
-                                if output_field
-                                else field_name
+                                functions.Cast(field_name, output_field=output_field) if output_field else field_name
                             )
-                        field_rename = field_rename or (
-                            (annotation + "__" + field_name)
-                            if field_name
-                            else annotation
-                        )
+                        field_rename = field_rename or ((annotation + "__" + field_name) if field_name else annotation)
                         if field:
                             function_args.insert(0, field)
-                        annotations[field_rename] = function(
-                            *function_args, **function_kwargs
-                        )
+                        annotations[field_rename] = function(*function_args, **function_kwargs)
                 if annotations:
                     queryset = queryset.annotate(**annotations)
                     options["annotates"] = True
@@ -432,12 +367,8 @@ class CommonModelViewSet(viewsets.ModelViewSet):
                             continue
                         function = AGGREGATES[aggregate]
                         for field_name in url_params.get(aggregate).split(","):
-                            distinct = field_name.startswith(
-                                " "
-                            ) or field_name.startswith("+")
-                            field_name, field_rename = (field_name.split("|") + [""])[
-                                :2
-                            ]
+                            distinct = field_name.startswith(" ") or field_name.startswith("+")
+                            field_name, field_rename = (field_name.split("|") + [""])[:2]
                             field_name = field_name[1:] if distinct else field_name
                             field_name, *args = field_name.split(";")
                             function_args, function_kwargs = [], {}
@@ -449,32 +380,21 @@ class CommonModelViewSet(viewsets.ModelViewSet):
                                     function_args.append(value)
                             field_name = field_name.replace(".", "__")
                             field = field_name
-                            if any(
-                                field_name.endswith(":{}".format(cast))
-                                for cast in CASTS
-                            ):
+                            if any(field_name.endswith(":{}".format(cast)) for cast in CASTS):
                                 field_name, *_, cast = field_name.split(":")
                                 output_field = CASTS.get(cast.lower())
                                 field = (
-                                    functions.Cast(
-                                        field_name, output_field=output_field
-                                    )
+                                    functions.Cast(field_name, output_field=output_field)
                                     if output_field
                                     else field_name
                                 )
-                            field_rename = field_rename or (
-                                aggregate + "__" + field_name
-                            )
+                            field_rename = field_rename or (aggregate + "__" + field_name)
                             if distinct:
                                 function_kwargs.update(distinct=distinct)
-                            aggregations[field_rename] = function(
-                                field, *function_args, **function_kwargs
-                            )
+                            aggregations[field_rename] = function(field, *function_args, **function_kwargs)
                     group_by = url_params.get("group_by", "")
                     if group_by:
-                        _queryset = queryset.values(
-                            *group_by.replace(".", "__").split(",")
-                        )
+                        _queryset = queryset.values(*group_by.replace(".", "__").split(","))
                         if aggregations:
                             _queryset = _queryset.annotate(**aggregations)
                         else:
@@ -488,26 +408,15 @@ class CommonModelViewSet(viewsets.ModelViewSet):
                             # Résoudre les agrégats sur une copie inclut leurs jointures sans exécuter le SQL.
                             permission_queryset = queryset.all()
                             for aggregation in aggregations.values():
-                                aggregation.resolve_expression(
-                                    permission_queryset.query, summarize=True
-                                )
-                            new_queryset_models = (
-                                get_models_from_queryset(permission_queryset)
-                                - base_queryset_models
-                            )
-                            permissions = get_model_permissions(
-                                self.request.user, *new_queryset_models
-                            )
+                                aggregation.resolve_expression(permission_queryset.query, summarize=True)
+                            new_queryset_models = get_models_from_queryset(permission_queryset) - base_queryset_models
+                            permissions = get_model_permissions(self.request.user, *new_queryset_models)
                             for (
                                 permission_code,
                                 permission_value,
                             ) in permissions.items():
                                 if not permission_value:
-                                    raise PermissionDenied(
-                                        {
-                                            permission_code: PermissionDenied.default_detail
-                                        }
-                                    )
+                                    raise PermissionDenied({permission_code: PermissionDenied.default_detail})
                         return queryset.aggregate(**aggregations)
                 except (ValidationError, PermissionDenied):
                     raise
@@ -537,21 +446,11 @@ class CommonModelViewSet(viewsets.ModelViewSet):
                             order_by_kwargs.update(nulls_last=True)
                         order = order.removesuffix("<").removesuffix(">")
                         if order.startswith("-"):
-                            orders.append(
-                                F(order.strip().removeprefix("-")).desc(
-                                    **order_by_kwargs
-                                )
-                            )
+                            orders.append(F(order.strip().removeprefix("-")).desc(**order_by_kwargs))
                         else:
-                            orders.append(
-                                F(order.strip().removeprefix("+")).asc(
-                                    **order_by_kwargs
-                                )
-                            )
+                            orders.append(F(order.strip().removeprefix("+")).asc(**order_by_kwargs))
                     temp_queryset = queryset.order_by(*orders)
-                    str(
-                        temp_queryset.query
-                    )  # Force SQL evaluation to retrieve exception
+                    str(temp_queryset.query)  # Force SQL evaluation to retrieve exception
                     queryset = temp_queryset
                     options["order_by"] = True
             except EmptyResultSet:
@@ -612,11 +511,7 @@ class CommonModelViewSet(viewsets.ModelViewSet):
                 if metadata and hasattr(self, "metadata"):
                     # Permet d'éviter les conflits entre prefetch lookups identiques
                     viewset_lookups = [
-                        (
-                            prefetch
-                            if isinstance(prefetch, str)
-                            else prefetch.prefetch_through
-                        )
+                        (prefetch if isinstance(prefetch, str) else prefetch.prefetch_through)
                         for prefetch in queryset._prefetch_related_lookups
                     ]
                     lookups_metadata = []
@@ -630,22 +525,12 @@ class CommonModelViewSet(viewsets.ModelViewSet):
                         queryset = queryset.prefetch_related(*lookups_metadata)
 
             # Vérifie les droits sur les différents modèles traversés
-            if (
-                settings.ENABLE_API_PERMISSIONS
-                and self.request.user
-                and hasattr(queryset, "query")
-            ):
-                new_queryset_models = (
-                    get_models_from_queryset(queryset) - base_queryset_models
-                )
-                permissions = get_model_permissions(
-                    self.request.user, *new_queryset_models
-                )
+            if settings.ENABLE_API_PERMISSIONS and self.request.user and hasattr(queryset, "query"):
+                new_queryset_models = get_models_from_queryset(queryset) - base_queryset_models
+                permissions = get_model_permissions(self.request.user, *new_queryset_models)
                 for permission_code, permission_value in permissions.items():
                     if not permission_value:
-                        raise PermissionDenied(
-                            {permission_code: PermissionDenied.default_detail}
-                        )
+                        raise PermissionDenied({permission_code: PermissionDenied.default_detail})
 
             # Ajout des options de filtres/tris dans la pagination
             if self.paginator and hasattr(self.paginator, "additional_data"):
@@ -653,11 +538,7 @@ class CommonModelViewSet(viewsets.ModelViewSet):
                 if hasattr(queryset, "ordered") and not queryset.ordered:
                     primary_key = get_pk_field(queryset.model)
                     queryset = queryset.order_by(
-                        *(
-                            getattr(queryset, "_fields", None)
-                            or distincts
-                            or [primary_key.name]
-                        )
+                        *(getattr(queryset, "_fields", None) or distincts or [primary_key.name])
                     )
                 self.paginator.additional_data = dict(options=options)
 
@@ -689,17 +570,9 @@ class UserViewSet(CommonModelViewSet):
             return self.check_service_usage(request)
         elif self.action in ["update", "partial_update"]:
             # Autorise la modification de soi-même ou d'un autre utilisateur de rang inférieur
-            self.kwargs.update(
-                {
-                    self.lookup_field: self.kwargs.get(
-                        self.lookup_url_kwarg or self.lookup_field, None
-                    )
-                }
-            )
+            self.kwargs.update({self.lookup_field: self.kwargs.get(self.lookup_url_kwarg or self.lookup_field, None)})
             user = self.get_object()
-            if (current_user == user) or (
-                current_user.is_staff and not (user.is_staff or user.is_superuser)
-            ):
+            if (current_user == user) or (current_user.is_staff and not (user.is_staff or user.is_superuser)):
                 return self.check_service_usage(request)
         # Applique le système de permissions dans les autres cas
         return super().check_permissions(request)
@@ -731,9 +604,7 @@ class UserViewSet(CommonModelViewSet):
                 data["user_permissions"] = []
             elif not user.is_superuser:
                 user_permissions = user.user_permissions.all()
-                data["user_permissions"] = list(
-                    set(user_permissions) & set(data.get("user_permissions", []))
-                )
+                data["user_permissions"] = list(set(user_permissions) & set(data.get("user_permissions", [])))
 
     def perform_create(self, serializer):
         self.check_data(serializer.validated_data)

@@ -16,9 +16,7 @@ class InputSerializerContextTests(TestCase):
                 captured = {}
 
                 class Input(serializers.Serializer):
-                    user = serializers.HiddenField(
-                        default=serializers.CurrentUserDefault()
-                    )
+                    user = serializers.HiddenField(default=serializers.CurrentUserDefault())
 
                     def validate(self, attrs):
                         captured.update(self.context)

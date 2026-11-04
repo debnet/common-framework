@@ -76,7 +76,7 @@ setup(
     install_requires=[
         "Django>=6.0",
         "djangorestframework>=3.18.3",
-        "python-dateutil>=2.8.2,<3",
+        "python-dateutil>=2.8.2,<5",
         "pytz>=2025.2",
     ],
     extras_require={

@@ -66,9 +66,7 @@ DROPDOWN_NAME = _("Listes")
 class ImportExport(object):
     """Orchestre les classeurs de données, références et listes de validation."""
 
-    def __init__(
-        self, models, log=logger, force=False, clean=True, non_editables=False
-    ):
+    def __init__(self, models, log=logger, force=False, clean=True, non_editables=False):
         """
         :param models: Liste des modèles à exporter/importer
         :param log: Logger
@@ -145,8 +143,7 @@ class ImportExport(object):
             if model_name not in worksheets:
                 self.log.warning(
                     _(
-                        "La feuille correspondant au modèle '{model_name}' "
-                        "n'a pu être trouvée dans le fichier."
+                        "La feuille correspondant au modèle '{model_name}' " "n'a pu être trouvée dans le fichier."
                     ).format(model_name=model_name)
                 )
                 continue
@@ -154,9 +151,7 @@ class ImportExport(object):
             # Récupération des champs du modèle
             fields = {}
             for field in chain(model._meta.fields, model._meta.many_to_many):
-                if field.name != code_field and (
-                    field.auto_created or not (field.editable or self.non_editables)
-                ):
+                if field.name != code_field and (field.auto_created or not (field.editable or self.non_editables)):
                     continue
                 field.m2m = field in model._meta.many_to_many
                 fields[str(field.verbose_name).lower()] = field
@@ -198,10 +193,7 @@ class ImportExport(object):
                         m2m[field.name] = (field.related_model, value)
                         has_data = True
                         continue
-                    elif (
-                        field.remote_field is not None
-                        and field.related_model is MetaData
-                    ):
+                    elif field.remote_field is not None and field.related_model is MetaData:
                         current_metadata = dict(metadata.get(value, []))
                         continue
                     elif field.remote_field:
@@ -211,13 +203,9 @@ class ImportExport(object):
                         has_data = True
                         continue
                     elif field.choices:
-                        choices = {
-                            str(value): str(key) for key, value in field.flatchoices
-                        }
+                        choices = {str(value): str(key) for key, value in field.flatchoices}
                         if hasattr(field, "max_choices"):  # MultiSelectField
-                            value = [
-                                choices[val] for val in choices.keys() if val in value
-                            ]
+                            value = [choices[val] for val in choices.keys() if val in value]
                         else:
                             value = choices[value]
                     elif type in ["DateField", "DateTimeField"]:
@@ -250,14 +238,10 @@ class ImportExport(object):
                 if delayed:
                     self.delayed_models.append((instance, fks, m2m, current_metadata))
                     continue
-                self._save_instance(
-                    instance, metadata=current_metadata, cache=cache, fks=fks, m2m=m2m
-                )
+                self._save_instance(instance, metadata=current_metadata, cache=cache, fks=fks, m2m=m2m)
             # Enregistrement différé
             for instance, fks, m2m, current_metadata in self.delayed_models:
-                self._save_instance(
-                    instance, metadata=current_metadata, cache=cache, fks=fks, m2m=m2m
-                )
+                self._save_instance(instance, metadata=current_metadata, cache=cache, fks=fks, m2m=m2m)
             # Intégration terminée
             done.append(model)
         return cache
@@ -299,16 +283,12 @@ class ImportExport(object):
                     field.help_text,
                 ]
                 if field.choices:
-                    self.dropdowns[model, field.name] = [
-                        str(value) for key, value in field.flatchoices
-                    ]
+                    self.dropdowns[model, field.name] = [str(value) for key, value in field.flatchoices]
                 for column, data in enumerate(datas, start=1):
                     cell = worksheet.cell(row=row, column=column)
                     cell.value = str(data)
                     column_letter = get_column_letter(column)
-                    widths[column_letter] = max(
-                        widths[column_letter], len(str(data)) + CELL_OFFSET
-                    )
+                    widths[column_letter] = max(widths[column_letter], len(str(data)) + CELL_OFFSET)
                 row += 1
         # Redimensionne les colonnes
         for column_letter, width in widths.items():
@@ -373,20 +353,14 @@ class ImportExport(object):
         try:
             for field_name, (related, value) in fks.items():
                 code_field = getattr(related, "_code_field", "id")
-                fk = cache.get(related, {}).get(
-                    value, related.objects.get(**{code_field: value})
-                )
+                fk = cache.get(related, {}).get(value, related.objects.get(**{code_field: value}))
                 setattr(instance, field_name, fk)
         except Exception:
             if self.delayed_models:
                 # On va chercher l'instance parent et l'enregistrer en amont
-                for index, (parent, _fks, _m2m, _metadata) in enumerate(
-                    self.delayed_models
-                ):
+                for index, (parent, _fks, _m2m, _metadata) in enumerate(self.delayed_models):
                     if parent.code == value:
-                        self._save_instance(
-                            parent, metadata=_metadata, cache=cache, fks=_fks, m2m=_m2m
-                        )
+                        self._save_instance(parent, metadata=_metadata, cache=cache, fks=_fks, m2m=_m2m)
                         self.delayed_models.pop(index)
                         break
                 else:
@@ -429,9 +403,9 @@ class ImportExport(object):
                 instance.set_metadata(key, value)
         except Exception:
             logger.error(
-                _(
-                    "Impossible d'ajouter la métadata [{},{}] pour l'instance '[{}]'"
-                ).format(key, value, instance._meta.verbose_name)
+                _("Impossible d'ajouter la métadata [{},{}] pour l'instance '[{}]'").format(
+                    key, value, instance._meta.verbose_name
+                )
             )
             raise
         # Enregistrement des many-to-many sur l'instance (possible qu'après l'enregistrement en base)
@@ -439,10 +413,7 @@ class ImportExport(object):
             for field_name, (related, values) in m2m.items():
                 code_field = getattr(related, "_code_field", "id")
                 m2ms = [
-                    cache.get(related, {}).get(
-                        value, related.objects.get(**{code_field: value})
-                    )
-                    for value in values
+                    cache.get(related, {}).get(value, related.objects.get(**{code_field: value})) for value in values
                 ]
                 getattr(instance, field_name).set(m2ms)
         except Exception:
@@ -457,9 +428,7 @@ class ImportExport(object):
                 )
             )
             raise
-        self.log.info(
-            "{} : {}".format(instance._meta.verbose_name.capitalize(), instance)
-        )
+        self.log.info("{} : {}".format(instance._meta.verbose_name.capitalize(), instance))
         return instance
 
     def _write_model(self, workbook, model):
@@ -471,9 +440,7 @@ class ImportExport(object):
         """
         meta = model._meta
         code_field = getattr(model, "_code_field", "id")
-        worksheet = workbook.create_sheet(
-            title=re.sub(r"[^\w]+", " ", str(meta.verbose_name).capitalize())
-        )
+        worksheet = workbook.create_sheet(title=re.sub(r"[^\w]+", " ", str(meta.verbose_name).capitalize()))
         widths = {}
         dropdowns = {}
         # Titres
@@ -483,8 +450,7 @@ class ImportExport(object):
                 str(field.verbose_name),
             )
             for field in chain(meta.fields, meta.many_to_many)
-            if field.name == code_field
-            or not (field.auto_created or not (field.editable or self.non_editables))
+            if field.name == code_field or not (field.auto_created or not (field.editable or self.non_editables))
         ]
         for column, (field_code, field_name) in enumerate(fields, start=1):
             cell = worksheet.cell(row=1, column=column)
@@ -503,12 +469,8 @@ class ImportExport(object):
                 field = meta.get_field(field_code)
                 if field.many_to_many:
                     m2m_code_field = getattr(field.related_model, "_code_field", "id")
-                    value = ", ".join(
-                        str(v) for v in value.values_list(m2m_code_field, flat=True)
-                    )
-                elif (
-                    field.related_model is not None and field.related_model is MetaData
-                ):
+                    value = ", ".join(str(v) for v in value.values_list(m2m_code_field, flat=True))
+                elif field.related_model is not None and field.related_model is MetaData:
                     if len(element.get_metadata()) > 0:
                         value = "meta_{}_{}".format(element._meta.model_name, row)
                         self.metadata[value] = []
@@ -529,13 +491,9 @@ class ImportExport(object):
                 elif field.choices:
                     value = getattr(element, "get_{}_display".format(field_code))()
                     if column not in dropdowns:
-                        data_validation = dropdowns[column] = self.dropdowns[
-                            model, field_code
-                        ]
+                        data_validation = dropdowns[column] = self.dropdowns[model, field_code]
                         worksheet.add_data_validation(data_validation)
-                    dropdowns[column].add(
-                        worksheet["{}{}".format(get_column_letter(column), row)]
-                    )
+                    dropdowns[column].add(worksheet["{}{}".format(get_column_letter(column), row)])
                 elif field.get_internal_type() in ["DateField", "DateTimeField"]:
                     value = parsedate(value).isoformat()
                 elif isinstance(value, FieldFile):
@@ -548,9 +506,7 @@ class ImportExport(object):
                 except Exception:
                     cell.value = str(value)
                 column_letter = get_column_letter(column)
-                widths[column_letter] = max(
-                    widths[column_letter], len(str(value)) + CELL_OFFSET
-                )
+                widths[column_letter] = max(widths[column_letter], len(str(value)) + CELL_OFFSET)
             row += 1
         # Ajout de lignes vides avec listes déroulantes
         for row in range(row, row + 10):
@@ -559,13 +515,9 @@ class ImportExport(object):
                 if not field.choices:
                     continue
                 if column not in dropdowns:
-                    data_validation = dropdowns[column] = self.dropdowns[
-                        model, field_code
-                    ]
+                    data_validation = dropdowns[column] = self.dropdowns[model, field_code]
                     worksheet.add_data_validation(data_validation)
-                dropdowns[column].add(
-                    worksheet["{}{}".format(get_column_letter(column), row)]
-                )
+                dropdowns[column].add(worksheet["{}{}".format(get_column_letter(column), row)])
         # Redimensionne les colonnes
         for column_letter, width in widths.items():
             worksheet.column_dimensions[column_letter].width = width

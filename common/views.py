@@ -52,9 +52,7 @@ def view_cache(request):
         keys = cache._cache.keys()
 
     return {
-        "keys": sorted(
-            key for key in keys if not any(exclude in key for exclude in excludes)
-        ),
+        "keys": sorted(key for key in keys if not any(exclude in key for exclude in excludes)),
         "value": value,
     }
 

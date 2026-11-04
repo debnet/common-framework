@@ -12,11 +12,7 @@ from common.api.api_views import metadata, user_infos
 from common.models import Global, Webhook
 
 
-@override_settings(
-    REST_FRAMEWORK={
-        "DEFAULT_PERMISSION_CLASSES": ["rest_framework.permissions.AllowAny"]
-    }
-)
+@override_settings(REST_FRAMEWORK={"DEFAULT_PERMISSION_CLASSES": ["rest_framework.permissions.AllowAny"]})
 class UtilityViewsPermissionsTests(TestCase):
     @classmethod
     def setUpTestData(cls):
@@ -24,9 +20,7 @@ class UtilityViewsPermissionsTests(TestCase):
         cls.other = get_user_model().objects.create_user("other")
         cls.staff = get_user_model().objects.create_user("staff", is_staff=True)
         cls.superuser = get_user_model().objects.create_user("admin", is_superuser=True)
-        cls.entity = Webhook.objects.create(
-            name="Permissions", url="https://example.com/hook"
-        )
+        cls.entity = Webhook.objects.create(name="Permissions", url="https://example.com/hook")
         cls.uid = uuid.uuid4()
         Global.objects.create(
             content_type=ContentType.objects.get_for_model(Webhook),
@@ -37,18 +31,14 @@ class UtilityViewsPermissionsTests(TestCase):
 
     def call(self, view, user=None, data=None, **kwargs):
         factory = APIRequestFactory()
-        request = (
-            factory.get("/") if data is None else factory.post("/", data, format="json")
-        )
+        request = factory.get("/") if data is None else factory.post("/", data, format="json")
         if user is not None:
             force_authenticate(request, user=user)
         return view(request, **kwargs)
 
     def grant(self, *codenames):
         self.user.user_permissions.add(
-            *Permission.objects.filter(
-                content_type__app_label="common", codename__in=codenames
-            )
+            *Permission.objects.filter(content_type__app_label="common", codename__in=codenames)
         )
         self.user = get_user_model().objects.get(pk=self.user.pk)
 
@@ -73,9 +63,7 @@ class UtilityViewsPermissionsTests(TestCase):
         self.user.set_password("Private-password-for-test-42!")
         self.user.save(update_fields=["password"])
         for actor in (self.user, self.staff, self.superuser):
-            request = APIRequestFactory().get(
-                "/", {"fields": "password", "min": "password", "simple": "true"}
-            )
+            request = APIRequestFactory().get("/", {"fields": "password", "min": "password", "simple": "true"})
             force_authenticate(request, user=actor)
             response = user_infos(request, user_id=self.user.pk)
             self.assertEqual(response.status_code, 200, response.data)
@@ -108,22 +96,16 @@ class UtilityViewsPermissionsTests(TestCase):
         response = self.call(metadata, self.user, data={"new": "value"}, uuid=self.uid)
         self.assertEqual(response.status_code, 200)
         self.grant("change_metadata")
-        response = self.call(
-            metadata, self.user, data={"existing": "after"}, uuid=self.uid
-        )
+        response = self.call(metadata, self.user, data={"existing": "after"}, uuid=self.uid)
         self.assertEqual(response.status_code, 200)
         self.grant("delete_metadata")
-        response = self.call(
-            metadata, self.user, data={"existing": None}, uuid=self.uid
-        )
+        response = self.call(metadata, self.user, data={"existing": None}, uuid=self.uid)
         self.assertEqual(response.status_code, 200)
         self.assertEqual(self.entity.get_metadata(), {"new": "value"})
 
     def test_missing_permission_does_not_allow_partial_writes(self):
         self.grant("view_metadata", "add_metadata")
-        response = self.call(
-            metadata, self.user, data={"new": "value", "existing": None}, uuid=self.uid
-        )
+        response = self.call(metadata, self.user, data={"new": "value", "existing": None}, uuid=self.uid)
         self.assertEqual(response.status_code, 403)
         self.assertEqual(self.entity.get_metadata(), {"existing": "before"})
 
@@ -134,9 +116,7 @@ class UtilityViewsPermissionsTests(TestCase):
         self.assertEqual(self.entity.get_metadata(), {"existing": "before"})
 
     def test_invalid_payloads_cannot_delete_all_metadata(self):
-        self.grant(
-            "view_metadata", "add_metadata", "change_metadata", "delete_metadata"
-        )
+        self.grant("view_metadata", "add_metadata", "change_metadata", "delete_metadata")
         for payload in (["existing"], {"": None}, {"x" * 101: "value"}):
             response = self.call(metadata, self.user, data=payload, uuid=self.uid)
             self.assertEqual(response.status_code, 400)

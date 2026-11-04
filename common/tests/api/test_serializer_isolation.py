@@ -5,11 +5,7 @@ from django.test import TestCase, override_settings
 from rest_framework.request import Request
 from rest_framework.test import APIRequestFactory, force_authenticate
 
-from common.api.utils import (
-    api_paginate,
-    api_view_with_serializer,
-    create_model_serializer_and_viewset,
-)
+from common.api.utils import api_paginate, api_view_with_serializer, create_model_serializer_and_viewset
 from common.models import Webhook
 
 Serializer, ViewSet = create_model_serializer_and_viewset(Webhook, hyperlinked=False)

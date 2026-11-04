@@ -1,6 +1,6 @@
 """Contrats des conversions, collections, sérialisation et décorateurs."""
 
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from threading import Lock
 from unittest.mock import Mock, patch
@@ -35,9 +35,7 @@ class ConversionTests(SimpleTestCase):
         self.assertEqual(utils.decimal(""), Decimal(0))
         self.assertEqual(utils.decimal(1.25), Decimal("1.25"))
         self.assertEqual(utils.decimal("1.235", precision=2), Decimal("1.24"))
-        self.assertEqual(
-            utils.decimal("1.234", precision=Decimal("0.01")), Decimal("1.23")
-        )
+        self.assertEqual(utils.decimal("1.234", precision=Decimal("0.01")), Decimal("1.23"))
 
     def test_decimal_text(self):
         self.assertEqual(utils.decimal_to_str(None), "")
@@ -80,9 +78,7 @@ class ConversionTests(SimpleTestCase):
 
     def test_base64_unicode_and_bytes(self):
         for value in ("été", "text", 123):
-            self.assertEqual(
-                utils.base64_decode(utils.base64_encode(value)), str(value)
-            )
+            self.assertEqual(utils.base64_decode(utils.base64_encode(value)), str(value))
 
     def test_json_nested_and_special_values(self):
         value = {
@@ -132,9 +128,7 @@ class CollectionTests(SimpleTestCase):
         target = {"nested": {"a": 1}, "list": [1]}
         result = utils.merge_dict(target, {"nested": {"b": 2}, "list": [2]}, extra=True)
         self.assertIs(result, target)
-        self.assertEqual(
-            result, {"nested": {"a": 1, "b": 2}, "list": [2], "extra": True}
-        )
+        self.assertEqual(result, {"nested": {"a": 1, "b": 2}, "list": [2], "extra": True})
         self.assertEqual(utils.merge_dict(None, {"a": 1}), {"a": 1})
 
     def test_sorted_dictionary(self):
@@ -155,17 +149,13 @@ class CollectionTests(SimpleTestCase):
         converted = utils.to_namedtuple(value)
         self.assertTrue(utils.is_namedtuple(converted))
         self.assertEqual(converted.nested.a, 1)
-        self.assertEqual(
-            utils.to_dict(converted), {"nested": {"a": 1}, "items": (1, 2)}
-        )
+        self.assertEqual(utils.to_dict(converted), {"nested": {"a": 1}, "items": (1, 2)})
         self.assertEqual(utils.to_tuple({"b": 2, "a": [1]}), (("a", (1,)), ("b", 2)))
         self.assertFalse(utils.is_namedtuple((1, 2)))
         self.assertEqual(utils.to_dict([converted])[0]["nested"], {"a": 1})
 
     def test_object_access(self):
-        value = utils.to_object(
-            {"nested": {"key": 3}, "children": [{"key": 4}]}, default="missing"
-        )
+        value = utils.to_object({"nested": {"key": 3}, "children": [{"key": 4}]}, default="missing")
         self.assertEqual(value.nested.key, 3)
         self.assertEqual(value.children[0].key, 4)
         self.assertEqual(value.absent, "missing")
@@ -182,14 +172,8 @@ class CollectionTests(SimpleTestCase):
         self.assertIs(utils.null.missing()["key"] + 2, utils.null)
 
     def test_cartesian_product(self):
-        rows = list(
-            utils.recursive_dict_product(
-                {"name": "root", "items": [{"value": 1}, {"value": 2}]}, auto_id=None
-            )
-        )
-        self.assertEqual(
-            rows, [{"name": "root", "item_value": 1}, {"name": "root", "item_value": 2}]
-        )
+        rows = list(utils.recursive_dict_product({"name": "root", "items": [{"value": 1}, {"value": 2}]}, auto_id=None))
+        self.assertEqual(rows, [{"name": "root", "item_value": 1}, {"name": "root", "item_value": 2}])
 
     def test_size_handles_cycles(self):
         value = []
@@ -205,17 +189,19 @@ class DecoratorTests(SimpleTestCase):
         factory.assert_called_once_with(1)
 
     def test_timed_cache_expiration(self):
-        initial = datetime(2026, 1, 1)
+        initial = datetime(2026, 1, 1, tzinfo=UTC)
         with patch("common.utils.datetime") as clock:
-            clock.utcnow.return_value = initial
+            clock.now.return_value = initial
             call = Mock(side_effect=lambda value: value * 2)
             cached = utils.timed_cache(seconds=5)(call)
             self.assertEqual(cached(3), 6)
             self.assertEqual(cached(3), 6)
             self.assertEqual(call.call_count, 1)
-            clock.utcnow.return_value = initial + timedelta(seconds=6)
+            clock.now.return_value = initial + timedelta(seconds=6)
             self.assertEqual(cached(3), 6)
             self.assertEqual(call.call_count, 2)
+            self.assertTrue(all(call.args == (UTC,) for call in clock.now.call_args_list))
+            clock.utcnow.assert_not_called()
 
     def test_synchronized_releases_lock_after_exception(self):
         lock = Lock()

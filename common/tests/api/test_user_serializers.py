@@ -14,18 +14,14 @@ class UserSerializerTests(TestCase):
         self.user.user_permissions.add(self.permission)
 
     def test_empty_lists_clear_relations(self):
-        serializer = UserSerializer(
-            self.user, data={"groups": [], "user_permissions": []}, partial=True
-        )
+        serializer = UserSerializer(self.user, data={"groups": [], "user_permissions": []}, partial=True)
         self.assertTrue(serializer.is_valid(), serializer.errors)
         serializer.save()
         self.assertFalse(self.user.groups.exists())
         self.assertFalse(self.user.user_permissions.exists())
 
     def test_omitted_relations_are_preserved(self):
-        serializer = UserSerializer(
-            self.user, data={"first_name": "Updated"}, partial=True
-        )
+        serializer = UserSerializer(self.user, data={"first_name": "Updated"}, partial=True)
         self.assertTrue(serializer.is_valid(), serializer.errors)
         serializer.save()
         self.assertEqual(list(self.user.groups.all()), [self.group])
@@ -40,9 +36,7 @@ class UserSerializerTests(TestCase):
 
     def test_password_update_remains_write_only(self):
         password = "Private-password-for-test-42!"
-        serializer = UserSerializer(
-            self.user, data={"password": password}, partial=True
-        )
+        serializer = UserSerializer(self.user, data={"password": password}, partial=True)
         self.assertTrue(serializer.is_valid(), serializer.errors)
         serializer.save()
         self.user.refresh_from_db()

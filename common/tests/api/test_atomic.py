@@ -9,8 +9,8 @@ from django.test import TransactionTestCase
 from rest_framework import serializers
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.exceptions import PermissionDenied, ValidationError
-from rest_framework.renderers import JSONRenderer
 from rest_framework.permissions import AllowAny
+from rest_framework.renderers import JSONRenderer
 from rest_framework.response import Response
 from rest_framework.test import APIRequestFactory
 
@@ -159,9 +159,7 @@ class AtomicApiTests(TransactionTestCase):
 
     def test_using_and_savepoint_are_forwarded(self):
         original = transaction.atomic
-        with patch(
-            "common.api.decorators.transaction.atomic", wraps=original
-        ) as context:
+        with patch("common.api.decorators.transaction.atomic", wraps=original) as context:
             atomic(lambda: None, using="default", savepoint=False)()
         context.assert_called_once_with(using="default", savepoint=False)
 
@@ -191,9 +189,7 @@ class AtomicApiTests(TransactionTestCase):
                 self.create()
                 raise ValidationError("Invalid")
 
-        @api_view_with_serializer(
-            ["POST"], input_serializer=Input, atomic=True, permission_classes=[AllowAny]
-        )
+        @api_view_with_serializer(["POST"], input_serializer=Input, atomic=True, permission_classes=[AllowAny])
         def view(request):
             self.fail("Invalid data must not reach the view")
 
@@ -208,9 +204,7 @@ class AtomicApiTests(TransactionTestCase):
             def get_name(inner_self, value):
                 raise RuntimeError("serialization failed")
 
-        @api_view_with_serializer(
-            ["POST"], serializer=Output, atomic=True, permission_classes=[AllowAny]
-        )
+        @api_view_with_serializer(["POST"], serializer=Output, atomic=True, permission_classes=[AllowAny])
         def view(request):
             return self.create()
 
@@ -226,9 +220,7 @@ class AtomicApiTests(TransactionTestCase):
                 self.assertTrue(transaction.get_connection().in_atomic_block)
                 return value.name
 
-        @api_view_with_serializer(
-            ["POST"], serializer=Output, atomic=True, permission_classes=[AllowAny]
-        )
+        @api_view_with_serializer(["POST"], serializer=Output, atomic=True, permission_classes=[AllowAny])
         def view(request):
             return self.create()
 

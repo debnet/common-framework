@@ -69,9 +69,7 @@ class LdapBackendTests(TestCase):
         self.assertEqual(user.email, "alice@example.com")
         self.assertFalse(user.is_staff)
         self.assertFalse(user.is_superuser)
-        self.assertEqual(
-            list(user.groups.values_list("name", flat=True)), ["ldap-Readers"]
-        )
+        self.assertEqual(list(user.groups.values_list("name", flat=True)), ["ldap-Readers"])
 
     @override_settings(LDAP_ADMIN_GROUPS=["Readers"])
     def test_admin_group_grants_staff_and_superuser(self):
@@ -88,17 +86,13 @@ class LdapBackendTests(TestCase):
     def test_missing_user_returns_none(self):
         self.connection.search.return_value = False
         with self.assertLogs("common.auth", level="INFO"):
-            self.assertIsNone(
-                self.backend.authenticate(username="Alice", password="test-secret")
-            )
+            self.assertIsNone(self.backend.authenticate(username="Alice", password="test-secret"))
         self.assertFalse(get_user_model().objects.exists())
 
     def test_connection_failure_returns_none(self):
         self.ldap.Connection.side_effect = RuntimeError("directory unavailable")
         with self.assertLogs("common.auth", level="WARNING"):
-            self.assertIsNone(
-                self.backend.authenticate(username="Alice", password="test-secret")
-            )
+            self.assertIsNone(self.backend.authenticate(username="Alice", password="test-secret"))
 
     def test_empty_password_does_not_connect(self):
         self.assertIsNone(self.backend.authenticate(username="Alice", password=""))
@@ -106,9 +100,7 @@ class LdapBackendTests(TestCase):
 
     @override_settings(LDAP_ENABLE=False)
     def test_disabled_backend_does_not_connect(self):
-        self.assertIsNone(
-            self.backend.authenticate(username="Alice", password="test-secret")
-        )
+        self.assertIsNone(self.backend.authenticate(username="Alice", password="test-secret"))
         self.ldap.Server.assert_not_called()
 
     def test_local_groups_are_preserved(self):
@@ -117,23 +109,15 @@ class LdapBackendTests(TestCase):
         stale = Group.objects.create(name="ldap-Old")
         user.groups.add(local, stale)
         user = self.backend.authenticate(username="alice", password="test-secret")
-        self.assertEqual(
-            set(user.groups.values_list("name", flat=True)), {"local", "ldap-Readers"}
-        )
+        self.assertEqual(set(user.groups.values_list("name", flat=True)), {"local", "ldap-Readers"})
 
     def test_username_is_escaped_in_search_filter(self):
         """Régression AUDIT-06 : délègue l'échappement au helper ldap3."""
         username = "a*()\\\x00b"
         self.connection.search.return_value = False
         with self.assertLogs("common.auth", level="INFO"):
-            self.assertIsNone(
-                self.backend.authenticate(username=username, password="test-secret")
-            )
+            self.assertIsNone(self.backend.authenticate(username=username, password="test-secret"))
         self.escape_filter_chars.assert_called_once_with(username)
-        self.assertEqual(
-            self.connection.search.call_args.args[1], r"(uid=a\2a\28\29\5c\00b)"
-        )
+        self.assertEqual(self.connection.search.call_args.args[1], r"(uid=a\2a\28\29\5c\00b)")
         # Le filtre et l'identifiant de bind ont des règles distinctes.
-        self.assertEqual(
-            self.ldap.Connection.call_args.kwargs["user"], username + "@example.com"
-        )
+        self.assertEqual(self.ldap.Connection.call_args.kwargs["user"], username + "@example.com")

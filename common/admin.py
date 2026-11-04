@@ -100,9 +100,7 @@ class CommonAdmin(admin.ModelAdmin):
         count = obj.metadata.count()
         if count:
             type = ContentType.objects.get_for_model(obj)
-            url = reverse(
-                "admin:common_metadata_changelist"
-            ) + "?object_id={}&content_type={}".format(obj.pk, type.pk)
+            url = reverse("admin:common_metadata_changelist") + "?object_id={}&content_type={}".format(obj.pk, type.pk)
             return format_html('<a href="{url}">{label}</a>', url=url, label=count)
         return count
 
@@ -149,9 +147,7 @@ class EntityAdmin(CommonAdmin):
         """Ajoute les filtres de création/modification sans dupliquer ceux configurés."""
         list_filter = list(super().get_list_filter(request))
         list_filter += ["creation_date"] if "creation_date" not in list_filter else []
-        list_filter += (
-            ["modification_date"] if "modification_date" not in list_filter else []
-        )
+        list_filter += ["modification_date"] if "modification_date" not in list_filter else []
         return tuple(list_filter)
 
     def get_actions(self, request):
@@ -320,9 +316,7 @@ class GlobalAdmin(admin.ModelAdmin):
                     app_label=obj.content_type.app_label, model=obj.content_type.model
                 )
                 url = reverse(pattern, args=(obj.object_id,))
-                return format_html(
-                    '<a href="{url}">{label}</a>', url=url, label=str(obj.entity)
-                )
+                return format_html('<a href="{url}">{label}</a>', url=url, label=str(obj.entity))
             except NoReverseMatch:
                 return str(obj.entity)
         return None
@@ -365,7 +359,7 @@ class MetaDataAdmin(admin.ModelAdmin):
         "modification_date",
         "deletion_date",
     ]
-    list_select_related = True
+    list_select_related = ("content_type",)
     ordering = [
         "-modification_date",
     ]
@@ -380,9 +374,7 @@ class MetaDataAdmin(admin.ModelAdmin):
                     app_label=obj.content_type.app_label, model=obj.content_type.model
                 )
                 url = reverse(pattern, args=(obj.object_id,))
-                return format_html(
-                    '<a href="{url}">{label}</a>', url=url, label=str(obj.entity)
-                )
+                return format_html('<a href="{url}">{label}</a>', url=url, label=str(obj.entity))
             except NoReverseMatch:
                 return str(obj.entity)
         return None
@@ -407,9 +399,7 @@ def restore(modeladmin, request, queryset, all_fields=False):
     errors = []
     for history in queryset.order_by("-creation_date"):
         try:
-            result = history.restore(
-                current_user=request.user, from_admin=True, all_fields=all_fields
-            )
+            result = history.restore(current_user=request.user, from_admin=True, all_fields=all_fields)
             if result:
                 success += 1
             else:
@@ -417,22 +407,16 @@ def restore(modeladmin, request, queryset, all_fields=False):
         except Exception as error:
             errors.append((history.pk, error))
     if success > 0:
-        messages.success(
-            request, _("{} élément(s) ont été restaurés avec succès !").format(success)
-        )
+        messages.success(request, _("{} élément(s) ont été restaurés avec succès !").format(success))
     if fail > 0:
         messages.warning(
             request,
-            _(
-                "{} élément(s) n'ont pas pu être restaurés car leurs relations sont manquantes !"
-            ).format(fail),
+            _("{} élément(s) n'ont pas pu être restaurés car leurs relations sont manquantes !").format(fail),
         )
     for id, error in errors:
         messages.error(
             request,
-            _("L'élément {} n'a pu être restauré pour la raison suivante : {}").format(
-                id, error
-            ),
+            _("L'élément {} n'a pu être restauré pour la raison suivante : {}").format(id, error),
         )
 
 
@@ -498,7 +482,10 @@ class HistoryAdmin(admin.ModelAdmin):
         "restored",
         "admin",
     ]
-    list_select_related = True
+    list_select_related = (
+        "user",
+        "content_type",
+    )
     search_fields = [
         "object_str",
     ]
@@ -511,9 +498,7 @@ class HistoryAdmin(admin.ModelAdmin):
                     app_label=obj.content_type.app_label, model=obj.content_type.model
                 )
                 url = reverse(pattern, args=(obj.object_id,))
-                return format_html(
-                    '<a href="{url}">{label}</a>', url=url, label=obj.object_str
-                )
+                return format_html('<a href="{url}">{label}</a>', url=url, label=obj.object_str)
             except NoReverseMatch:
                 pass
         return format_html(obj.object_str)
@@ -529,9 +514,7 @@ class HistoryAdmin(admin.ModelAdmin):
                     model=HistoryField._meta.model_name,
                 )
                 url = reverse(pattern) + "?history={}".format(obj.pk)
-                return format_html(
-                    '<a href="{url}">{label}</a>', url=url, label=obj.fields_count
-                )
+                return format_html('<a href="{url}">{label}</a>', url=url, label=obj.fields_count)
             except NoReverseMatch:
                 pass
         return obj.fields_count
@@ -547,12 +530,7 @@ class HistoryAdmin(admin.ModelAdmin):
     has_reason.short_description = _("Motif")
 
     def get_queryset(self, request):
-        return (
-            super()
-            .get_queryset(request)
-            .select_related("content_type", "user")
-            .prefetch_related("entity")
-        )
+        return super().get_queryset(request).select_related("content_type", "user").prefetch_related("entity")
 
 
 @admin.register(HistoryField)
@@ -597,7 +575,11 @@ class HistoryFieldAdmin(admin.ModelAdmin):
         "restored",
         "status_m2m",
     ]
-    list_select_related = True
+    list_select_related = (
+        "history",
+        "history__user",
+        "history__content_type",
+    )
     ordering = [
         "-creation_date",
     ]
@@ -608,9 +590,7 @@ class HistoryFieldAdmin(admin.ModelAdmin):
     actions = [restore]
 
     def field(self, obj):
-        label = getattr(obj.field, "verbose_name", "") or capfirst(
-            camel_case_to_spaces(obj.field_name)
-        )
+        label = getattr(obj.field, "verbose_name", "") or capfirst(camel_case_to_spaces(obj.field_name))
         return format_html(
             '<span title="{code}">{label}</span>',
             label=capfirst(label),
@@ -646,13 +626,9 @@ class HistoryFieldAdmin(admin.ModelAdmin):
             for item in value:
                 try:
                     app_label, model_name = item._meta.app_label, item._meta.model_name
-                    pattern = "admin:{app_label}_{model_name}_change".format(
-                        app_label=app_label, model_name=model_name
-                    )
+                    pattern = "admin:{app_label}_{model_name}_change".format(app_label=app_label, model_name=model_name)
                     url = reverse(pattern, args=(item.pk,))
-                    values.append(
-                        '<a href="{url}">{label}</a>'.format(url=url, label=str(item))
-                    )
+                    values.append('<a href="{url}">{label}</a>'.format(url=url, label=str(item)))
                 except NoReverseMatch:
                     values.append(str(item))
             return format_html("<br />".join(values))
@@ -661,24 +637,15 @@ class HistoryFieldAdmin(admin.ModelAdmin):
     def history_url(self, obj):
         """Construit le lien vers la liste d'historiques restreinte à l'en-tête du détail."""
         app_label, model_name = History._meta.app_label, History._meta.model_name
-        pattern = "admin:{app_label}_{model_name}_changelist".format(
-            app_label=app_label, model_name=model_name
-        )
+        pattern = "admin:{app_label}_{model_name}_changelist".format(app_label=app_label, model_name=model_name)
         url = reverse(pattern) + "?id={}".format(obj.history_id)
-        return format_html(
-            '<a href="{url}">{label}</a>', url=url, label=str(obj.history)
-        )
+        return format_html('<a href="{url}">{label}</a>', url=url, label=str(obj.history))
 
     history_url.admin_order_field = "history"
     history_url.short_description = _("Historique")
 
     def get_queryset(self, request):
-        return (
-            super()
-            .get_queryset(request)
-            .select_related("history__content_type")
-            .order_by("-creation_date")
-        )
+        return super().get_queryset(request).select_related("history__content_type").order_by("-creation_date")
 
 
 @admin.register(Webhook)
@@ -892,15 +859,9 @@ def create_admin(*args, baseclass=None, **kwargs):
             else EntityAdmin if issubclass(model, Entity) else CommonAdmin
         )
         fk_fields = tuple(
-            field
-            for field in model._meta.get_fields()
-            if isinstance(field, (models.ForeignKey, models.OneToOneField))
+            field for field in model._meta.get_fields() if isinstance(field, (models.ForeignKey, models.OneToOneField))
         )
-        m2m_fields = tuple(
-            field
-            for field in model._meta.get_fields()
-            if isinstance(field, models.ManyToManyField)
-        )
+        m2m_fields = tuple(field for field in model._meta.get_fields() if isinstance(field, models.ManyToManyField))
         properties = dict(
             list_display=tuple(
                 field.name
@@ -926,8 +887,7 @@ def create_admin(*args, baseclass=None, **kwargs):
             search_fields=tuple(
                 field.name
                 for field in model._meta.get_fields()
-                if not getattr(field, "choices", None)
-                and isinstance(field, (models.CharField, models.TextField))
+                if not getattr(field, "choices", None) and isinstance(field, (models.CharField, models.TextField))
             ),
             filter_horizontal=tuple(m2m.name for m2m in m2m_fields),
             list_select_related=tuple(fk.name for fk in fk_fields),

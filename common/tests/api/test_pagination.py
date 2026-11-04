@@ -9,11 +9,7 @@ from rest_framework.request import Request
 from rest_framework.test import APIRequestFactory, force_authenticate
 
 from common.api.pagination import CustomPageNumberPagination, unpaginated_requested
-from common.api.utils import (
-    api_paginate,
-    api_view_with_serializer,
-    create_model_serializer_and_viewset,
-)
+from common.api.utils import api_paginate, api_view_with_serializer, create_model_serializer_and_viewset
 from common.models import Webhook
 
 
@@ -21,9 +17,7 @@ from common.models import Webhook
 class PaginationTests(SimpleTestCase):
     def request(self, params=None, admin=False):
         request = Request(APIRequestFactory().get("/", params or {}))
-        request.user = SimpleNamespace(
-            is_authenticated=True, is_staff=admin, is_superuser=False
-        )
+        request.user = SimpleNamespace(is_authenticated=True, is_staff=admin, is_superuser=False)
         return request
 
     def test_page_size_is_capped(self):
@@ -43,17 +37,13 @@ class PaginationTests(SimpleTestCase):
 
     def test_invalid_page_size_does_not_bypass_limit(self):
         for value in ("0", "-1", "invalid"):
-            size = CustomPageNumberPagination().get_page_size(
-                self.request({"page_size": value})
-            )
+            size = CustomPageNumberPagination().get_page_size(self.request({"page_size": value}))
             self.assertGreater(size, 0)
             self.assertLessEqual(size, 25)
 
     def test_administrators_can_exceed_limit(self):
         self.assertEqual(
-            CustomPageNumberPagination().get_page_size(
-                self.request({"page_size": 100}, admin=True)
-            ),
+            CustomPageNumberPagination().get_page_size(self.request({"page_size": 100}, admin=True)),
             100,
         )
         request = self.request({"page_size": 100})
@@ -72,9 +62,7 @@ class PaginationTests(SimpleTestCase):
             CustomPageNumberPagination().get_page_size(self.request())
 
 
-PaginationSerializer, PaginationViewSet = create_model_serializer_and_viewset(
-    Webhook, hyperlinked=False
-)
+PaginationSerializer, PaginationViewSet = create_model_serializer_and_viewset(Webhook, hyperlinked=False)
 
 
 @api_view_with_serializer(["GET"])
@@ -95,11 +83,7 @@ class PaginationIntegrationTests(TestCase):
     def call(self, endpoint, user, params):
         request = APIRequestFactory().get("/", params)
         force_authenticate(request, user=user)
-        view = (
-            PaginationViewSet.as_view({"get": "list"})
-            if endpoint == "viewset"
-            else paginated_webhooks
-        )
+        view = PaginationViewSet.as_view({"get": "list"}) if endpoint == "viewset" else paginated_webhooks
         return view(request)
 
     def test_viewsets_and_api_paginate_enforce_limit(self):

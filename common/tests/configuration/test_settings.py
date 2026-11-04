@@ -27,9 +27,7 @@ class SettingsTests(SimpleTestCase):
                 self.assertEqual(django_settings.AUDIT_EXISTING, "outer")
             self.assertEqual(django_settings.AUDIT_EXISTING, "initial")
 
-    @override_settings(
-        SECRET_KEY="private", INTERNAL_CONFIG={"credentials": ["private"]}
-    )
+    @override_settings(SECRET_KEY="private", INTERNAL_CONFIG={"credentials": ["private"]})
     def test_public_settings_are_allowlisted(self):
         public = get_safe_settings()
         self.assertIn("STATIC_URL", public)
@@ -66,3 +64,26 @@ class SettingsTests(SimpleTestCase):
         self.assertNotIn(b"never-publish-this", response.content)
         self.assertNotIn(b"also-private", response.content)
         self.assertIn(b"STATIC_URL", response.content)
+
+
+class AdminQueryConfigurationTests(SimpleTestCase):
+    def test_common_admins_preload_explicit_relations(self):
+        from django.contrib.admin.views.main import ChangeList
+
+        from common.admin import HistoryAdmin, HistoryFieldAdmin, MetaDataAdmin
+        from common.models import History, HistoryField, MetaData
+
+        for admin_class, model, expected in (
+            (MetaDataAdmin, MetaData, {"content_type": {}}),
+            (HistoryAdmin, History, {"user": {}, "content_type": {}}),
+            (
+                HistoryFieldAdmin,
+                HistoryField,
+                {"history": {"user": {}, "content_type": {}}},
+            ),
+        ):
+            with self.subTest(admin=admin_class.__name__):
+                self.assertIsInstance(admin_class.list_select_related, tuple)
+                changelist = SimpleNamespace(list_select_related=admin_class.list_select_related)
+                queryset = ChangeList.apply_select_related(changelist, model.objects.all())
+                self.assertEqual(queryset.query.select_related, expected)

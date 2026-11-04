@@ -4,7 +4,7 @@ Boîte à outils pour **Django et Django REST Framework** : modèles historisés
 métadonnées, API CRUD dynamiques, formulaires, administration et utilitaires.
 
 La version courante cible **Python 3.13+ et Django 6.0+**, avec une version de DRF
-compatible. La suite a été vérifiée sur Python 3.13 avec Django 6.0.9 et 6.1.2 ;
+compatible. La suite a été vérifiée sur Python 3.14 avec Django 6.1.3 ;
 les branches legacy conservées ne constituent pas une promesse de support des anciennes versions.
 
 ## Installation et démarrage
@@ -231,7 +231,8 @@ python -m coverage run -m common.runtests
 python -m coverage html
 python -m black --check common project manage.py setup.py
 python -m flake8 common project manage.py setup.py --ignore=E501,W503,E203
-python -m pip wheel --no-deps . --wheel-dir dist
+python -m build
+python -m twine check --strict dist/common_framework-*.whl dist/common_framework-*.tar.gz
 ```
 
 Le lanceur utilise une base SQLite de test jetable. Les tests nécessitant

@@ -20,9 +20,7 @@ class UnaccentOperationTests(SimpleTestCase):
 
     def state(self):
         state = Mock()
-        state.apps.get_model.return_value = SimpleNamespace(
-            _meta=SimpleNamespace(db_table="example")
-        )
+        state.apps.get_model.return_value = SimpleNamespace(_meta=SimpleNamespace(db_table="example"))
         return state
 
     def test_function_creation_and_removal(self):
@@ -30,9 +28,7 @@ class UnaccentOperationTests(SimpleTestCase):
         editor = self.editor()
         self.assertIsNone(operation.state_forwards("common", None))
         operation.database_forwards("common", editor, None, None)
-        self.assertIn(
-            "CREATE OR REPLACE FUNCTION F_UNACCENT", editor.execute.call_args.args[0]
-        )
+        self.assertIn("CREATE OR REPLACE FUNCTION F_UNACCENT", editor.execute.call_args.args[0])
         operation.database_backwards("common", editor, None, None)
         editor.execute.assert_called_with("DROP FUNCTION IF EXISTS F_UNACCENT(text);")
 
@@ -77,8 +73,6 @@ class UnaccentOperationTests(SimpleTestCase):
             [(0,)],
         ]
         with self.assertLogs("common.operations", level="WARNING"):
-            CreateIndexUnaccent("Example", [["name"]]).database_forwards(
-                "common", editor, None, self.state()
-            )
+            CreateIndexUnaccent("Example", [["name"]]).database_forwards("common", editor, None, self.state())
         editor.execute.assert_called_once()
         self.assertIn("USING btree", editor.execute.call_args.args[0])

@@ -17,13 +17,7 @@ from django.db.models.fields import mixins
 from django.utils.translation import gettext_lazy as _
 
 from common.settings import settings
-from common.utils import (
-    base64_decode,
-    base64_encode,
-    json_decode,
-    json_encode,
-    str_to_bool,
-)
+from common.utils import base64_decode, base64_encode, json_decode, json_encode, str_to_bool
 
 is_postgresql = lambda connection: connection.vendor == "postgresql"  # noqa
 is_oracle = lambda connection: connection.vendor == "oracle"  # noqa
@@ -297,9 +291,7 @@ if django_version < (3, 1) or settings.COMMON_JSONFIELD:
             """
             # Process JSON path from the left-hand side.
             if isinstance(self.lhs, JsonKeyTransform):
-                lhs, lhs_params, lhs_key_transforms = self.lhs.preprocess_lhs(
-                    compiler, connection
-                )
+                lhs, lhs_params, lhs_key_transforms = self.lhs.preprocess_lhs(compiler, connection)
                 lhs_json_path = compile_json_path(lhs_key_transforms)
             else:
                 lhs, lhs_params = self.process_lhs(compiler, connection)
@@ -328,15 +320,11 @@ if django_version < (3, 1) or settings.COMMON_JSONFIELD:
             return sql, tuple(lhs_params) + tuple(rhs_params)
 
         def as_mysql(self, compiler, connection):
-            return self.as_sql(
-                compiler, connection, template="JSON_CONTAINS_PATH(%s, 'one', %%s)"
-            )
+            return self.as_sql(compiler, connection, template="JSON_CONTAINS_PATH(%s, 'one', %%s)")
 
         def as_oracle(self, compiler, connection):
             """Adapte JSON_EXISTS au chemin littéral attendu par le backend Oracle legacy."""
-            sql, params = self.as_sql(
-                compiler, connection, template="JSON_EXISTS(%s, '%%s')"
-            )
+            sql, params = self.as_sql(compiler, connection, template="JSON_EXISTS(%s, '%%s')")
             return sql % tuple(params), []
 
         def as_postgresql(self, compiler, connection):
@@ -356,9 +344,7 @@ if django_version < (3, 1) or settings.COMMON_JSONFIELD:
             return "%s %s %s" % (lhs, self.lookup_operator, rhs), params
 
         def as_sqlite(self, compiler, connection):
-            return self.as_sql(
-                compiler, connection, template="JSON_TYPE(%s, %%s) IS NOT NULL"
-            )
+            return self.as_sql(compiler, connection, template="JSON_TYPE(%s, %%s) IS NOT NULL")
 
     @JsonField.register_lookup
     class JsonHasKey(JsonGenericHasKey):
@@ -567,18 +553,13 @@ if django_version < (3, 1) or settings.COMMON_JSONFIELD:
             """Combine JSON_QUERY et JSON_VALUE pour les valeurs JSON Oracle legacy."""
             lhs, params, key_transforms = self.preprocess_lhs(compiler, connection)
             json_path = compile_json_path(key_transforms)
-            return (
-                "COALESCE(JSON_QUERY(%s, '%s'), JSON_VALUE(%s, '%s'))"
-                % ((lhs, json_path) * 2)
-            ), tuple(params) * 2
+            return ("COALESCE(JSON_QUERY(%s, '%s'), JSON_VALUE(%s, '%s'))" % ((lhs, json_path) * 2)), tuple(params) * 2
 
         def as_postgresql(self, compiler, connection, **extra):
             """Utilise -> pour une clé et #> pour un chemin PostgreSQL imbriqué."""
             lhs, params, key_transforms = self.preprocess_lhs(compiler, connection)
             if len(key_transforms) > 1:
-                return "(%s %s %%s)" % (lhs, self.nested_operator), params + [
-                    key_transforms
-                ]
+                return "(%s %s %%s)" % (lhs, self.nested_operator), params + [key_transforms]
             try:
                 lookup = int(self.key_name)
             except ValueError:
@@ -608,9 +589,7 @@ if django_version < (3, 1) or settings.COMMON_JSONFIELD:
             opérateurs texte ont besoin d'un chemin JSON explicitement reconnu.
             """
             if not isinstance(key_transform, JsonKeyTransform):
-                raise TypeError(
-                    "Transform should be an instance of JsonKeyTransform in order to use this lookup."
-                )
+                raise TypeError("Transform should be an instance of JsonKeyTransform in order to use this lookup.")
             key_text_transform = JsonKeyTextTransform(
                 key_transform.key_name,
                 *key_transform.source_expressions,
@@ -621,16 +600,12 @@ if django_version < (3, 1) or settings.COMMON_JSONFIELD:
     class KeyTransformIsNull(lookups.IsNull):
         def as_oracle(self, compiler, connection):
             if not self.rhs:
-                return JsonHasKey(self.lhs.lhs, self.lhs.key_name).as_oracle(
-                    compiler, connection
-                )
+                return JsonHasKey(self.lhs.lhs, self.lhs.key_name).as_oracle(compiler, connection)
             return super().as_sql(compiler, connection)
 
         def as_sqlite(self, compiler, connection):
             if not self.rhs:
-                return JsonHasKey(self.lhs.lhs, self.lhs.key_name).as_sqlite(
-                    compiler, connection
-                )
+                return JsonHasKey(self.lhs.lhs, self.lhs.key_name).as_sqlite(compiler, connection)
             return super().as_sql(compiler, connection)
 
     @JsonKeyTransform.register_lookup
@@ -641,9 +616,7 @@ if django_version < (3, 1) or settings.COMMON_JSONFIELD:
             if is_sqlite(connection):
                 rhs, rhs_params = super().process_rhs(compiler, connection)
                 if rhs == "%s" and rhs_params == ["null"]:
-                    lhs, _ = self.lhs.preprocess_lhs(
-                        compiler, connection, lhs_only=True
-                    )
+                    lhs, _ = self.lhs.preprocess_lhs(compiler, connection, lhs_only=True)
                     lhs = "JSON_TYPE(%s, %%s)" % lhs
             return lhs, lhs_params
 
@@ -660,11 +633,7 @@ if django_version < (3, 1) or settings.COMMON_JSONFIELD:
                 func = []
                 for value in rhs_params:
                     value = json_decode(value)
-                    function = (
-                        "JSON_QUERY"
-                        if isinstance(value, (list, dict))
-                        else "JSON_VALUE"
-                    )
+                    function = "JSON_QUERY" if isinstance(value, (list, dict)) else "JSON_VALUE"
                     func.append(
                         "%s('%s', '$.value')"
                         % (
@@ -675,10 +644,7 @@ if django_version < (3, 1) or settings.COMMON_JSONFIELD:
                 rhs = rhs % tuple(func)
                 rhs_params = []
             elif is_sqlite(connection):
-                func = [
-                    "JSON_EXTRACT(%s, '$')" if value != "null" else "%s"
-                    for value in rhs_params
-                ]
+                func = ["JSON_EXTRACT(%s, '$')" if value != "null" else "%s" for value in rhs_params]
                 rhs = rhs % tuple(func)
             return rhs, rhs_params
 
@@ -687,9 +653,7 @@ if django_version < (3, 1) or settings.COMMON_JSONFIELD:
             rhs, rhs_params = super().process_rhs(compiler, connection)
             if rhs_params == ["null"]:
                 has_key_expr = JsonHasKey(self.lhs.lhs, self.lhs.key_name)
-                has_key_sql, has_key_params = has_key_expr.as_oracle(
-                    compiler, connection
-                )
+                has_key_sql, has_key_params = has_key_expr.as_oracle(compiler, connection)
                 is_null_expr = self.lhs.get_lookup("isnull")(self.lhs, True)
                 is_null_sql, is_null_params = is_null_expr.as_sql(compiler, connection)
                 return (
@@ -714,9 +678,7 @@ if django_version < (3, 1) or settings.COMMON_JSONFIELD:
             return rhs, rhs_params
 
     @JsonKeyTransform.register_lookup
-    class JsonKeyTransformIExact(
-        CaseInsensitiveMixin, JsonKeyTransformTextLookupMixin, lookups.IExact
-    ):
+    class JsonKeyTransformIExact(CaseInsensitiveMixin, JsonKeyTransformTextLookupMixin, lookups.IExact):
         pass
 
     @JsonKeyTransform.register_lookup
@@ -724,21 +686,15 @@ if django_version < (3, 1) or settings.COMMON_JSONFIELD:
         pass
 
     @JsonKeyTransform.register_lookup
-    class JsonKeyTransformIContains(
-        CaseInsensitiveMixin, JsonKeyTransformTextLookupMixin, lookups.IContains
-    ):
+    class JsonKeyTransformIContains(CaseInsensitiveMixin, JsonKeyTransformTextLookupMixin, lookups.IContains):
         pass
 
     @JsonKeyTransform.register_lookup
-    class JsonKeyTransformStartsWith(
-        JsonKeyTransformTextLookupMixin, lookups.StartsWith
-    ):
+    class JsonKeyTransformStartsWith(JsonKeyTransformTextLookupMixin, lookups.StartsWith):
         pass
 
     @JsonKeyTransform.register_lookup
-    class JsonKeyTransformIStartsWith(
-        CaseInsensitiveMixin, JsonKeyTransformTextLookupMixin, lookups.IStartsWith
-    ):
+    class JsonKeyTransformIStartsWith(CaseInsensitiveMixin, JsonKeyTransformTextLookupMixin, lookups.IStartsWith):
         pass
 
     @JsonKeyTransform.register_lookup
@@ -746,9 +702,7 @@ if django_version < (3, 1) or settings.COMMON_JSONFIELD:
         pass
 
     @JsonKeyTransform.register_lookup
-    class JsonKeyTransformIEndsWith(
-        CaseInsensitiveMixin, JsonKeyTransformTextLookupMixin, lookups.IEndsWith
-    ):
+    class JsonKeyTransformIEndsWith(CaseInsensitiveMixin, JsonKeyTransformTextLookupMixin, lookups.IEndsWith):
         pass
 
     @JsonKeyTransform.register_lookup
@@ -756,9 +710,7 @@ if django_version < (3, 1) or settings.COMMON_JSONFIELD:
         pass
 
     @JsonKeyTransform.register_lookup
-    class JsonKeyTransformIRegex(
-        CaseInsensitiveMixin, JsonKeyTransformTextLookupMixin, lookups.IRegex
-    ):
+    class JsonKeyTransformIRegex(CaseInsensitiveMixin, JsonKeyTransformTextLookupMixin, lookups.IRegex):
         pass
 
     class JsonKeyTransformNumericLookupMixin:
@@ -782,9 +734,7 @@ if django_version < (3, 1) or settings.COMMON_JSONFIELD:
         pass
 
     @JsonKeyTransform.register_lookup
-    class KeyTransformGte(
-        JsonKeyTransformNumericLookupMixin, lookups.GreaterThanOrEqual
-    ):
+    class KeyTransformGte(JsonKeyTransformNumericLookupMixin, lookups.GreaterThanOrEqual):
         pass
 
     class JsonKeyTransformFactory(object):
@@ -797,14 +747,7 @@ if django_version < (3, 1) or settings.COMMON_JSONFIELD:
 
 # Substitue le champ JSON du common par la version générique introduite par Django 3.1
 else:
-    from django.db.models.fields.json import (
-        ContainedBy,
-        DataContains,
-        HasAnyKeys,
-        HasKey,
-        HasKeys,
-        JSONField,
-    )
+    from django.db.models.fields.json import ContainedBy, DataContains, HasAnyKeys, HasKey, HasKeys, JSONField
 
     from common.utils import JsonDecoder, JsonEncoder
 
@@ -900,9 +843,7 @@ try:
             """
             if CustomUnaccent.has_unaccent is None and is_postgresql(connection):
                 cursor = connection.cursor()
-                cursor.execute(
-                    "SELECT COUNT(proname) FROM pg_proc WHERE proname = 'f_unaccent';"
-                )
+                cursor.execute("SELECT COUNT(proname) FROM pg_proc WHERE proname = 'f_unaccent';")
                 response = cursor.fetchone()
                 CustomUnaccent.has_unaccent = response and response[0] > 0
             if CustomUnaccent.has_unaccent:

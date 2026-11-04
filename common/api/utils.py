@@ -24,8 +24,8 @@ from rest_framework.decorators import api_view
 from rest_framework.exceptions import NotFound, PermissionDenied, ValidationError
 from rest_framework.response import Response
 
-from common.api.fields import ChoiceDisplayField, ReadOnlyObjectField
 from common.api.decorators import atomic as atomic_view
+from common.api.fields import ChoiceDisplayField, ReadOnlyObjectField
 from common.settings import settings
 from common.utils import (
     get_field_by_path,
@@ -227,9 +227,7 @@ MULTI_LOOKUPS = [
 ]
 BOOL_LOOKUPS = ["__isnull", "__isempty"]
 JSON_LOOKUPS = ["__contains", "__contained_by", "__hasdict", "__indict"]
-SEARCH_FORMAT = re.compile(
-    r"(?P<search_type>\w+)?\((?P<query>.*)\)(?P<config>\[?[\w.]+]?)?"
-)
+SEARCH_FORMAT = re.compile(r"(?P<search_type>\w+)?\((?P<query>.*)\)(?P<config>\[?[\w.]+]?)?")
 
 
 # Parsing des arguments, chemins, tris et expressions de filtres
@@ -286,16 +284,10 @@ def parse_arg_value(value, keep=False, key=None):
             if output_field := CASTS.get(cast.lower()):
                 value = functions.Cast(value, output_field=output_field)
             return value
-        if (
-            is_postgresql
-            and key != "filters"
-            and (search := SEARCH_FORMAT.match(value))
-        ):
+        if is_postgresql and key != "filters" and (search := SEARCH_FORMAT.match(value)):
             params = search.groupdict()
             query = params.get("query")
-            config = parse_arg_value(params.get("config"), key=key) or params.get(
-                "config"
-            )
+            config = parse_arg_value(params.get("config"), key=key) or params.get("config")
             search_type = (params.pop("search_type") or "custom").lower()
             search_type = {
                 "c": "custom",
@@ -399,9 +391,7 @@ def parse_filters(filters):
                 filters = filters.replace(f'"{items}"', f"({values})")
             filters = ast.literal_eval(filters)
         except Exception as exception:
-            raise Exception(
-                "{filters}: {exception}".format(filters=filters, exception=exception)
-            )
+            raise Exception("{filters}: {exception}".format(filters=filters, exception=exception))
     if isinstance(filters, dict):
         filters = (filters,)
     operator = None
@@ -433,9 +423,7 @@ def parse_filters(filters):
 # --------------------------------------
 
 
-def to_model_serializer(
-    model, read_only=False, display=True, related_ids=True, **metadata
-):
+def to_model_serializer(model, read_only=False, display=True, related_ids=True, **metadata):
     """
     Décorateur permettant d'associer un modèle à une définition de serializer
     Modifie la classe décorée : construit Meta et ajoute les champs JSON,
@@ -464,29 +452,21 @@ def to_model_serializer(
 
             # Injection des identifiants de clés étrangères
             if HYPERLINKED and related_ids and field.related_model:
-                serializer._declared_fields[field.name + "_id"] = (
-                    serializers.ReadOnlyField()
-                )
+                serializer._declared_fields[field.name + "_id"] = serializers.ReadOnlyField()
                 if "fields" in metadata and "exclude" not in metadata:
-                    metadata["fields"] = list(metadata.get("fields", [])) + [
-                        field.name + "_id"
-                    ]
+                    metadata["fields"] = list(metadata.get("fields", [])) + [field.name + "_id"]
 
             # Injection des valeurs humaines pour les champs ayant une liste de choix
             if display and field.choices:
                 serializer_field_name = "{}_display".format(field.name)
                 source_field_name = "get_{}".format(serializer_field_name)
-                serializer._declared_fields[serializer_field_name] = (
-                    serializers.CharField(
-                        source=source_field_name,
-                        label=field.verbose_name or field.name,
-                        read_only=True,
-                    )
+                serializer._declared_fields[serializer_field_name] = serializers.CharField(
+                    source=source_field_name,
+                    label=field.verbose_name or field.name,
+                    read_only=True,
                 )
                 if "fields" in metadata and "exclude" not in metadata:
-                    metadata["fields"] = list(metadata.get("fields", [])) + [
-                        serializer_field_name
-                    ]
+                    metadata["fields"] = list(metadata.get("fields", [])) + [serializer_field_name]
 
             # Injection des données des champs de type JSON
             if isinstance(field, ModelJsonField):
@@ -511,9 +491,7 @@ def to_model_serializer(
     return wrapper
 
 
-def to_model_viewset(
-    model, serializer, permissions=None, queryset=None, bases=None, **metadata
-):
+def to_model_viewset(model, serializer, permissions=None, queryset=None, bases=None, **metadata):
     """
     Décorateur permettant d'associer un modèle et un serializer à une définition de viewset
     Affecte les variantes de serializer, le queryset et les classes de permission
@@ -533,13 +511,9 @@ def to_model_viewset(
         viewset.queryset = queryset or model.objects.all()
         viewset.model = model
         viewset.serializer_class = serializer
-        viewset.simple_serializer = create_model_serializer(
-            model, bases=bases, **metadata
-        )
+        viewset.simple_serializer = create_model_serializer(model, bases=bases, **metadata)
         excludes_many_to_many_from_serializer(viewset.simple_serializer)
-        viewset.default_serializer = create_model_serializer(
-            model, bases=bases, hyperlinked=False, **metadata
-        )
+        viewset.default_serializer = create_model_serializer(model, bases=bases, hyperlinked=False, **metadata)
         viewset.permission_classes = permissions or [CommonModelPermissions]
         return viewset
 
@@ -561,14 +535,11 @@ def excludes_many_to_many_from_serializer(serializer):
         del serializer.Meta.fields
     if fields is None:
         serializer.Meta.exclude = list(
-            set(getattr(serializer.Meta, "exclude", []))
-            | {field.name for field in model._meta.many_to_many}
+            set(getattr(serializer.Meta, "exclude", [])) | {field.name for field in model._meta.many_to_many}
         )
 
 
-def create_model_serializer(
-    model, bases=None, attributes=None, hyperlinked=HYPERLINKED, **metas
-):
+def create_model_serializer(model, bases=None, attributes=None, hyperlinked=HYPERLINKED, **metas):
     """
     Permet de créer le ModelSerializer pour le modèle fourni en paramètre
     :param model: Modèle à sérialiser
@@ -578,21 +549,11 @@ def create_model_serializer(
     :param metas: Métadonnées du serializer
     :return: serializer
     """
-    from common.api.serializers import (
-        BaseCommonModelSerializer,
-        CommonHyperlinkedModelSerializer,
-    )
+    from common.api.serializers import BaseCommonModelSerializer, CommonHyperlinkedModelSerializer
 
     serializer = type(
         "{}GenericSerializer".format(model._meta.object_name),
-        (
-            bases
-            or (
-                (CommonHyperlinkedModelSerializer,)
-                if hyperlinked
-                else (BaseCommonModelSerializer,)
-            )
-        ),
+        (bases or ((CommonHyperlinkedModelSerializer,) if hyperlinked else (BaseCommonModelSerializer,))),
         (attributes or {}),
     )
     return to_model_serializer(model, **metas)(serializer)
@@ -671,19 +632,12 @@ def create_model_serializer_and_viewset(
     object_name = model._meta.object_name
 
     # Héritages du serializer et viewset
-    from common.api.serializers import (
-        BaseCommonModelSerializer,
-        CommonHyperlinkedModelSerializer,
-    )
+    from common.api.serializers import BaseCommonModelSerializer, CommonHyperlinkedModelSerializer
     from common.api.viewsets import CommonModelViewSet
 
     _serializer_base = (serializer_base or {}).get(
         model,
-        (
-            (CommonHyperlinkedModelSerializer,)
-            if hyperlinked
-            else (BaseCommonModelSerializer,)
-        ),
+        ((CommonHyperlinkedModelSerializer,) if hyperlinked else (BaseCommonModelSerializer,)),
     )
     _viewset_base = (viewset_base or {}).get(model, (CommonModelViewSet,))
 
@@ -699,11 +653,7 @@ def create_model_serializer_and_viewset(
     _viewset_data = (viewset_data or {}).get(model, {}).copy()
 
     # Métadonnées du serializer
-    exclude_related = (
-        exclude_related
-        if isinstance(exclude_related, dict)
-        else {model: exclude_related or []}
-    )
+    exclude_related = exclude_related if isinstance(exclude_related, dict) else {model: exclude_related or []}
     metadata = (metas or {}).get(model, {})
     metadata.update(options)
     metadata["extra_kwargs"] = metadata.get("extra_kwargs", {})
@@ -711,17 +661,16 @@ def create_model_serializer_and_viewset(
     # Vérifie qu'un nom de champ donné est inclu ou exclu
     def field_allowed(field_name):
         return field_name in metadata.get("fields", []) or (
-            field_name not in metadata.get("exclude", [])
-            and field_name not in exclude_related.get(model, [])
+            field_name not in metadata.get("exclude", []) and field_name not in exclude_related.get(model, [])
         )
 
     # Création du serializer et du viewset
     serializer = to_model_serializer(model, **metadata)(
         type(object_name + "Serializer", _serializer_base, _serializer_data)
     )
-    viewset = to_model_viewset(
-        model, serializer, permissions, bases=_bases, **metadata
-    )(type(object_name + "ViewSet", _viewset_base, _viewset_data))
+    viewset = to_model_viewset(model, serializer, permissions, bases=_bases, **metadata)(
+        type(object_name + "ViewSet", _viewset_base, _viewset_data)
+    )
 
     # Surcharge du queryset par défaut dans le viewset
     if queryset is not None:
@@ -730,17 +679,11 @@ def create_model_serializer_and_viewset(
     # Gestion des clés étrangères
     relateds = set()
     prefetchs = set()
-    prefetchs_metadata = (
-        set()
-    )  # Prefetch pour récupérer les métadonnées à chaque niveau
+    prefetchs_metadata = set()  # Prefetch pour récupérer les métadonnées à chaque niveau
     excludes = set()
 
     for field in model._meta.fields:
-        if (
-            field.primary_key
-            or not field.remote_field
-            or field.related_model is _origin
-        ):
+        if field.primary_key or not field.remote_field or field.related_model is _origin:
             continue
         # Vérification que le champ est bien inclu ou n'est pas exclu
         if not field_allowed(field.name):
@@ -787,14 +730,8 @@ def create_model_serializer_and_viewset(
             )
         elif _level > 0:
             # Les clés étrangères des relations inversées qui pointent sur le modèle d'origine peuvent être nulles
-            if (
-                field.remote_field
-                and not field.primary_key
-                and field.related_model is _origin
-            ):
-                serializer.Meta.extra_kwargs[field.name] = dict(
-                    required=False, allow_null=True
-                )
+            if field.remote_field and not field.primary_key and field.related_model is _origin:
+                serializer.Meta.extra_kwargs[field.name] = dict(required=False, allow_null=True)
         # Prefetch des métadonnées
         prefetchs_metadata.update(prefetch_metadata(field.related_model, field.name))
 
@@ -827,14 +764,10 @@ def create_model_serializer_and_viewset(
                 _origin=model,
                 _field=field.name,
             )
-            serializer._declared_fields[field.name] = m2m_serializer(
-                many=True, read_only=True
-            )
+            serializer._declared_fields[field.name] = m2m_serializer(many=True, read_only=True)
             prefetchs.add(field.name)
             # Prefetch des métadonnées
-            prefetchs_metadata.update(
-                prefetch_metadata(field.related_model, field.name)
-            )
+            prefetchs_metadata.update(prefetch_metadata(field.related_model, field.name))
     else:
         # Exclusion du champ many-to-many du serializer
         excludes_many_to_many_from_serializer(viewset.serializer_class)
@@ -921,9 +854,7 @@ def create_model_serializer_and_viewset(
                 _origin=model,
                 _field=field_name,
             )
-            serializer._declared_fields[field_name] = child_serializer(
-                many=True, read_only=True
-            )
+            serializer._declared_fields[field_name] = child_serializer(many=True, read_only=True)
 
     # Récupération des relations inversées
     arguments = dict(
@@ -1019,9 +950,7 @@ def api_view_with_serializer(
                 return Response(result)
             try:
                 many = isinstance(result, (list, QuerySet))
-                return Response(
-                    serializer(result, many=many, context=dict(request=request)).data
-                )
+                return Response(serializer(result, many=many, context=dict(request=request)).data)
             except Exception as exception:  # noqa
                 if atomic:
                     raise
@@ -1057,9 +986,7 @@ def api_view_with_serializer(
                     def handler(self, request, *args, **kwargs):
                         partial = kwargs.pop("partial", False)
                         instance = self.get_object()
-                        serializer_instance = self.get_serializer(
-                            instance, data=request.data, partial=partial
-                        )
+                        serializer_instance = self.get_serializer(instance, data=request.data, partial=partial)
                         serializer_instance.is_valid(raise_exception=True)
                         request.validated_data = serializer_instance.validated_data
                         return put_handler(self, request, *args, **kwargs)
@@ -1116,9 +1043,7 @@ def auto_view(
     :param func_kwargs: Arguments optionnels nommés de la fonction de récupération
     :return: API View
     """
-    query_func = (
-        (query_func or QuerySet.all) if many else (query_func or QuerySet.first)
-    )
+    query_func = (query_func or QuerySet.all) if many else (query_func or QuerySet.first)
     func_args = func_args or []
     func_kwargs = func_kwargs or {}
 
@@ -1148,9 +1073,7 @@ def auto_view(
                 raise NotFound()
             if not serializer:
                 return Response(queryset)
-            return Response(
-                serializer(queryset, context=dict(request=request, **context)).data
-            )
+            return Response(serializer(queryset, context=dict(request=request, **context)).data)
 
         return api_view_with_serializer(
             http_method_names=http_method_names,
@@ -1205,9 +1128,7 @@ def api_paginate(
 
     url_params = request.query_params.dict()
     context = dict(request=request, **(context or {}))
-    options = dict(
-        aggregates=None, annotates=None, distinct=None, filters=None, order_by=None
-    )
+    options = dict(aggregates=None, annotates=None, distinct=None, filters=None, order_by=None)
 
     # Activation des options
     if enable_options:
@@ -1218,9 +1139,7 @@ def api_paginate(
         base_url = request.build_absolute_uri(request.path)
 
         # Critères de recherche dans le cache
-        cache_key, save_as = url_params.pop("cache", None), url_params.pop(
-            "save_as", None
-        )
+        cache_key, save_as = url_params.pop("cache", None), url_params.pop("save_as", None)
         if cache_key:
             from django.core.cache import cache
 
@@ -1230,9 +1149,7 @@ def api_paginate(
                 new_url_params.update(**cache_params)
                 new_url_params.update(**url_params)
                 url_params = new_url_params
-                raw_url, cache_url = "{}?".format(base_url), "{}?cache={}".format(
-                    base_url, cache_key
-                )
+                raw_url, cache_url = "{}?".format(base_url), "{}?cache={}".format(base_url, cache_key)
                 for key, value in url_params.items():
                     raw_url += "&{}={}".format(key, value)
                 options["raw_url"] = raw_url
@@ -1246,23 +1163,15 @@ def api_paginate(
             cache_key = save_as or cache_key
             cache_params = url_params if save_as else options.get("cache_data")
             if cache_params:
-                cache_timeout = (
-                    int(url_params.pop("timeout", settings.API_CACHE_TIMEOUT)) or None
-                )
-                cache_expires = (
-                    now() + timedelta(seconds=cache_timeout)
-                    if cache_timeout
-                    else "never"
-                )
+                cache_timeout = int(url_params.pop("timeout", settings.API_CACHE_TIMEOUT)) or None
+                cache_expires = now() + timedelta(seconds=cache_timeout) if cache_timeout else "never"
                 cache.set(
                     settings.API_CACHE_PREFIX + cache_key,
                     cache_params,
                     timeout=cache_timeout,
                 )
                 if not options.get("cache_data"):
-                    raw_url, cache_url = "{}?".format(base_url), "{}?cache={}".format(
-                        base_url, cache_key
-                    )
+                    raw_url, cache_url = "{}?".format(base_url), "{}?cache={}".format(base_url, cache_key)
                     for key, value in url_params.items():
                         raw_url += "&{}={}".format(key, value)
                     options["raw_url"] = raw_url
@@ -1281,13 +1190,9 @@ def api_paginate(
                     if key in reserved_query_params:
                         continue
                     is_exclude = key.startswith("-")
-                    key = (
-                        key.strip().strip("-").strip("+").strip("@").replace(".", "__")
-                    )
+                    key = key.strip().strip("-").strip("+").strip("@").replace(".", "__")
                     value = url_value(key, parse_arg_value(value, key=key) or value)
-                    filters.append(
-                        ~Q(**{key: value}) if is_exclude else Q(**{key: value})
-                    )
+                    filters.append(~Q(**{key: value}) if is_exclude else Q(**{key: value}))
                 for filter in filters:
                     queryset = queryset.filter(filter)
                 # Filtres génériques
@@ -1326,19 +1231,11 @@ def api_paginate(
                     if any(field_name.endswith(":{}".format(cast)) for cast in CASTS):
                         field_name, *_, cast = field_name.split(":")
                         output_field = CASTS.get(cast.lower())
-                        field = (
-                            functions.Cast(field_name, output_field=output_field)
-                            if output_field
-                            else field_name
-                        )
-                    field_rename = field_rename or (
-                        (annotation + "__" + field_name) if field_name else annotation
-                    )
+                        field = functions.Cast(field_name, output_field=output_field) if output_field else field_name
+                    field_rename = field_rename or ((annotation + "__" + field_name) if field_name else annotation)
                     if field:
                         function_args.insert(0, field)
-                    annotations[field_rename] = function(
-                        *function_args, **function_kwargs
-                    )
+                    annotations[field_rename] = function(*function_args, **function_kwargs)
             if annotations:
                 queryset = queryset.annotate(**annotations)
                 options["annotates"] = True
@@ -1373,19 +1270,11 @@ def api_paginate(
                     if any(field_name.endswith(":{}".format(cast)) for cast in CASTS):
                         field_name, *_, cast = field_name.split(":")
                         output_field = CASTS.get(cast.lower())
-                        field = (
-                            functions.Cast(field_name, output_field=output_field)
-                            if output_field
-                            else field_name
-                        )
-                    field_rename = field_rename or (
-                        (aggregate + "__" + field_name) if field_name else aggregate
-                    )
+                        field = functions.Cast(field_name, output_field=output_field) if output_field else field_name
+                    field_rename = field_rename or ((aggregate + "__" + field_name) if field_name else aggregate)
                     if distinct:
                         function_kwargs.update(distinct=distinct)
-                    aggregations[field_rename] = function(
-                        field, *function_args, **function_kwargs
-                    )
+                    aggregations[field_rename] = function(field, *function_args, **function_kwargs)
             group_by = url_params.get("group_by", "")
             if group_by:
                 _queryset = queryset.values(*group_by.replace(".", "__").split(","))
@@ -1402,21 +1291,12 @@ def api_paginate(
                     # Résoudre les agrégats sur une copie inclut leurs jointures sans exécuter le SQL.
                     permission_queryset = queryset.all()
                     for aggregation in aggregations.values():
-                        aggregation.resolve_expression(
-                            permission_queryset.query, summarize=True
-                        )
-                    new_queryset_models = (
-                        get_models_from_queryset(permission_queryset)
-                        - base_queryset_models
-                    )
-                    permissions = get_model_permissions(
-                        request.user, *new_queryset_models
-                    )
+                        aggregation.resolve_expression(permission_queryset.query, summarize=True)
+                    new_queryset_models = get_models_from_queryset(permission_queryset) - base_queryset_models
+                    permissions = get_model_permissions(request.user, *new_queryset_models)
                     for permission_code, permission_value in permissions.items():
                         if not permission_value:
-                            raise PermissionDenied(
-                                {permission_code: PermissionDenied.default_detail}
-                            )
+                            raise PermissionDenied({permission_code: PermissionDenied.default_detail})
                 return queryset.aggregate(**aggregations)
         except (ValidationError, PermissionDenied):
             raise
@@ -1446,13 +1326,9 @@ def api_paginate(
                         order_by_kwargs.update(nulls_last=True)
                     order = order.removesuffix("<").removesuffix(">")
                     if order.startswith("-"):
-                        orders.append(
-                            F(order.strip().removeprefix("-")).desc(**order_by_kwargs)
-                        )
+                        orders.append(F(order.strip().removeprefix("-")).desc(**order_by_kwargs))
                     else:
-                        orders.append(
-                            F(order.strip().removeprefix("+")).asc(**order_by_kwargs)
-                        )
+                        orders.append(F(order.strip().removeprefix("+")).asc(**order_by_kwargs))
                 temp_queryset = queryset.order_by(*orders)
                 str(temp_queryset.query)  # Force SQL evaluation to retrieve exception
                 queryset = temp_queryset
@@ -1514,17 +1390,11 @@ def api_paginate(
         def add_field_to_serializer(fields, field_name):
             source = field_name.replace(".", "__")
             # Champ spécifique en cas d'énumération
-            choices = getattr(
-                get_field_by_path(queryset.model, field_name), "flatchoices", None
-            )
+            choices = getattr(get_field_by_path(queryset.model, field_name), "flatchoices", None)
             if choices and str_to_bool(url_params.get("display", "")):
-                fields[field_name + "_display"] = ChoiceDisplayField(
-                    choices=choices, source=source
-                )
+                fields[field_name + "_display"] = ChoiceDisplayField(choices=choices, source=source)
             # Champ spécifique pour l'affichage de la valeur
-            fields[field_name] = ReadOnlyObjectField(
-                source=source if "." in field_name else None
-            )
+            fields[field_name] = ReadOnlyObjectField(source=source if "." in field_name else None)
 
         # Création de serializer à la volée en cas d'aggregation ou de restriction de champs
         aggregations = {}
@@ -1535,9 +1405,7 @@ def api_paginate(
                 field_name = (aggregate + "__" + field.strip()) if field else aggregate
                 field_name, field_rename = (field_name.split("|") + [""])[:2]
                 source = field_name.replace(".", "__") if "." in field else None
-                aggregations[field_rename or field_name] = serializers.ReadOnlyField(
-                    source=source
-                )
+                aggregations[field_rename or field_name] = serializers.ReadOnlyField(source=source)
 
         # Regroupements & aggregations
         if "group_by" in url_params or aggregations:
@@ -1564,20 +1432,12 @@ def api_paginate(
             )
 
         # Vérifie les droits sur les différents modèles traversés
-        if (
-            settings.ENABLE_API_PERMISSIONS
-            and request.user
-            and hasattr(queryset, "query")
-        ):
-            new_queryset_models = (
-                get_models_from_queryset(queryset) - base_queryset_models
-            )
+        if settings.ENABLE_API_PERMISSIONS and request.user and hasattr(queryset, "query"):
+            new_queryset_models = get_models_from_queryset(queryset) - base_queryset_models
             permissions = get_model_permissions(request.user, *new_queryset_models)
             for permission_code, permission_value in permissions.items():
                 if not permission_value:
-                    raise PermissionDenied(
-                        {permission_code: PermissionDenied.default_detail}
-                    )
+                    raise PermissionDenied({permission_code: PermissionDenied.default_detail})
 
     # Fonction spécifique
     if query_func:
@@ -1598,16 +1458,10 @@ def api_paginate(
     if hasattr(queryset, "ordered") and not queryset.ordered:
         primary_key = get_pk_field(queryset.model)
         queryset = queryset.order_by(
-            *(
-                getattr(queryset, "_fields", None)
-                or (enable_options and distincts)
-                or [primary_key.name]
-            )
+            *(getattr(queryset, "_fields", None) or (enable_options and distincts) or [primary_key.name])
         )
 
-    serializer = serializer(
-        paginator.paginate_queryset(queryset, request), context=context, many=True
-    )
+    serializer = serializer(paginator.paginate_queryset(queryset, request), context=context, many=True)
     return paginator.get_paginated_response(serializer.data)
 
 
@@ -1700,9 +1554,7 @@ def create_api(
     from rest_framework import routers
 
     router = router or routers.DefaultRouter()
-    for model, viewset in sorted(
-        viewsets.items(), key=lambda key: key[0]._meta.model_name
-    ):
+    for model, viewset in sorted(viewsets.items(), key=lambda key: key[0]._meta.model_name):
         code = model._meta.model_name
         router.register(code, viewset, basename=code)
 

@@ -17,9 +17,7 @@ try:
         """
         import jwt
 
-        return jwt.encode(
-            payload, str(api_settings.JWT_SECRET_KEY), str(api_settings.JWT_ALGORITHM)
-        ).decode("utf-8")
+        return jwt.encode(payload, str(api_settings.JWT_SECRET_KEY), str(api_settings.JWT_ALGORITHM)).decode("utf-8")
 
     def jwt_decode_handler(token):
         """

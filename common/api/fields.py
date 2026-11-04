@@ -7,20 +7,10 @@ from django.urls import NoReverseMatch
 from rest_framework import serializers
 from rest_framework.exceptions import ValidationError
 from rest_framework.fields import ChoiceField, Field, ReadOnlyField
-from rest_framework.relations import (
-    HyperlinkedIdentityField,
-    HyperlinkedRelatedField,
-    PrimaryKeyRelatedField,
-)
+from rest_framework.relations import HyperlinkedIdentityField, HyperlinkedRelatedField, PrimaryKeyRelatedField
 
 from common.settings import settings
-from common.utils import (
-    JsonDecoder,
-    JsonEncoder,
-    get_pk_field,
-    json_encode,
-    recursive_get_urls,
-)
+from common.utils import JsonDecoder, JsonEncoder, get_pk_field, json_encode, recursive_get_urls
 
 # JSON natif et adaptateur de compatibilité
 # ----------------------------------------
@@ -75,9 +65,7 @@ class QuerySetChoiceField(ChoiceField):
     Surcharge d'un champ de choix se comportant comme une clé étrangère avec l'option de choisir la clé et le libellé
     """
 
-    def __init__(
-        self, model, value=None, label=None, filters=None, order_by=None, **kwargs
-    ):
+    def __init__(self, model, value=None, label=None, filters=None, order_by=None, **kwargs):
         """Charge les choix (colonne value, colonne label) du modèle à l'initialisation.
 
         filters est un mapping de lookups ORM et order_by un nom de champ signé.
@@ -146,11 +134,7 @@ class ReadOnlyObjectField(ReadOnlyField):
         if not isinstance(value, models.Model):
             return value
         pk_field = get_pk_field(value).name
-        return (
-            value.to_dict()
-            if hasattr(value, "to_dict")
-            else getattr(value, pk_field, value)
-        )
+        return value.to_dict() if hasattr(value, "to_dict") else getattr(value, pk_field, value)
 
 
 # Relations hyperliées et représentation asymétrique lecture/écriture
@@ -175,9 +159,7 @@ class CustomHyperlinkedField:
         # Tente de récupérer l'URL dans les APIs qui correspondent exactement au modèle ciblé
         if self.view_name and self.queryset:
             model = self.queryset.model
-            views = self.views_for_model.setdefault(
-                model, list(recursive_get_urls(model=model))
-            )
+            views = self.views_for_model.setdefault(model, list(recursive_get_urls(model=model)))
             for view_name, url in views:
                 if view_name.endswith(self.view_name):
                     self.view_name = view_name
@@ -198,17 +180,13 @@ class CustomHyperlinkedField:
 
         try:
             # Récupération du modèle de la clé étrangère via le modèle du Serializer parent
-            model = self.parent.Meta.model._meta.get_field(
-                self.field_name
-            ).related_model
+            model = self.parent.Meta.model._meta.get_field(self.field_name).related_model
         except Exception:
             # Récupération du modèle lié au QuerySet
             model = getattr(getattr(self, "queryset", None), "model", None) or type(obj)
 
         # Tente de récupérer l'URL dans les APIs qui correspondent exactement au modèle ciblé
-        views = self.views_for_model.setdefault(
-            model, list(recursive_get_urls(model=model))
-        )
+        views = self.views_for_model.setdefault(model, list(recursive_get_urls(model=model)))
         for try_view_name, url in views:
             if try_view_name.endswith(view_name):
                 view_name = try_view_name
@@ -216,9 +194,7 @@ class CustomHyperlinkedField:
         lookup_value = getattr(obj, self.lookup_field)
         kwargs = {self.lookup_url_kwarg: lookup_value}
         try:
-            return self.reverse(
-                view_name, kwargs=kwargs, request=request, format=format
-            )
+            return self.reverse(view_name, kwargs=kwargs, request=request, format=format)
         except NoReverseMatch:
             return None
 
@@ -262,9 +238,7 @@ class AsymetricRelatedField(serializers.PrimaryKeyRelatedField):
         """
         if name is None:
             item = (
-                serializer.Meta.model
-                if isinstance(serializer, serializers.ModelSerializer)
-                else serializer.__class__
+                serializer.Meta.model if isinstance(serializer, serializers.ModelSerializer) else serializer.__class__
             )
             name = "{}AsymetricAutoField".format(item.__name__)
         return type(name, (cls,), {"serializer_class": serializer})

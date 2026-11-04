@@ -58,7 +58,5 @@ class QueryExecutionTests(TestCase):
     def test_nested_filter_executes_with_expected_results(self):
         Webhook.objects.create(name="first", url="https://example.com", timeout=10)
         Webhook.objects.create(name="second", url="https://example.com", timeout=20)
-        result = Webhook.objects.filter(
-            parse_filters("and(or(name:first,name:second),timeout__gte:15)")
-        )
+        result = Webhook.objects.filter(parse_filters("and(or(name:first,name:second),timeout__gte:15)"))
         self.assertEqual(list(result.values_list("name", flat=True)), ["second"])

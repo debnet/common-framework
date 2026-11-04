@@ -41,9 +41,7 @@ class CommonModelPermissions(permissions.DjangoModelPermissions):
         try:
             return super().has_permission(request, view)
         except (AssertionError, AttributeError):
-            return request.user and (
-                request.user.is_authenticated or not self.authenticated_users_only
-            )
+            return request.user and (request.user.is_authenticated or not self.authenticated_users_only)
 
 
 class CurrentUserPermissions(CommonModelPermissions):
@@ -68,11 +66,7 @@ class CurrentUserPermissions(CommonModelPermissions):
         if has_permission:
             return True
         model = view.queryset.model
-        if (
-            not request.user
-            or view.action not in ["list", "retrieve"]
-            or model not in self.filters
-        ):
+        if not request.user or view.action not in ["list", "retrieve"] or model not in self.filters:
             return False
         view.queryset = view.get_queryset().filter(**self.filters.get(model)(request))
         return view.queryset.exists() if view.action == "retrieve" else True

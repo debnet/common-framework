@@ -21,7 +21,7 @@ import sys
 import threading
 from collections.abc import MutableMapping
 from contextlib import contextmanager
-from datetime import date, datetime, time, timedelta
+from datetime import UTC, date, datetime, time, timedelta
 from decimal import ROUND_HALF_EVEN, Decimal, InvalidOperation
 from functools import lru_cache, partial, wraps
 from importlib import import_module
@@ -89,13 +89,13 @@ def timed_cache(**dkwargs):
         maxsize = dkwargs.pop("maxsize", None)
         typed = dkwargs.pop("typed", False)
         update_delta = timedelta(**dkwargs)
-        next_update = datetime.utcnow() - update_delta
+        next_update = datetime.now(UTC) - update_delta
         func = lru_cache(maxsize=maxsize, typed=typed)(func)
 
         @wraps(func)
         def _wrapped(*args, **kwargs):
             nonlocal next_update
-            utcnow = datetime.utcnow()
+            utcnow = datetime.now(UTC)
             if utcnow >= next_update:
                 func.cache_clear()
                 next_update = utcnow + update_delta
@@ -177,9 +177,7 @@ class CeleryFake:
             def wrapped(*args, **kwargs):
                 return func(*args, **kwargs)
 
-            wrapped.apply = lambda args=None, kwargs=None, **options: func(
-                *(args or []), **(kwargs or {})
-            )
+            wrapped.apply = lambda args=None, kwargs=None, **options: func(*(args or []), **(kwargs or {}))
             wrapped.apply_async = wrapped.apply
             return wrapped
 
@@ -209,9 +207,7 @@ def get_current_app():
 # -----------------------
 
 # Regex de date au format DMY
-DMY_DATE_REGEX = re.compile(
-    r"^(\d{2})[^\d]?(\d{2})[^\d]?(\d{2,4})([^\d]?(\d{2})[^\d]?(\d{2})[^\d]?(\d{2}))?$"
-)
+DMY_DATE_REGEX = re.compile(r"^(\d{2})[^\d]?(\d{2})[^\d]?(\d{2,4})([^\d]?(\d{2})[^\d]?(\d{2})[^\d]?(\d{2}))?$")
 
 
 def parsedate(
@@ -286,18 +282,14 @@ class TemporaryFile(TemporaryUploadedFile):
     Fichier temporaire avec conservation du nom d'origine
     """
 
-    def __init__(
-        self, name, content_type, size, charset, content_type_extra=None, folder=None
-    ):
+    def __init__(self, name, content_type, size, charset, content_type_extra=None, folder=None):
         """Crée un fichier temporaire en conservant son nom et la destination de clôture.
 
         folder n'est utilisé qu'à close() pour une éventuelle copie vers le
         stockage MEDIA_ROOT. L'appelant doit s'assurer que cette cible est autorisée.
         """
         file = temp.NamedTemporaryFile(suffix="." + name)
-        super(TemporaryUploadedFile, self).__init__(
-            file, name, content_type, size, charset, content_type_extra
-        )
+        super(TemporaryUploadedFile, self).__init__(file, name, content_type, size, charset, content_type_extra)
         self.folder = folder
 
     def close(self):
@@ -354,11 +346,7 @@ def temporary_upload(folder=None):
     return decorateur
 
 
-class DownloadFile(
-    collections.namedtuple(
-        "DownloadFile", ["file", "name", "delete", "mimetype", "charset"]
-    )
-):
+class DownloadFile(collections.namedtuple("DownloadFile", ["file", "name", "delete", "mimetype", "charset"])):
     """
     Objet permettant de définir un fichier à télécharger
     file : fichier ou chemin du fichier,
@@ -369,9 +357,7 @@ class DownloadFile(
     """
 
     def __new__(cls, file, name, delete, mimetype=None, charset=None):
-        return super(DownloadFile, cls).__new__(
-            cls, file, name, delete, mimetype, charset
-        )
+        return super(DownloadFile, cls).__new__(cls, file, name, delete, mimetype, charset)
 
 
 def download_file(function):
@@ -399,13 +385,9 @@ def download_file(function):
                 mimetype or "application/octet-stream",
                 charset or settings.DEFAULT_CHARSET,
             )
-            response = HttpResponse(
-                file_wrapper, content_type=mimetype, charset=charset
-            )
+            response = HttpResponse(file_wrapper, content_type=mimetype, charset=charset)
             response["Content-Disposition"] = "attachment; filename={0}".format(name)
-            response["Content-Type"] = "{mimetype}; charset={charset}".format(
-                mimetype=mimetype, charset=charset
-            )
+            response["Content-Type"] = "{mimetype}; charset={charset}".format(mimetype=mimetype, charset=charset)
             file.close()
             if delete:
                 os.unlink(file.name)
@@ -699,11 +681,7 @@ def recursive_dict_product(
     all_keys = all_keys or {}
 
     # Ajout des identifiants uniques
-    if (
-        auto_id
-        and prefix is not None
-        and ((auto_id not in input_dict) or not input_dict[auto_id])
-    ):
+    if auto_id and prefix is not None and ((auto_id not in input_dict) or not input_dict[auto_id]):
         input_dict[auto_id] = short_identifier()
 
     # Récupère les clés mises à plat
@@ -720,9 +698,7 @@ def recursive_dict_product(
             continue
         elif isinstance(value, dict):
             # Les dictionnaires imbriqués dans des dictionnaires sont récupérés immédiatement par récursivité
-            for result in recursive_dict_product(
-                value, all_keys, long_keys, separator, ignore, auto_id, result_key
-            ):
+            for result in recursive_dict_product(value, all_keys, long_keys, separator, ignore, auto_id, result_key):
                 dicts.append(result)
             continue
         result[result_key] = value
@@ -785,12 +761,8 @@ def get_choices_fields(*included_apps):
             for field in model._meta.fields:
                 if field.choices and field.choices not in choices_fields:
                     choices_fields.append(field.choices)
-                    choice_value = " ".join(
-                        [app_label, model._meta.model_name, field.name]
-                    )
-                    choice_libelle = "{} ({})".format(
-                        field.verbose_name, model._meta.verbose_name
-                    )
+                    choice_value = " ".join([app_label, model._meta.model_name, field.name])
+                    choice_libelle = "{} ({})".format(field.verbose_name, model._meta.verbose_name)
                     if app_label in results:
                         results[app_label].append(
                             (
@@ -812,9 +784,7 @@ def get_choices_fields(*included_apps):
 
     def choices_by_application():
         for app_label, choices in sorted(results.items()):
-            yield str(apps.get_app_config(app_label).verbose_name), tuple(
-                ordered_choices(choices)
-            )
+            yield str(apps.get_app_config(app_label).verbose_name), tuple(ordered_choices(choices))
 
     return tuple(choices_by_application())
 
@@ -834,12 +804,8 @@ def prefetch_metadata(model, lookup=None, name=None):
 
     for field in model._meta.private_fields:
         if field.related_model is MetaData:
-            lookup = (
-                field.name if lookup is None else "{}__{}".format(lookup, field.name)
-            )
-            return [
-                Prefetch(lookup, queryset=MetaData.objects.select_valid(), to_attr=name)
-            ]
+            lookup = field.name if lookup is None else "{}__{}".format(lookup, field.name)
+            return [Prefetch(lookup, queryset=MetaData.objects.select_valid(), to_attr=name)]
     return []
 
 
@@ -889,22 +855,12 @@ def get_prefetchs(
             (field.one_to_one and one_to_one)
             or (field.one_to_many and one_to_many)
             or (field.many_to_many and many_to_many and field.related_model == parent)
-            or (
-                field.many_to_many
-                and reverse_many_to_many
-                and field.related_model != parent
-            )
+            or (field.many_to_many and reverse_many_to_many and field.related_model != parent)
         ):
-            accessor_name = (
-                field.get_accessor_name() if field.auto_created else field.name
-            )
+            accessor_name = field.get_accessor_name() if field.auto_created else field.name
             if not accessor_name:
                 continue
-            recursive_prefetch = (
-                accessor_name
-                if model == parent
-                else "__".join((_prefetch, accessor_name))
-            )
+            recursive_prefetch = accessor_name if model == parent else "__".join((_prefetch, accessor_name))
             prefetchs = None
             if model == parent or _level < depth:
                 prefetchs = get_prefetchs(
@@ -1000,9 +956,7 @@ def get_related(
                 field_name = field.get_accessor_name()
                 if field_name in excludes:
                     continue
-                related_path = (
-                    "__".join((_related, field_name)) if _related else field_name
-                )
+                related_path = "__".join((_related, field_name)) if _related else field_name
                 results.update(
                     get_related(
                         field.related_model,
@@ -1049,9 +1003,7 @@ def prefetch_generics(weak_queryset):
             )
             if not related_content_type_id:
                 continue
-            related_content_type = ContentType.objects.get_for_id(
-                related_content_type_id
-            )
+            related_content_type = ContentType.objects.get_for_id(related_content_type_id)
             related_object_id = int(getattr(weak_model, gfk_field.fk_field))
 
             if related_content_type not in data.keys():
@@ -1066,15 +1018,11 @@ def prefetch_generics(weak_queryset):
                 for gfk_name, gfk_field in gfks.items():
                     related_content_type_id = getattr(
                         weak_model,
-                        gfk_field.model._meta.get_field(
-                            gfk_field.ct_field
-                        ).get_attname(),
+                        gfk_field.model._meta.get_field(gfk_field.ct_field).get_attname(),
                     )
                     if not related_content_type_id:
                         continue
-                    related_content_type = ContentType.objects.get_for_id(
-                        related_content_type_id
-                    )
+                    related_content_type = ContentType.objects.get_for_id(related_content_type_id)
                     related_object_id = int(getattr(weak_model, gfk_field.fk_field))
 
                     if related_object_id != model.pk:
@@ -1265,10 +1213,7 @@ def recursive_get_urls(
             module = import_module(settings.ROOT_URLCONF)
         patterns = module
 
-        patterns = (
-            list(chain(*(getattr(module, attribute, []) for attribute in attributes)))
-            or patterns
-        )
+        patterns = list(chain(*(getattr(module, attribute, []) for attribute in attributes))) or patterns
         if patterns and isinstance(patterns[-1], str):
             patterns, *_ = patterns
     except (TypeError, ValueError):
@@ -1279,20 +1224,12 @@ def recursive_get_urls(
             namespace = _namespace or getattr(pattern, "namespace", None)
             if namespaces and namespace not in namespaces:
                 continue
-            url = _current + pattern.pattern.regex.pattern.strip("^$\\Z").replace(
-                "\\", ""
-            )
+            url = _current + pattern.pattern.regex.pattern.strip("^$\\Z").replace("\\", "")
             url = re.sub(REGEX_URL_PARAMS, r":\1:", url).replace("?", "")
             url = url.replace("(.+)", ":pk:")
             if getattr(pattern.pattern, "name", None):
-                key = (
-                    "{}:{}".format(namespace, pattern.pattern.name)
-                    if namespace
-                    else pattern.name
-                )
-                current_model = getattr(
-                    getattr(pattern.callback, "cls", None), "model", None
-                )
+                key = "{}:{}".format(namespace, pattern.pattern.name) if namespace else pattern.name
+                current_model = getattr(getattr(pattern.callback, "cls", None), "model", None)
                 if not model or model is current_model:
                     yield key, url
             elif getattr(pattern, "namespace", None) and pattern.urlconf_module:
@@ -1373,9 +1310,7 @@ def sort_dict(idict):
     :param idict: Dictionnaire
     :return: Dictionnaire trié
     """
-    return json_decode(
-        json_encode(idict, sort_keys=True), object_pairs_hook=collections.OrderedDict
-    )
+    return json_decode(json_encode(idict, sort_keys=True), object_pairs_hook=collections.OrderedDict)
 
 
 def merge_dict(mdict, *idicts, **kwargs):
@@ -1389,11 +1324,7 @@ def merge_dict(mdict, *idicts, **kwargs):
     mdict = mdict if mdict is not None else {}
     for idict in idicts:
         for key, value in idict.items():
-            if (
-                key in mdict
-                and isinstance(mdict[key], dict)
-                and isinstance(idict[key], dict)
-            ):
+            if key in mdict and isinstance(mdict[key], dict) and isinstance(idict[key], dict):
                 merge_dict(mdict[key], idict[key])
             else:
                 mdict[key] = idict[key]
@@ -1471,9 +1402,7 @@ def to_tuple(data):
     if isinstance(data, (list, set)):
         return tuple(to_tuple(element) for element in data)
     if isinstance(data, dict):
-        return tuple(
-            {key: to_tuple(value) for key, value in sorted(data.items())}.items()
-        )
+        return tuple({key: to_tuple(value) for key, value in sorted(data.items())}.items())
     return data
 
 
@@ -1654,11 +1583,7 @@ def _archive_member_path(directory, name):
     import ntpath
 
     normalized = name.replace("\\", "/")
-    if (
-        ntpath.splitdrive(normalized)[0]
-        or normalized.startswith("/")
-        or ".." in normalized.split("/")
-    ):
+    if ntpath.splitdrive(normalized)[0] or normalized.startswith("/") or ".." in normalized.split("/"):
         raise ValueError("Unsafe archive member: {}".format(name))
     destination = os.path.realpath(directory)
     target = os.path.realpath(os.path.join(destination, normalized))
@@ -1708,9 +1633,7 @@ def process_file(file_path, sleep=5, extract_directory=None):
                 for member in zip.infolist():
                     _archive_member_path(extract_directory, member.filename)
                     if stat.S_ISLNK(member.external_attr >> 16):
-                        raise ValueError(
-                            "Archive links are not allowed: {}".format(member.filename)
-                        )
+                        raise ValueError("Archive links are not allowed: {}".format(member.filename))
                 zip.extractall(path=extract_directory)
             return
         elif extension in [".tar", ".gz", ".bz2", ".xz", ".tgz", ".tbz2", ".txz"]:
@@ -1721,23 +1644,15 @@ def process_file(file_path, sleep=5, extract_directory=None):
                 for member in members:
                     _archive_member_path(extract_directory, member.name)
                     if not (member.isfile() or member.isdir()):
-                        raise ValueError(
-                            "Archive links and special files are not allowed: {}".format(
-                                member.name
-                            )
-                        )
+                        raise ValueError("Archive links and special files are not allowed: {}".format(member.name))
                 # Le filtre natif est disponible sur les versions Python récentes.
                 if hasattr(tarfile, "data_filter"):
-                    tar.extractall(
-                        path=extract_directory, members=members, filter="data"
-                    )
+                    tar.extractall(path=extract_directory, members=members, filter="data")
                 else:
                     tar.extractall(path=extract_directory, members=members)
             return
     except Exception:
-        logger.error(
-            _("Erreur lors du désarchivage : {}").format(file_base), exc_info=True
-        )
+        logger.error(_("Erreur lors du désarchivage : {}").format(file_base), exc_info=True)
         raise
     return file_path
 
@@ -1884,9 +1799,7 @@ def abort_sql(name, kill=False, using=None, timeout=None, state="active"):
 
     connection = connections[using or DEFAULT_DB_ALIAS]
     if not is_postgresql(connection):
-        return AssertionError(
-            _("Cette fonction ne peut être utilisée que sur PostgreSQL.")
-        )
+        return AssertionError(_("Cette fonction ne peut être utilisée que sur PostgreSQL."))
     with connection.cursor() as cursor:
         query = (
             "SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE application_name = %s"
@@ -1962,14 +1875,10 @@ def collect_deleted_data(object):
                 if to_field and field.related_model == to_field.related_model
             )
             for _instance in instances:
-                instance, value = getattr(_instance, from_field.name), getattr(
-                    _instance, to_field.name
-                )
+                instance, value = getattr(_instance, from_field.name), getattr(_instance, to_field.name)
                 if instance == object:
                     continue
-                changed.setdefault(from_model, {}).setdefault(instance, {}).setdefault(
-                    field, []
-                ).append(value)
+                changed.setdefault(from_model, {}).setdefault(instance, {}).setdefault(field, []).append(value)
         else:
             if model not in models:
                 continue
@@ -1986,9 +1895,7 @@ def collect_deleted_data(object):
             for instance in instances:
                 if instance in collector.data.get(model, ()):
                     continue
-                changed.setdefault(model, {}).setdefault(instance, {}).setdefault(
-                    from_field, value
-                )
+                changed.setdefault(model, {}).setdefault(instance, {}).setdefault(from_field, value)
     return deleted, changed
 
 
@@ -2089,13 +1996,8 @@ def get_all_permissions(model):
     from django.contrib.auth.models import Permission
     from django.contrib.contenttypes.models import ContentType
 
-    content_type = getattr(
-        model, "_content_type", None
-    ) or ContentType.objects.get_for_model(model)
-    return {
-        permission.codename: permission
-        for permission in Permission.objects.filter(content_type=content_type)
-    }
+    content_type = getattr(model, "_content_type", None) or ContentType.objects.get_for_model(model)
+    return {permission.codename: permission for permission in Permission.objects.filter(content_type=content_type)}
 
 
 def get_models_from_queryset(queryset):
@@ -2268,9 +2170,7 @@ def get_client_ip(request, real_ip_only=False, right_most_proxy=False):
     """
     best_matched_ip = None
     for key in REQUEST_META_ORDER:
-        value = request.META.get(
-            key, request.META.get(key.replace("_", "-"), "")
-        ).strip()
+        value = request.META.get(key, request.META.get(key.replace("_", "-"), "")).strip()
         if value is not None and value != "":
             ips = [ip.strip().lower() for ip in value.split(",")]
             if right_most_proxy and len(ips) > 1:
@@ -2283,9 +2183,7 @@ def get_client_ip(request, real_ip_only=False, right_most_proxy=False):
                         loopback = LOOPBACK_PREFIXES
                         if best_matched_ip is None:
                             best_matched_ip = ip_str
-                        elif best_matched_ip.startswith(
-                            loopback
-                        ) and not ip_str.startswith(loopback):
+                        elif best_matched_ip.startswith(loopback) and not ip_str.startswith(loopback):
                             best_matched_ip = ip_str
     return best_matched_ip
 
@@ -2348,9 +2246,7 @@ def reserve_service_usage(request):
         return
 
     address = get_client_ip(raw_request) or ""
-    defaults = dict(
-        settings.SERVICE_USAGE_DATA.get(name) or settings.SERVICE_USAGE_DEFAULT or {}
-    )
+    defaults = dict(settings.SERVICE_USAGE_DATA.get(name) or settings.SERVICE_USAGE_DEFAULT or {})
     defaults.setdefault("address", address)
     with transaction.atomic(using=using):
         usages = ServiceUsage.objects.using(using).select_for_update()
@@ -2359,9 +2255,7 @@ def reserve_service_usage(request):
             if usage is None:
                 return
         else:
-            usage, _created = usages.get_or_create(
-                name=name, user=user, defaults=defaults
-            )
+            usage, _created = usages.get_or_create(name=name, user=user, defaults=defaults)
         date = now()
         usage.reset_counter(date)
         if usage.limit is not None and usage.count >= usage.limit:
@@ -2381,22 +2275,16 @@ def reserve_service_usage(request):
         extra = usage.extra or {}
         addresses = extra.setdefault("addresses", {})
         address_data = addresses.setdefault(address, {})
-        address_data.update(
-            date=date, method=request.method, count=address_data.get("count", 0) + 1
-        )
+        address_data.update(date=date, method=request.method, count=address_data.get("count", 0) + 1)
         if settings.SERVICE_USAGE_LOG_DATA:
             for method in ("GET", "POST"):
                 for key, value in getattr(raw_request, method, {}).items():
                     if value:
                         data = extra.setdefault("data", {}).setdefault(key, {})
-                        data.update(
-                            date=date, method=method, count=data.get("count", 0) + 1
-                        )
+                        data.update(date=date, method=method, count=data.get("count", 0) + 1)
             for key in match.kwargs:
                 params = extra.setdefault("params", {}).setdefault(key, {})
-                params.update(
-                    date=date, method=request.method, count=params.get("count", 0) + 1
-                )
+                params.update(date=date, method=request.method, count=params.get("count", 0) + 1)
         usage.extra = extra
         usage.save(using=using)
 

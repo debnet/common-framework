@@ -18,7 +18,11 @@ class Command(BaseCommand):
 
     def add_arguments(self, parser):
         """Déclare l'application ciblée et les listes de noms de modèles à inclure/exclure."""
-        parser.add_argument("app_label", type=str, help=_("Nom de l'application"))
+        parser.add_argument(
+            "app_label",
+            type=str,
+            help=_("Nom de l'application"),
+        )
         parser.add_argument(
             "--excludes",
             dest="excludes",
@@ -60,9 +64,5 @@ class Command(BaseCommand):
             else:
                 count = model.objects.all().count()
                 model.objects.all().delete()
-            model_name = (
-                str(model._meta.verbose_name)
-                if count == 1
-                else str(model._meta.verbose_name_plural)
-            )
+            model_name = str(model._meta.verbose_name) if count == 1 else str(model._meta.verbose_name_plural)
             logger.info(_("{} {} supprimé(s).").format(count, model_name))

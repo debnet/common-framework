@@ -180,14 +180,8 @@ def tag_query(context, queryset, save="", **kwargs):
             if any(field_name.endswith(":{}".format(cast)) for cast in CASTS):
                 field_name, *_, cast = field_name.split(":")
                 output_field = CASTS.get(cast.lower())
-                field = (
-                    functions.Cast(field_name, output_field=output_field)
-                    if output_field
-                    else field_name
-                )
-            field_rename = field_rename or (
-                (annotation + "__" + field_name) if field_name else annotation
-            )
+                field = functions.Cast(field_name, output_field=output_field) if output_field else field_name
+            field_rename = field_rename or ((annotation + "__" + field_name) if field_name else annotation)
             if field:
                 function_args.insert(0, field)
             annotations[field_rename] = function(*function_args, **function_kwargs)
@@ -219,17 +213,11 @@ def tag_query(context, queryset, save="", **kwargs):
             if any(field_name.endswith(":{}".format(cast)) for cast in CASTS):
                 field_name, *_, cast = field_name.split(":")
                 output_field = CASTS.get(cast.lower())
-                field = (
-                    functions.Cast(field_name, output_field=output_field)
-                    if cast
-                    else field
-                )
+                field = functions.Cast(field_name, output_field=output_field) if cast else field
             field_rename = field_rename or (aggregate + "__" + field_name)
             if distinct:
                 function_kwargs.update(distinct=distinct)
-            aggregations[field_rename] = function(
-                field, *function_args, **function_kwargs
-            )
+            aggregations[field_rename] = function(field, *function_args, **function_kwargs)
 
     group_by = get("group_by")
     if group_by:
@@ -281,9 +269,7 @@ def tag_query(context, queryset, save="", **kwargs):
                 order_by_kwargs.update(nulls_last=True)
             order = order.removesuffix("<").removesuffix(">")
             if order.startswith("-"):
-                orders.append(
-                    F(order.strip().removeprefix("-")).desc(**order_by_kwargs)
-                )
+                orders.append(F(order.strip().removeprefix("-")).desc(**order_by_kwargs))
             else:
                 orders.append(F(order.strip().removeprefix("+")).asc(**order_by_kwargs))
         temp_queryset = queryset.order_by(*orders)
@@ -396,9 +382,7 @@ def filter_gather(value, key="", sep=None):
     sep = sep or _(", ")
     if not key:
         return sep.join(value)
-    return sep.join(
-        (v.get(key) if isinstance(v, dict) else getattr(v, key) for v in value)
-    )
+    return sep.join((v.get(key) if isinstance(v, dict) else getattr(v, key) for v in value))
 
 
 @register.filter(name="split")

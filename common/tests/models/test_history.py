@@ -40,9 +40,7 @@ def history_models():
     return HistoryTestTag, HistoryTestEntity
 
 
-@override_settings(
-    NOTIFY_CHANGES=False, IGNORE_GLOBAL=True, IGNORE_LOG=False, IGNORE_LOG_NO_USER=False
-)
+@override_settings(NOTIFY_CHANGES=False, IGNORE_GLOBAL=True, IGNORE_LOG=False, IGNORE_LOG_NO_USER=False)
 class HistoryTests(TransactionTestCase):
     databases = {"default", "other"} if "other" in connections else {"default"}
 
@@ -137,9 +135,7 @@ class HistoryTests(TransactionTestCase):
                 )
             )
         )
-        common_models.log_history_fields(
-            history_id=history.pk, fields_json=payload, using="default"
-        )
+        common_models.log_history_fields(history_id=history.pk, fields_json=payload, using="default")
         history.refresh_from_db()
         self.assertEqual(history.fields_count, 1)
         self.assertEqual(history.fields.count(), 1)
@@ -245,9 +241,7 @@ class HistoryTests(TransactionTestCase):
         self.assertEqual(history.fields_count, 4)
         self.assertEqual(history.fields.count(), 4)
         changes = list(
-            history.fields.filter(field_name="tags")
-            .order_by("pk")
-            .values_list("status_m2m", "old_value", "new_value")
+            history.fields.filter(field_name="tags").order_by("pk").values_list("status_m2m", "old_value", "new_value")
         )
         self.assertEqual(
             changes,
@@ -294,9 +288,7 @@ class HistoryTests(TransactionTestCase):
         self.assertEqual(deletion.data["name"], "After")
         publisher.assert_called_once()
         with self.assertLogs(common_models.logger, level="DEBUG") as logs:
-            result = common_models.log_history_fields(
-                **publisher.call_args.kwargs["kwargs"]
-            )
+            result = common_models.log_history_fields(**publisher.call_args.kwargs["kwargs"])
         self.assertIsNone(result)
         self.assertEqual(
             logs.records[0].getMessage(),
@@ -314,12 +306,7 @@ class HistoryTests(TransactionTestCase):
             entity.save(update_fields=["name"])
             self.assertEqual(entity._history.fields.get().new_value, "After")
             entity.delete()
-        self.assertFalse(
-            any(
-                "skipped for missing history" in record.getMessage()
-                for record in logs.records
-            )
-        )
+        self.assertFalse(any("skipped for missing history" in record.getMessage() for record in logs.records))
         self.assertEqual(History.objects.get().status, History.DELETE)
 
     def test_detail_failure_rolls_back_fields_and_counter_together(self):
@@ -332,9 +319,7 @@ class HistoryTests(TransactionTestCase):
             entity.save(update_fields=["name"])
         payload = publisher.call_args.kwargs["kwargs"]
         with (
-            patch.object(
-                History, "save", side_effect=RuntimeError("counter write failed")
-            ),
+            patch.object(History, "save", side_effect=RuntimeError("counter write failed")),
             self.assertRaises(RuntimeError),
         ):
             common_models.log_history_fields(**payload)
@@ -363,10 +348,7 @@ class HistoryTests(TransactionTestCase):
                 connections.close_all()
 
         with ThreadPoolExecutor(max_workers=2) as workers:
-            futures = [
-                workers.submit(consume, call.kwargs["kwargs"])
-                for call in publisher.call_args_list
-            ]
+            futures = [workers.submit(consume, call.kwargs["kwargs"]) for call in publisher.call_args_list]
             for future in futures:
                 future.result(timeout=20)
         history = History.objects.get()
@@ -434,12 +416,8 @@ class HistoryTests(TransactionTestCase):
     def test_http_notifications_use_the_source_database(self):
         with override_settings(NOTIFY_CHANGES=False):
             entity = self.entity(using="other")
-            webhook = common_models.Webhook.objects.using("other").create(
-                url="https://example.invalid/hook"
-            )
-            content_type = ContentType.objects.db_manager("other").get_for_model(
-                self.entity_model
-            )
+            webhook = common_models.Webhook.objects.using("other").create(url="https://example.invalid/hook")
+            content_type = ContentType.objects.db_manager("other").get_for_model(self.entity_model)
             webhook.types.add(content_type)
         with (
             patch.object(common_models, "app", Mock(spec=["send_task"])),
@@ -488,16 +466,10 @@ class HistoryTests(TransactionTestCase):
                 perform_ping_check=False,
                 loglevel="ERROR",
             ):
-                self.assertTrue(
-                    finished.delay().get(timeout=20, disable_sync_subtasks=False)
-                )
+                self.assertTrue(finished.delay().get(timeout=20, disable_sync_subtasks=False))
         history = History.objects.get()
         self.assertEqual(history.fields_count, 4)
-        changes = list(
-            history.fields.filter(field_name="name")
-            .order_by("pk")
-            .values_list("old_value", "new_value")
-        )
+        changes = list(history.fields.filter(field_name="name").order_by("pk").values_list("old_value", "new_value"))
         self.assertEqual(
             changes,
             [

@@ -54,10 +54,7 @@ def get_urls(request):
     """
     namespaces = request.query_params.getlist("namespaces", [])
     return Response(
-        OrderedDict(
-            (name, request.build_absolute_uri(url))
-            for name, url in recursive_get_urls(namespaces=namespaces)
-        )
+        OrderedDict((name, request.build_absolute_uri(url)) for name, url in recursive_get_urls(namespaces=namespaces))
     )
 
 
@@ -73,9 +70,7 @@ def user_infos(request, user_id=None):
     et ne traite pas les paramètres de projection des viewsets CRUD.
     """
     user_id = request.user.pk if user_id is None else user_id
-    if user_id != request.user.pk and not (
-        request.user.is_staff or request.user.is_superuser
-    ):
+    if user_id != request.user.pk and not (request.user.is_staff or request.user.is_superuser):
         raise PermissionDenied()
     user = get_object_or_404(
         get_user_model().objects.prefetch_related(
@@ -103,21 +98,14 @@ def metadata(request, uuid):
         raise PermissionDenied()
     if request.method == "POST":
         if not isinstance(request.data, dict) or any(
-            not isinstance(key, str) or not key or len(key) > 100
-            for key in request.data
+            not isinstance(key, str) or not key or len(key) > 100 for key in request.data
         ):
-            raise ValidationError(
-                _(
-                    "Un dictionnaire avec des clés non vides de 100 caractères maximum est requis."
-                )
-            )
+            raise ValidationError(_("Un dictionnaire avec des clés non vides de 100 caractères maximum est requis."))
     entity = Global.objects.from_uuid(uuid)
     if not entity:
         raise NotFound(_("Entité inconnue."))
     if request.method == "POST":
-        existing_keys = set(
-            entity.metadata.filter(key__in=request.data).values_list("key", flat=True)
-        )
+        existing_keys = set(entity.metadata.filter(key__in=request.data).values_list("key", flat=True))
         permissions = set()
         for key, value in request.data.items():
             if value is None:

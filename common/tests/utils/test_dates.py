@@ -73,18 +73,10 @@ class UtilsTestCase(TestCase):
             self.assertEqual(parsedate(format_date).year, 2015)
             self.assertEqual(parsedate(format_date).month, 1)
             self.assertEqual(parsedate(format_date).day, 1)
-            self.assertEqual(
-                parsedate(format_date, start_day=True, end_day=True).hour, 0
-            )
-            self.assertEqual(
-                parsedate(format_date, start_day=True, end_day=True).minute, 0
-            )
-            self.assertEqual(
-                parsedate(format_date, start_day=True, end_day=True).second, 0
-            )
-            self.assertEqual(
-                parsedate(format_date, start_day=True, end_day=True).microsecond, 0
-            )
+            self.assertEqual(parsedate(format_date, start_day=True, end_day=True).hour, 0)
+            self.assertEqual(parsedate(format_date, start_day=True, end_day=True).minute, 0)
+            self.assertEqual(parsedate(format_date, start_day=True, end_day=True).second, 0)
+            self.assertEqual(parsedate(format_date, start_day=True, end_day=True).microsecond, 0)
 
     def test_parsedate_timezone(self):
         tab_format_date = [
@@ -147,18 +139,10 @@ class UtilsTestCase(TestCase):
             self.assertEqual(parsedate(format_date).year, 2015)
             self.assertEqual(parsedate(format_date).month, 1)
             self.assertEqual(parsedate(format_date).day, 1)
-            self.assertEqual(
-                parsedate(format_date, start_day=True, end_day=True).hour, 15
-            )
-            self.assertEqual(
-                parsedate(format_date, start_day=True, end_day=True).minute, 2
-            )
-            self.assertEqual(
-                parsedate(format_date, start_day=True, end_day=True).second, 5
-            )
-            self.assertEqual(
-                parsedate(format_date, start_day=True, end_day=True).microsecond, 0
-            )
+            self.assertEqual(parsedate(format_date, start_day=True, end_day=True).hour, 15)
+            self.assertEqual(parsedate(format_date, start_day=True, end_day=True).minute, 2)
+            self.assertEqual(parsedate(format_date, start_day=True, end_day=True).second, 5)
+            self.assertEqual(parsedate(format_date, start_day=True, end_day=True).microsecond, 0)
 
     def test_parsedate_bisextil_ko(self):
         format_date = "2015-02-29"

@@ -8,11 +8,7 @@ from django.db.models import QuerySet
 from django.test import TestCase, override_settings
 from rest_framework.test import APIRequestFactory, force_authenticate
 
-from common.api.utils import (
-    api_paginate,
-    api_view_with_serializer,
-    create_model_serializer_and_viewset,
-)
+from common.api.utils import api_paginate, api_view_with_serializer, create_model_serializer_and_viewset
 
 Serializer, ViewSet = create_model_serializer_and_viewset(LogEntry, hyperlinked=False)
 
@@ -37,11 +33,7 @@ class AggregatePermissionsTests(TestCase):
     def call(self, endpoint, params):
         request = APIRequestFactory().get("/entries/", params)
         force_authenticate(request, user=get_user_model().objects.get(pk=self.user.pk))
-        view = (
-            ViewSet.as_view({"get": "list"})
-            if endpoint == "viewset"
-            else paginated_entries
-        )
+        view = ViewSet.as_view({"get": "list"}) if endpoint == "viewset" else paginated_entries
         return view(request)
 
     def grant(self, codename):
@@ -54,9 +46,7 @@ class AggregatePermissionsTests(TestCase):
                     self.subTest(endpoint=endpoint, silent=silent),
                     patch.object(QuerySet, "aggregate") as aggregate,
                 ):
-                    response = self.call(
-                        endpoint, {"min": "user.password", "silent": silent}
-                    )
+                    response = self.call(endpoint, {"min": "user.password", "silent": silent})
                     self.assertEqual(response.status_code, 403, response.data)
                     self.assertIn("view_user", response.data)
                     aggregate.assert_not_called()
@@ -79,9 +69,7 @@ class AggregatePermissionsTests(TestCase):
     def test_models_introduced_by_filters_are_checked(self):
         for endpoint in ("viewset", "paginate"):
             with self.subTest(endpoint=endpoint):
-                response = self.call(
-                    endpoint, {"count": "id", "user__username": "reader"}
-                )
+                response = self.call(endpoint, {"count": "id", "user__username": "reader"})
                 self.assertEqual(response.status_code, 403, response.data)
 
     def test_all_models_on_a_multi_hop_path_are_checked(self):
@@ -96,9 +84,7 @@ class AggregatePermissionsTests(TestCase):
             with self.subTest(endpoint=endpoint, permitted=True):
                 response = self.call(endpoint, {"min": "user.groups.name"})
                 self.assertEqual(response.status_code, 200, response.data)
-                self.assertEqual(
-                    response.data, {"min__user__groups__name": self.group.name}
-                )
+                self.assertEqual(response.data, {"min__user__groups__name": self.group.name})
 
     def test_aggregate_alias_can_match_an_existing_model_field(self):
         self.grant("view_user")
@@ -106,9 +92,7 @@ class AggregatePermissionsTests(TestCase):
             with self.subTest(endpoint=endpoint):
                 response = self.call(endpoint, {"min": "user.id|id"})
                 self.assertEqual(response.status_code, 200, response.data)
-                self.assertEqual(
-                    response.data, {"id": min(self.user.pk, self.other.pk)}
-                )
+                self.assertEqual(response.data, {"id": min(self.user.pk, self.other.pk)})
 
     def test_empty_result_does_not_skip_permission_checks(self):
         for endpoint in ("viewset", "paginate"):
@@ -119,9 +103,7 @@ class AggregatePermissionsTests(TestCase):
     def test_grouped_aggregate_still_checks_permissions(self):
         for endpoint in ("viewset", "paginate"):
             with self.subTest(endpoint=endpoint):
-                response = self.call(
-                    endpoint, {"group_by": "user.username", "count": "id"}
-                )
+                response = self.call(endpoint, {"group_by": "user.username", "count": "id"})
                 self.assertEqual(response.status_code, 403, response.data)
 
     @override_settings(ENABLE_API_PERMISSIONS=False)

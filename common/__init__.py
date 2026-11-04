@@ -1,5 +1,5 @@
 # coding: utf-8
 __all__ = []
-__version__ = "2026.10.27"
+__version__ = "2026.11.1"
 
 default_app_config = "common.apps.CommonConfig"

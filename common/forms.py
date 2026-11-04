@@ -6,8 +6,8 @@ sauvegardes imbriquées nécessitent une transaction fournie par l'appelant si
 elles doivent être atomiques ; aucune transaction globale n'est ouverte ici.
 """
 
-from django import forms
 from django import VERSION as django_version
+from django import forms
 from django.forms.formsets import BaseFormSet, formset_factory
 from django.forms.models import (
     BaseInlineFormSet,
@@ -20,13 +20,7 @@ from django.forms.models import (
 from django.utils.translation import gettext_lazy as _
 
 from common.models import Entity, PerishableEntity
-from common.utils import (
-    JsonDecoder,
-    JsonEncoder,
-    get_current_user,
-    json_decode,
-    json_encode,
-)
+from common.utils import JsonDecoder, JsonEncoder, get_current_user, json_decode, json_encode
 
 # Formulaires de modèle et formsets avec propagation du contexte
 # ------------------------------------------------------------
@@ -62,9 +56,7 @@ class CommonForm(object):
             meta = getattr(getattr(inline, "model", None), "_meta", None)
             instance = getattr(self, "instance", None)
             prefix = getattr(inline, "prefix", getattr(meta, "model_name", None))
-            inline = inline(
-                data, files, instance=instance, prefix=prefix, context=context, **kwargs
-            )
+            inline = inline(data, files, instance=instance, prefix=prefix, context=context, **kwargs)
             self.inlines.append(inline)
         return self.inlines
 
@@ -155,9 +147,7 @@ class CommonModelForm(CommonForm, ModelForm):
             self.instance._ignore_log = _ignore_log or self.instance._ignore_log
             self.instance._current_user = _current_user or self.instance._current_user
             self.instance._reason = _reason or self.instance._reason
-            self.instance._force_default = (
-                _force_default or self.instance._force_default
-            )
+            self.instance._force_default = _force_default or self.instance._force_default
         instance = super().save(commit=commit)
         for inline in self.inlines:
             inline.instance = instance
@@ -220,9 +210,7 @@ class CommonBaseModelFormSet(CommonBaseFormSet):
             instance._force_default = self._force_default or self._from_admin
             if hasattr(self, "fk"):
                 pk_value = getattr(self.instance, self.fk.remote_field.field_name)
-                setattr(
-                    instance, self.fk.get_attname(), getattr(pk_value, "pk", pk_value)
-                )
+                setattr(instance, self.fk.get_attname(), getattr(pk_value, "pk", pk_value))
         instance = super().save(commit=commit)
         for inline in self.inlines:
             inline.instance = instance
@@ -355,9 +343,7 @@ def get_model_form(
         inline_options or [],
     )
     inlines = []
-    for model, form, options in zip_longest(
-        inline_models, inline_forms, inline_options, fillvalue=None
-    ):
+    for model, form, options in zip_longest(inline_models, inline_forms, inline_options, fillvalue=None):
         if not model:
             continue
         options = options or {}
@@ -365,9 +351,7 @@ def get_model_form(
         fk = _get_foreign_key(base_model, model)
         if fk.unique:
             options["max_num"] = 1
-        inline = get_model_formset(
-            model, form=form, formset=CommonInlineFormSet, **options
-        )
+        inline = get_model_formset(model, form=form, formset=CommonInlineFormSet, **options)
         inline.fk = fk
         inlines.append(inline)
     if formset:
@@ -497,9 +481,7 @@ class BaseFilterForm(forms.Form):
         args, kwargs, largs = [], {}, []
         for key, value in self.cleaned_data.items():
             field = self[key]
-            is_bool = isinstance(
-                field.field, (forms.BooleanField, forms.NullBooleanField)
-            )
+            is_bool = isinstance(field.field, (forms.BooleanField, forms.NullBooleanField))
             if (not is_bool and not field.data) or (is_bool and field.data is None):
                 continue
             if key not in self._lookups:

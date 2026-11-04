@@ -25,16 +25,12 @@ class CommonModelTests(TestCase):
         self.assertIsInstance(serialized, Serialized)
         self.assertFalse(serialized.single)
         self.assertIn("SELECT", serialized.query)
-        self.assertEqual(
-            [item.pk for item in serialized.deserialize()], [self.entity.pk]
-        )
+        self.assertEqual([item.pk for item in serialized.deserialize()], [self.entity.pk])
 
     def test_queryset_and_instance_dictionary(self):
         value = self.entity.to_dict(includes=["id", "name"])
         self.assertEqual(value, {"id": self.entity.pk, "name": "Original"})
-        self.assertEqual(
-            Webhook.objects.all().to_dict(includes=["id", "name"]), [value]
-        )
+        self.assertEqual(Webhook.objects.all().to_dict(includes=["id", "name"]), [value])
 
     def test_only_modified_fields_are_persisted(self):
         loaded = Webhook.objects.get(pk=self.entity.pk)
@@ -53,9 +49,7 @@ class CommonModelTests(TestCase):
         self.assertEqual(self.entity.timeout, 30)
 
     def test_from_dict_builds_model_without_persisting(self):
-        value = from_dict(
-            {"name": "Unsaved", "url": "https://example.com"}, model=Webhook
-        )
+        value = from_dict({"name": "Unsaved", "url": "https://example.com"}, model=Webhook)
         self.assertIsInstance(value, Webhook)
         self.assertIsNone(value.pk)
         self.assertEqual(value.name, "Unsaved")

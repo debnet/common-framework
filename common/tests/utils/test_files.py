@@ -62,9 +62,7 @@ class ArchiveTests(SimpleTestCase):
                     self.assertLogs("common.utils", level="ERROR"),
                 ):
                     with self.assertRaises(ValueError):
-                        process_file(
-                            str(path), sleep=0, extract_directory=str(self.output)
-                        )
+                        process_file(str(path), sleep=0, extract_directory=str(self.output))
                 self.assertFalse((self.output / "allowed.txt").exists())
                 self.assertFalse((self.root / "escape.txt").exists())
 

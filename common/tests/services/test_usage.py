@@ -9,12 +9,7 @@ from django.contrib.auth.models import AnonymousUser
 from django.core.exceptions import PermissionDenied
 from django.db import connection, connections
 from django.http import JsonResponse
-from django.test import (
-    TestCase,
-    TransactionTestCase,
-    override_settings,
-    skipUnlessDBFeature,
-)
+from django.test import TestCase, TransactionTestCase, override_settings, skipUnlessDBFeature
 from django.urls import path, resolve
 from django.utils.timezone import now
 from rest_framework.authtoken.models import Token
@@ -24,10 +19,7 @@ from rest_framework.response import Response
 from rest_framework.test import APIRequestFactory
 
 from common.api.permissions import ServiceUsagePermission
-from common.api.utils import (
-    api_view_with_serializer,
-    create_model_serializer_and_viewset,
-)
+from common.api.utils import api_view_with_serializer, create_model_serializer_and_viewset
 from common.middleware import ServiceUsageMiddleware
 from common.models import ServiceUsage, Webhook
 from common.utils import reserve_service_usage
@@ -83,9 +75,7 @@ class ServiceUsageTests(TestCase):
         return request
 
     def usage(self, **kwargs):
-        return ServiceUsage.objects.create(
-            name="django-action", user=self.user, address="", **kwargs
-        )
+        return ServiceUsage.objects.create(name="django-action", user=self.user, address="", **kwargs)
 
     def test_limit_blocks_before_view_and_does_not_increment(self):
         usage = self.usage(limit=1)
@@ -115,15 +105,11 @@ class ServiceUsageTests(TestCase):
         reserve_service_usage(self.request())
         usage.refresh_from_db()
         self.assertEqual(usage.count, 2)
-        self.assertEqual(
-            sum(item["count"] for item in usage.extra["addresses"].values()), 2
-        )
+        self.assertEqual(sum(item["count"] for item in usage.extra["addresses"].values()), 2)
 
     def test_expired_counter_resets_before_reservation(self):
         usage = self.usage(limit=1, reset=ServiceUsage.RESET_HOURLY)
-        ServiceUsage.objects.filter(pk=usage.pk).update(
-            count=1, reset_date=now() - timedelta(seconds=1)
-        )
+        ServiceUsage.objects.filter(pk=usage.pk).update(count=1, reset_date=now() - timedelta(seconds=1))
         reserve_service_usage(self.request())
         usage.refresh_from_db()
         self.assertEqual(usage.count, 1)
@@ -205,17 +191,11 @@ class ServiceUsageIntegrationTests(TestCase):
     def test_drf_token_and_common_api_views_enforce_quotas(self):
         for url in ("/token/", "/common/", "/viewset/"):
             with self.subTest(url=url):
-                first = self.client.get(
-                    url, HTTP_AUTHORIZATION="Token " + self.token.key
-                )
-                second = self.client.get(
-                    url, HTTP_AUTHORIZATION="Token " + self.token.key
-                )
+                first = self.client.get(url, HTTP_AUTHORIZATION="Token " + self.token.key)
+                second = self.client.get(url, HTTP_AUTHORIZATION="Token " + self.token.key)
                 self.assertEqual(first.status_code, 200, first.content)
                 self.assertEqual(second.status_code, 403, second.content)
-                usage = ServiceUsage.objects.get(
-                    name=resolve(url).view_name, user=self.user
-                )
+                usage = ServiceUsage.objects.get(name=resolve(url).view_name, user=self.user)
                 self.assertEqual(usage.count, 1)
 
     def test_drf_session_is_not_counted_twice(self):
@@ -236,9 +216,7 @@ class ServiceUsageIntegrationTests(TestCase):
 class ServiceUsageTransactionsTests(TransactionTestCase):
     def setUp(self):
         self.user = get_user_model().objects.create_user("concurrent-quota")
-        self.usage = ServiceUsage.objects.create(
-            name="django-action", user=self.user, address="", limit=1
-        )
+        self.usage = ServiceUsage.objects.create(name="django-action", user=self.user, address="", limit=1)
 
     def request(self, user):
         request = APIRequestFactory().get("/django/")

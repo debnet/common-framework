@@ -30,33 +30,23 @@ class FilterTests(SimpleTestCase):
         self.assertEqual(tools.filter_get([1, 2], -1), 2)
 
     def test_out_of_range_template_filter_renders_fallback(self):
-        template = Template(
-            '{% load tools %}{{ items|get:5|default_if_none:"missing" }}'
-        )
+        template = Template('{% load tools %}{{ items|get:5|default_if_none:"missing" }}')
         self.assertEqual(template.render(Context({"items": []})), "missing")
 
     def test_metadata_and_date_filters(self):
         self.assertEqual(
-            tools.filter_meta(
-                SimpleNamespace(get_metadata=lambda key: key.upper()), "key"
-            ),
+            tools.filter_meta(SimpleNamespace(get_metadata=lambda key: key.upper()), "key"),
             "KEY",
         )
         self.assertIsNone(tools.filter_meta(object(), "key"))
-        self.assertEqual(
-            tools.filter_parsedate("2026-01-02", "date_only=true").year, 2026
-        )
+        self.assertEqual(tools.filter_parsedate("2026-01-02", "date_only=true").year, 2026)
 
     def test_gather_split_sort_reverse(self):
         self.assertEqual(tools.filter_gather(["a", "b"], sep="|"), "a|b")
-        self.assertEqual(
-            tools.filter_gather([{"name": "a"}, {"name": "b"}], "name", "/"), "a/b"
-        )
+        self.assertEqual(tools.filter_gather([{"name": "a"}, {"name": "b"}], "name", "/"), "a/b")
         self.assertEqual(tools.filter_split("a,b", ","), ["a", "b"])
         self.assertEqual(tools.filter_sorted([2, 1]), [1, 2])
-        self.assertEqual(
-            tools.filter_sorted([{"n": 2}, {"n": 1}], "n"), [{"n": 1}, {"n": 2}]
-        )
+        self.assertEqual(tools.filter_sorted([{"n": 2}, {"n": 1}], "n"), [{"n": 1}, {"n": 2}])
         objects = [SimpleNamespace(n=2), SimpleNamespace(n=1)]
         self.assertEqual([item.n for item in tools.filter_sorted(objects, "n")], [1, 2])
         self.assertEqual(list(tools.filter_reversed([1, 2])), [2, 1])
@@ -65,9 +55,7 @@ class FilterTests(SimpleTestCase):
 
     def test_drop_preserves_multivalued_parameters(self):
         for value in ("keep=1&keep=2&secret=x", QueryDict("keep=1&keep=2&secret=x")):
-            self.assertEqual(
-                parse_qs(tools.filter_drop(value, "secret")), {"keep": ["1", "2"]}
-            )
+            self.assertEqual(parse_qs(tools.filter_drop(value, "secret")), {"keep": ["1", "2"]})
 
     def test_json_filters_preserve_invalid_values(self):
         self.assertEqual(tools.filter_json_decode('{"a": 1}'), {"a": 1})
@@ -79,9 +67,7 @@ class FilterTests(SimpleTestCase):
     @override_settings(LANGUAGE_CODE="fr")
     def test_configuration_and_render_tags(self):
         self.assertEqual(tools.filter_conf("LANGUAGE_CODE"), "fr")
-        self.assertEqual(
-            tools.tag_render({"name": "Alice"}, "Hello {{ name }}"), "Hello Alice"
-        )
+        self.assertEqual(tools.tag_render({"name": "Alice"}, "Hello {{ name }}"), "Hello Alice")
         self.assertIn("1", str(tools.filter_localize(1)))
 
     def test_permission_tags_render_both_branches(self):
@@ -89,11 +75,7 @@ class FilterTests(SimpleTestCase):
         request.user = Mock()
         for tag in ("perm", "anyperm"):
             template = Template(
-                "{% load tools %}{% "
-                + tag
-                + ' "common.view_webhook" %}yes{% else %}no{% end'
-                + tag
-                + " %}"
+                "{% load tools %}{% " + tag + ' "common.view_webhook" %}yes{% else %}no{% end' + tag + " %}"
             )
             request.user.has_perm.return_value = True
             request.user.has_perms.return_value = True
@@ -105,11 +87,9 @@ class FilterTests(SimpleTestCase):
 
     def test_obfuscation_tags_hide_plaintext(self):
         for arguments in (' "fixed-key"', ""):
-            output = Template(
-                "{% load tools %}{% obfuscate"
-                + arguments
-                + " %}private text{% endobfuscate %}"
-            ).render(Context())
+            output = Template("{% load tools %}{% obfuscate" + arguments + " %}private text{% endobfuscate %}").render(
+                Context()
+            )
             self.assertIn("data-encoded=", output)
             self.assertNotIn("private text", output)
         self.assertEqual(tools.ObfuscatorNode(None).encode("abc", "x"), "GRob")

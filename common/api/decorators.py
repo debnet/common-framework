@@ -52,11 +52,7 @@ def atomic(function=None, *, using=None, savepoint=True):
                             JSONRenderer().render(result.data)
                     return result
             except DjangoValidationError as error:
-                detail = (
-                    error.message_dict
-                    if hasattr(error, "message_dict")
-                    else error.messages
-                )
+                detail = error.message_dict if hasattr(error, "message_dict") else error.messages
                 raise ValidationError(detail) from error
 
         return wrapped

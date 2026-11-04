@@ -26,9 +26,7 @@ class WebhookTests(SimpleTestCase):
     def test_http_failure_retries(self):
         webhook = Webhook(url="https://example.com", retries=1, delay=3)
         with (
-            patch(
-                "requests.request", side_effect=[self.response(503), self.response(200)]
-            ) as send,
+            patch("requests.request", side_effect=[self.response(503), self.response(200)]) as send,
             patch("common.models.time.sleep") as sleep,
             self.assertLogs("common.models", level="WARNING"),
         ):

@@ -16,9 +16,7 @@ class LegacyJsonTests(TransactionTestCase):
         registry = isolate_apps("common")
         registry.enable()
         cls.addClassCleanup(registry.disable)
-        spec = importlib.util.spec_from_file_location(
-            "common.tests.models._legacy_fields", fields.__file__
-        )
+        spec = importlib.util.spec_from_file_location("common.tests.models._legacy_fields", fields.__file__)
         cls.legacy = importlib.util.module_from_spec(spec)
         with override_settings(COMMON_JSONFIELD=True):
             spec.loader.exec_module(cls.legacy)
@@ -57,23 +55,13 @@ class LegacyJsonTests(TransactionTestCase):
                 self.assertEqual(self.model.objects.get(pk=instance.pk).payload, value)
 
     def test_key_and_nested_lookups_execute_on_sqlite(self):
-        self.model.objects.create(
-            payload={"nested": {"name": "Alice"}, "enabled": True}
-        )
+        self.model.objects.create(payload={"nested": {"name": "Alice"}, "enabled": True})
         self.model.objects.create(payload={"other": "value"})
         self.assertEqual(self.model.objects.filter(payload__has="nested").count(), 1)
-        self.assertEqual(
-            self.model.objects.filter(payload__hasall=["nested", "enabled"]).count(), 1
-        )
-        self.assertEqual(
-            self.model.objects.filter(payload__hasany=["missing", "other"]).count(), 1
-        )
-        self.assertEqual(
-            self.model.objects.filter(payload__nested__name="Alice").count(), 1
-        )
-        self.assertEqual(
-            self.model.objects.filter(payload__nested__name__icontains="ali").count(), 1
-        )
+        self.assertEqual(self.model.objects.filter(payload__hasall=["nested", "enabled"]).count(), 1)
+        self.assertEqual(self.model.objects.filter(payload__hasany=["missing", "other"]).count(), 1)
+        self.assertEqual(self.model.objects.filter(payload__nested__name="Alice").count(), 1)
+        self.assertEqual(self.model.objects.filter(payload__nested__name__icontains="ali").count(), 1)
 
     def test_conversion_wrappers_and_base_values(self):
         field = self.legacy.JsonField()
@@ -89,7 +77,5 @@ class LegacyJsonTests(TransactionTestCase):
         self.assertIsNone(self.legacy.JsonField(null=True).to_python(None))
 
     def test_json_paths_escape_special_keys(self):
-        self.assertEqual(
-            self.legacy.compile_json_path(["items", "0", "name"]), '$."items"[0]."name"'
-        )
+        self.assertEqual(self.legacy.compile_json_path(["items", "0", "name"]), '$."items"[0]."name"')
         self.assertEqual(self.legacy.compile_json_path(['a"b']), '$."a\\"b"')

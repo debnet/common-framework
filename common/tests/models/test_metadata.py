@@ -95,9 +95,7 @@ class AccountMetadataTests(TestCase):
     def test_user_merge_and_remove(self):
         UserMetaData.set(self.user, nested={"a": 1}, remove=True)
         UserMetaData.merge(self.user, {"nested": {"b": 2}}, extra=3)
-        self.assertEqual(
-            UserMetaData.get(self.user, groups=False)["nested"], {"a": 1, "b": 2}
-        )
+        self.assertEqual(UserMetaData.get(self.user, groups=False)["nested"], {"a": 1, "b": 2})
         UserMetaData.remove(self.user, "remove")
         self.assertNotIn("remove", UserMetaData.get(self.user))
 

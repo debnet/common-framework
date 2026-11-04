@@ -9,13 +9,7 @@ from django.test import SimpleTestCase, TestCase, override_settings
 
 from common import fields as model_fields
 from common import forms as common_forms
-from common.forms import (
-    BaseFilterForm,
-    JsonField,
-    get_formset,
-    get_model_form,
-    get_model_formset,
-)
+from common.forms import BaseFilterForm, JsonField, get_formset, get_model_form, get_model_formset
 from common.models import Webhook
 from common.utils import JsonDecoder, JsonEncoder
 
@@ -32,9 +26,7 @@ class JsonFormFieldTests(SimpleTestCase):
         self.assertIs(field.decoder, JsonDecoder)
         self.assertEqual(field.clean('{"amount": 1.25}'), {"amount": Decimal("1.25")})
         self.assertIsInstance(field.clean("1.25"), Decimal)
-        self.assertEqual(
-            field.prepare_value({"amount": Decimal("1.25")}), '{"amount": 1.25}'
-        )
+        self.assertEqual(field.prepare_value({"amount": Decimal("1.25")}), '{"amount": 1.25}')
 
     def test_explicit_codecs_can_override_common_defaults(self):
         field = JsonField(encoder=json.JSONEncoder, decoder=json.JSONDecoder)
@@ -67,9 +59,7 @@ class JsonFormFieldTests(SimpleTestCase):
     def test_disabled_field_preserves_value(self):
         field = JsonField(disabled=True)
         self.assertEqual(field.to_python({"value": 1}), {"value": 1})
-        self.assertEqual(
-            field.bound_data("ignored", {"initial": True}), {"initial": True}
-        )
+        self.assertEqual(field.bound_data("ignored", {"initial": True}), {"initial": True})
 
     def test_invalid_bound_data_is_preserved_for_redisplay(self):
         field = JsonField()
@@ -87,9 +77,7 @@ class LegacyJsonFormFieldTests(SimpleTestCase):
     @classmethod
     def setUpClass(cls):
         super().setUpClass()
-        spec = importlib.util.spec_from_file_location(
-            "common.tests.forms._legacy_forms", common_forms.__file__
-        )
+        spec = importlib.util.spec_from_file_location("common.tests.forms._legacy_forms", common_forms.__file__)
         module = importlib.util.module_from_spec(spec)
         # Exerce la sélection de branche, sans prétendre exécuter un ancien Django.
         with patch("django.VERSION", (3, 0)):
@@ -115,9 +103,7 @@ class LegacyJsonFormFieldTests(SimpleTestCase):
         invalid = field.bound_data("invalid", {})
         self.assertIsInstance(invalid, field.InvalidInput)
         self.assertEqual(field.prepare_value(invalid), "invalid")
-        self.assertEqual(
-            field.prepare_value({"amount": Decimal("1.25")}), '{"amount": 1.25}'
-        )
+        self.assertEqual(field.prepare_value({"amount": Decimal("1.25")}), '{"amount": 1.25}')
 
 
 class FormsetTests(SimpleTestCase):
@@ -200,9 +186,7 @@ class FilterFormTests(TestCase):
         self.assertEqual(form.filled, {"name": "beta", "minimum": 15})
 
     def test_invalid_filter_returns_empty_queryset(self):
-        self.assertFalse(
-            self.form({"minimum": "invalid"}).apply(Webhook.objects.all()).exists()
-        )
+        self.assertFalse(self.form({"minimum": "invalid"}).apply(Webhook.objects.all()).exists())
 
     def test_empty_filter_keeps_all_rows(self):
         self.assertEqual(self.form({}).apply(Webhook.objects.all()).count(), 2)

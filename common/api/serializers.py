@@ -22,10 +22,7 @@ from rest_framework.relations import PrimaryKeyRelatedField
 from rest_framework.serializers import ALL_FIELDS, HyperlinkedModelSerializer
 from rest_framework.settings import api_settings
 
-from common.api.fields import (
-    CustomHyperlinkedIdentityField,
-    CustomHyperlinkedRelatedField,
-)
+from common.api.fields import CustomHyperlinkedIdentityField, CustomHyperlinkedRelatedField
 from common.api.utils import create_model_serializer, to_model_serializer
 from common.settings import settings
 from common.utils import get_pk_field
@@ -49,21 +46,13 @@ class BaseCommonModelSerializer(serializers.ModelSerializer):
         L'option n'effectue aucune vérification d'accès propre à une métadonnée.
         """
         request = self.context.get("request", None)
-        meta = (
-            request
-            and getattr(request, "query_params", None)
-            and request.query_params.get("meta", False)
-        )
+        meta = request and getattr(request, "query_params", None) and request.query_params.get("meta", False)
         if meta and hasattr(instance, "metadata"):
             # Soit un QuerySet de MetaData soit un lien vers un modèle ayant un champ "data" (voir User/Group)
             return (
                 instance.metadata.data
                 if hasattr(instance.metadata, "data")
-                else {
-                    meta.key: meta.value
-                    for meta in instance.metadata.all()
-                    if meta.valid
-                }
+                else {meta.key: meta.value for meta in instance.metadata.all() if meta.valid}
             )
         return None
 
@@ -79,13 +68,7 @@ class BaseCommonModelSerializer(serializers.ModelSerializer):
         try:
             model = self.Meta.model
             model_field_names = [field.name for field in model._meta.fields]
-            instance = model(
-                **{
-                    key: value
-                    for key, value in validated_data.items()
-                    if key in model_field_names
-                }
-            )
+            instance = model(**{key: value for key, value in validated_data.items() if key in model_field_names})
             instance.full_clean()
         except ModelValidationError as error:
             raise ApiValidationError(error.messages)
@@ -132,9 +115,7 @@ class BaseCommonModelSerializer(serializers.ModelSerializer):
         return model.objects.values().get(pk=data)
 
 
-class CommonHyperlinkedModelSerializer(
-    BaseCommonModelSerializer, HyperlinkedModelSerializer
-):
+class CommonHyperlinkedModelSerializer(BaseCommonModelSerializer, HyperlinkedModelSerializer):
     """
     Définition commune de ModelSerializer avec URLs pour l'API REST
     """
@@ -148,20 +129,11 @@ class CommonHyperlinkedModelSerializer(
         if self.Meta.model:
             pk_field = get_pk_field(self.Meta.model)
             pk_field_in_excludes = pk_field.name in getattr(self.Meta, "exclude", [])
-            pk_field_in_fields = any(
-                f in getattr(self.Meta, "fields", [f])
-                for f in (pk_field.name, ALL_FIELDS)
-            )
-            if (
-                not pk_field_in_excludes
-                and pk_field_in_fields
-                and pk_field.name not in self._declared_fields
-            ):
+            pk_field_in_fields = any(f in getattr(self.Meta, "fields", [f]) for f in (pk_field.name, ALL_FIELDS))
+            if not pk_field_in_excludes and pk_field_in_fields and pk_field.name not in self._declared_fields:
                 field, options = self.build_standard_field(pk_field.name, pk_field)
                 if hasattr(field, "view_name") and pk_field.related_model:  # Arbitraire
-                    options["view_name"] = "{}-detail".format(
-                        pk_field.related_model._meta.model_name
-                    )
+                    options["view_name"] = "{}-detail".format(pk_field.related_model._meta.model_name)
                 declared_fields = OrderedDict(self._declared_fields)
                 declared_fields[pk_field.name] = field(**options)
                 declared_fields.move_to_end(pk_field.name, last=False)
@@ -174,9 +146,7 @@ class CommonHyperlinkedModelSerializer(
 
 # URLs dans les serializers
 HYPERLINKED = settings.REST_FRAMEWORK.get("HYPERLINKED", False)
-CommonModelSerializer = (
-    CommonHyperlinkedModelSerializer if HYPERLINKED else BaseCommonModelSerializer
-)
+CommonModelSerializer = CommonHyperlinkedModelSerializer if HYPERLINKED else BaseCommonModelSerializer
 
 
 class BaseCustomSerializer(serializers.Serializer):
@@ -217,9 +187,7 @@ class GenericFormSerializer(BaseCommonModelSerializer):
 
     serializer_related_field = PrimaryKeyRelatedField
 
-    def __init__(
-        self, instance=None, data=empty, label_singulier=None, formats=None, **kwargs
-    ):
+    def __init__(self, instance=None, data=empty, label_singulier=None, formats=None, **kwargs):
         """
         Surcharge de l'init pour accepter le label_singulier et les formats
         """
@@ -256,15 +224,10 @@ class GenericFormSerializer(BaseCommonModelSerializer):
                 related_objects[(field_name, accessor_name)] = related_object
         # Récupère les données propres à chaque relation inversée tout en les supprimant des données du modèle courant
         relations_data = {
-            field_name: validated_data.pop(relation_name)
-            for field_name, relation_name in related_objects.keys()
+            field_name: validated_data.pop(relation_name) for field_name, relation_name in related_objects.keys()
         }
         # Données externes au modèle
-        donnees_externes = {
-            key: value
-            for key, value in validated_data.items()
-            if key not in field_names
-        }
+        donnees_externes = {key: value for key, value in validated_data.items() if key not in field_names}
         # Sauvegarde l'instance du modèle courant
         item = self.create_object(validated_data)
         # Traite les données des relations inversées
@@ -272,25 +235,19 @@ class GenericFormSerializer(BaseCommonModelSerializer):
             relation_data = relations_data.get(field_name)
             if relation_data:
                 # Injecte dans chaque objet les données non relatives au modèle
-                for relation_item in (
-                    [relation_data]
-                    if isinstance(relation_data, dict)
-                    else relation_data
-                ):
+                for relation_item in ([relation_data] if isinstance(relation_data, dict) else relation_data):
                     relation_item.update(**donnees_externes)
                 # Appel du create pour le ListSerializer des one_to_many
                 if related_object.one_to_many:
                     for relation_item in relation_data:
                         relation_item[related_object.field.name] = item
-                    type(self._declared_fields.get(field_name).child)(
-                        context=self.context, many=True
-                    ).create(relation_data)
+                    type(self._declared_fields.get(field_name).child)(context=self.context, many=True).create(
+                        relation_data
+                    )
                 # Appel du create pour le serializer des one_to_one
                 elif related_object.one_to_one:
                     relation_data[related_object.field.name] = item
-                    type(self._declared_fields.get(field_name))(
-                        context=self.context
-                    ).create(relation_data)
+                    type(self._declared_fields.get(field_name))(context=self.context).create(relation_data)
         return item
 
     def create_object(self, validated_data):
@@ -313,9 +270,7 @@ class UserSerializer(serializers.ModelSerializer):
     Serializer spécifique pour la création et la mise à jour d'un utilisateur
     """
 
-    password = serializers.CharField(
-        required=False, write_only=True, style={"input_type": "password"}
-    )
+    password = serializers.CharField(required=False, write_only=True, style={"input_type": "password"})
 
     def create(self, validated_data):
         """Valide le mot de passe puis crée le compte et affecte ses relations.
@@ -385,20 +340,14 @@ class UserInfosSerializer(CommonModelSerializer):
         ni une expansion implicite des privilèges d'un superuser.
         """
         permissions = {}
-        permission_serializer_class = create_model_serializer(
-            Permission, fields=["id", "codename", "name"]
-        )
+        permission_serializer_class = create_model_serializer(Permission, fields=["id", "codename", "name"])
         for group in user.groups.all():
             for permission in group.permissions.all():
                 if permission.id not in permissions:
-                    permissions[permission.id] = permission_serializer_class(
-                        permission
-                    ).data
+                    permissions[permission.id] = permission_serializer_class(permission).data
         for permission in user.user_permissions.all():
             if permission.id not in permissions:
-                permissions[permission.id] = permission_serializer_class(
-                    permission
-                ).data
+                permissions[permission.id] = permission_serializer_class(permission).data
         return sorted(permissions.values(), key=itemgetter("id"))
 
     def get_metadata(self, user):

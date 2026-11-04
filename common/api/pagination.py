@@ -74,14 +74,10 @@ class CustomPageNumberPagination(PageNumberPagination):
         count = self.page.paginator.count
         page_count = self.page.paginator.num_pages
         next = self.page.next_page_number() if self.page.has_next() else None
-        previous = (
-            self.page.previous_page_number() if self.page.has_previous() else None
-        )
+        previous = self.page.previous_page_number() if self.page.has_previous() else None
         page_size = self.get_page_size(self.request)
 
-        additional_data = OrderedDict(
-            (key, value) for key, value in self.additional_data.items()
-        )
+        additional_data = OrderedDict((key, value) for key, value in self.additional_data.items())
         response = OrderedDict()
         response.update(
             OrderedDict(
